@@ -180,7 +180,7 @@
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
         
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.0.1</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.0.2</span>
     </div>
 
 <script>
@@ -193,10 +193,10 @@ const app = {
     
     ui: {
         tool: 'pen', penWidth: 2.0, ropeLength: 5.0, tremor: 0.0, color: '#000000',
-        zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false
+        zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isDraggingImage: false
     },
     
-    pos: { startPan: {x:0, y:0}, anchor: {x:0, y:0}, lastSmoothed: {x:0, y:0}, currentPath: [] },
+    pos: { startPan: {x:0, y:0}, startImgDrag: {x:0, y:0, initX:0, initY:0}, anchor: {x:0, y:0}, lastSmoothed: {x:0, y:0}, currentPath: [] },
 
     init() {
         this.resize();
@@ -239,6 +239,7 @@ const app = {
             if (activePointers.size === 2) {
                 this.ui.isDrawing = false;
                 this.ui.isPanning = false;
+                this.ui.isDraggingImage = false;
                 this.pos.currentPath = [];
                 let pts = Array.from(activePointers.values());
                 let dx = pts[0].clientX - pts[1].clientX;
@@ -248,13 +249,24 @@ const app = {
                 return;
             }
 
+            // Gestion de l'outil Sélection : Déplacer Image ou Panner
             if (e.button === 2 || this.ui.tool === 'select') {
-                this.ui.isPanning = true;
-                this.pos.startPan = { x: e.clientX - this.ui.panX, y: e.clientY - this.ui.panY };
-                wrapper.style.cursor = 'grabbing';
+                let sel = this.layers.find(l => l.id == this.selectedLayerId);
+                // Si clic normal, outil select et calque image déverrouillé -> Déplacer l'image
+                if (e.button !== 2 && this.ui.tool === 'select' && sel && sel.type === 'image' && !sel.locked) {
+                    this.ui.isDraggingImage = true;
+                    this.pos.startImgDrag = { x: e.clientX, y: e.clientY, initX: sel.x, initY: sel.y };
+                    wrapper.style.cursor = 'move';
+                } else {
+                    // Sinon -> Panner la vue globale
+                    this.ui.isPanning = true;
+                    this.pos.startPan = { x: e.clientX - this.ui.panX, y: e.clientY - this.ui.panY };
+                    wrapper.style.cursor = 'grabbing';
+                }
                 return;
             }
 
+            // Dessin classique
             if (activePointers.size === 1 && (this.ui.tool === 'pen' || this.ui.tool === 'wall')) {
                 const pt = this.getScenePos(e.clientX, e.clientY);
                 if (Math.hypot(pt.x, pt.y) <= this.TABLE_RADIUS) {
@@ -284,6 +296,19 @@ const app = {
                     this.ui.zoom = Math.max(0.1, Math.min(10.0, initialPinchZoom * scale));
                     document.getElementById('zoom-workspace').value = this.ui.zoom * 100;
                     document.getElementById('val-zoom').innerText = Math.round(this.ui.zoom * 100) + "%";
+                    this.draw();
+                }
+                return;
+            }
+
+            // Déplacement de l'image
+            if (this.ui.isDraggingImage) {
+                let sel = this.layers.find(l => l.id == this.selectedLayerId);
+                if (sel) {
+                    let dx = (e.clientX - this.pos.startImgDrag.x) / this.ui.zoom;
+                    let dy = (e.clientY - this.pos.startImgDrag.y) / this.ui.zoom;
+                    sel.x = this.pos.startImgDrag.initX + dx;
+                    sel.y = this.pos.startImgDrag.initY + dy;
                     this.draw();
                 }
                 return;
@@ -343,6 +368,12 @@ const app = {
             activePointers.delete(e.pointerId);
             if (activePointers.size < 2) {
                 initialPinchDistance = null;
+            }
+
+            if (this.ui.isDraggingImage) {
+                this.ui.isDraggingImage = false;
+                wrapper.style.cursor = 'pointer';
+                this.saveState(); 
             }
 
             if (this.ui.isPanning) {
@@ -440,7 +471,7 @@ const app = {
                 
                 if (this.ui.ropeLength > 0) {
                     this.ctx.beginPath(); this.ctx.moveTo(this.pos.lastSmoothed.x, this.pos.lastSmoothed.y); this.ctx.lineTo(this.pos.anchor.x, this.pos.anchor.y);
-                    this.ctx.strokeStyle = "red"; this.ctx.lineWidth = 1.5; this.ctx.setLineDash([4,4]); this.ctx.stroke(); this.ctx.setLineDash([]);
+                    this.ctx.strokeStyle = "red"; this.ctx.lineWidth = 1.5 / this.ui.zoom; this.ctx.setLineDash([4,4]); this.ctx.stroke(); this.ctx.setLineDash([]);
                 }
             }
         }
@@ -452,8 +483,8 @@ const app = {
         let pts = [];
         for (let i = this.layers.length - 1; i >= 0; i--) {
             let l = this.layers[i];
-            if (l.visible && l.type === 'path' && l.points) {
-                // Remplacement strict du spread operator pour éviter le crash de Safari (Call stack limit)
+            // Fix: Les calques sauvegardés par l'outil s'appellent "pen" ou "path"
+            if (l.visible && (l.type === 'path' || l.type === 'pen') && l.points) {
                 for(let j = 0; j < l.points.length; j++) {
                     pts.push(l.points[j]);
                 }
@@ -488,22 +519,26 @@ const app = {
                     break;
                 }
             }
-            this.ctx.strokeStyle = "rgba(0, 120, 215, 0.8)"; this.ctx.lineWidth = 3; this.ctx.stroke();
+            this.ctx.strokeStyle = "rgba(0, 120, 215, 0.8)"; this.ctx.lineWidth = 3 / this.ui.zoom; this.ctx.stroke();
         }
+
+        // On adapte la taille des points pour qu'ils soient toujours visibles quel que soit le zoom
+        let pointRadius = 6 / this.ui.zoom;
+        let ballRadius = 7 / this.ui.zoom;
 
         if (document.getElementById('chk-sim-points').checked) {
-            this.ctx.beginPath(); this.ctx.arc(pts[0].x, pts[0].y, 6, 0, Math.PI*2); 
-            this.ctx.fillStyle = "green"; this.ctx.fill(); this.ctx.stroke();
+            this.ctx.beginPath(); this.ctx.arc(pts[0].x, pts[0].y, pointRadius, 0, Math.PI*2); 
+            this.ctx.fillStyle = "green"; this.ctx.fill(); 
             
-            this.ctx.beginPath(); this.ctx.arc(pts[pts.length-1].x, pts[pts.length-1].y, 6, 0, Math.PI*2); 
-            this.ctx.fillStyle = "red"; this.ctx.fill(); this.ctx.stroke();
+            this.ctx.beginPath(); this.ctx.arc(pts[pts.length-1].x, pts[pts.length-1].y, pointRadius, 0, Math.PI*2); 
+            this.ctx.fillStyle = "red"; this.ctx.fill(); 
         }
 
-        // Bille toujours visible au bon endroit
-        this.ctx.beginPath(); this.ctx.arc(ballPos.x, ballPos.y, 7, 0, Math.PI*2);
-        this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.strokeStyle="#000"; this.ctx.lineWidth=1; this.ctx.stroke();
+        this.ctx.beginPath(); this.ctx.arc(ballPos.x, ballPos.y, ballRadius, 0, Math.PI*2);
+        this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.strokeStyle="#000"; this.ctx.lineWidth=1/this.ui.zoom; this.ctx.stroke();
     },
 
+    // --- LOGIQUE UI ---
     openTab(evt, tabName) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -569,6 +604,7 @@ const app = {
         this.draw();
     },
 
+    // --- CALQUES ---
     addLayer(data) {
         this.saveState();
         let name = data.type === 'image' ? `🖼️ Image ${this.imgCount++}` : data.type === 'wall' ? `🧱 Mur ${this.wallCount++}` : `✏️ Tracé ${this.layerCount++}`;
@@ -618,6 +654,7 @@ const app = {
         if(l && !l.locked) { this.saveState(); this.layers = this.layers.filter(x => x.id != this.selectedLayerId); this.selectedLayerId = null; this.refreshLayerList(); }
     },
 
+    // --- IMAGES ---
     importImage(e) {
         const file = e.target.files[0];
         if (file) {
@@ -651,6 +688,7 @@ const app = {
         }
     },
 
+    // --- SAUVEGARDE & UNDO ---
     saveState() {
         this.undoStack.push(JSON.stringify(this.layers.map(l => ({...l, img:null}))));
         this.redoStack = [];
@@ -676,7 +714,6 @@ const app = {
     restoreLayers(jsonStr) {
         let parsed = JSON.parse(jsonStr);
         this.layers = [];
-        let count = 0;
         parsed.forEach(l => {
             if (l.type === 'image') {
                 const img = new Image();
@@ -740,7 +777,7 @@ const app = {
         let currentTheta = 0.0;
         for (let i = this.layers.length - 1; i >= 0; i--) {
             let l = this.layers[i];
-            if (l.visible && l.type === 'path') {
+            if (l.visible && (l.type === 'path' || l.type === 'pen')) {
                 l.points.forEach(pt => {
                     let rho = Math.hypot(pt.x, pt.y) / this.TABLE_RADIUS;
                     rho = Math.max(0.0, Math.min(1.0, rho));
