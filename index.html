@@ -101,6 +101,7 @@ class CanvasView(QGraphicsView):
         self.tremor_smoothing = value
 
     def mousePressEvent(self, event):
+        # Toujours autoriser le déplacement de la vue avec le clic droit
         if event.button() == Qt.RightButton:
             self.is_panning = True
             self.pan_start_pos = event.pos()
@@ -138,6 +139,7 @@ class CanvasView(QGraphicsView):
                 
                 self.scene().addItem(self.current_path_item)
         else:
+            # Outil sélection ou autre : laisse PyQt gérer (pour déplacer l'image)
             super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
@@ -214,6 +216,7 @@ class CanvasView(QGraphicsView):
             self.is_drawing = False
             self.rope_visual.hide()
             if self.current_path_item:
+                self.current_path_item.setPath(self.current_path) # Mise à jour finale forcée
                 self.strokes.append(self.current_path_item)
                 self.window().add_layer(self.current_path_item, is_image=False, is_wall=False)
         
@@ -374,7 +377,15 @@ class MainWindow(QMainWindow):
 
         group_workspace = QGroupBox("🖥️ Espace de travail")
         vbox_ws = QVBoxLayout()
-        vbox_ws.addWidget(QLabel("🔍 Zoom du Canevas :"))
+        
+        hbox_ws_zoom = QHBoxLayout()
+        hbox_ws_zoom.addWidget(QLabel("🔍 Zoom du Canevas :"))
+        self.lbl_zoom_val = QLabel("100%")
+        self.lbl_zoom_val.setStyleSheet("font-weight: bold;")
+        hbox_ws_zoom.addStretch()
+        hbox_ws_zoom.addWidget(self.lbl_zoom_val)
+        vbox_ws.addLayout(hbox_ws_zoom)
+        
         self.slider_zoom_workspace = QSlider(Qt.Horizontal)
         self.slider_zoom_workspace.setRange(10, 1000)
         self.slider_zoom_workspace.setValue(100)
@@ -647,19 +658,22 @@ class MainWindow(QMainWindow):
         main_widget.setLayout(main_layout)
         self.setCentralWidget(main_widget)
         
+        # Ajout du numéro de version en bas à droite
+        version_label = QLabel("v1.0")
+        version_label.setStyleSheet("color: #888; font-weight: bold;")
+        self.statusBar().addPermanentWidget(version_label)
+        
         self.update_undo_redo_buttons()
 
-    # --- LA FONCTION MANQUANTE EST ICI ---
     def _set_layer_icon(self, item, graphics_item, is_image, is_wall):
-        """Génère l'icône carrée colorée pour la liste des calques"""
         pixmap = QPixmap(16, 16)
         if is_image:
-            pixmap.fill(QColor(200, 200, 200)) # Gris
+            pixmap.fill(QColor(200, 200, 200)) 
         elif is_wall:
-            pixmap.fill(Qt.red)                # Rouge
+            pixmap.fill(Qt.red)                
         else:
             if isinstance(graphics_item, QGraphicsPathItem):
-                pixmap.fill(graphics_item.pen().color()) # Couleur du trait
+                pixmap.fill(graphics_item.pen().color()) 
             else:
                 pixmap.fill(Qt.black)
                 
@@ -864,19 +878,22 @@ class MainWindow(QMainWindow):
     def add_layer_from_data(self, graphics_item, layer_dict):
         item = QListWidgetItem(layer_dict['name'])
         item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsDragEnabled)
-        item.setCheckState(Qt.Checked if layer_dict['visible'] else Qt.Unchecked)
         
         is_wall = layer_dict.get('is_wall', False)
         is_image = layer_dict.get('type') == 'image'
         
+        # Bloquer temporairement les signaux pour éviter de déclencher toggle_layer_visibility trop tôt
+        self.layer_list.blockSignals(True)
+        item.setCheckState(Qt.Checked if layer_dict['visible'] else Qt.Unchecked)
         item.setData(Qt.UserRole, graphics_item)
         item.setData(Qt.UserRole + 1, layer_dict.get('locked', False))
         item.setData(Qt.UserRole + 2, is_wall)
         
         self._set_layer_icon(item, graphics_item, is_image, is_wall)
+        self.layer_list.insertItem(0, item)
+        self.layer_list.blockSignals(False)
         
         graphics_item.setVisible(layer_dict['visible'])
-        self.layer_list.insertItem(0, item)
         
         name = layer_dict['name']
         if "Tracé" in name:
@@ -1089,6 +1106,8 @@ class MainWindow(QMainWindow):
             
             item = QListWidgetItem(text)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsDragEnabled)
+            
+            self.layer_list.blockSignals(True)
             item.setCheckState(Qt.Checked)
             item.setData(Qt.UserRole, path_item)
             item.setData(Qt.UserRole + 1, is_locked)
@@ -1098,6 +1117,9 @@ class MainWindow(QMainWindow):
             self._set_layer_icon(item, path_item, is_image, is_wall)
             
             self.layer_list.insertItem(0, item)
+            self.layer_list.blockSignals(False)
+            
+            path_item.setVisible(True)
             self.update_z_values()
             self.update_undo_redo_buttons()
             self.on_layer_selection_changed()
@@ -1120,6 +1142,9 @@ class MainWindow(QMainWindow):
 
         item = QListWidgetItem(name)
         item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsDragEnabled)
+        
+        # Bloque les signaux temporairement pour que la checkbox ne cache pas l'élément lors de son insertion
+        self.layer_list.blockSignals(True)
         item.setCheckState(Qt.Checked)
         item.setData(Qt.UserRole, graphics_item)
         item.setData(Qt.UserRole + 1, False) 
@@ -1129,6 +1154,9 @@ class MainWindow(QMainWindow):
         
         self.layer_list.insertItem(0, item)
         self.layer_list.setCurrentItem(item)
+        self.layer_list.blockSignals(False)
+        
+        graphics_item.setVisible(True) # Force la visibilité
         
         self.redo_stack.clear()
         self.update_z_values()
@@ -1136,6 +1164,7 @@ class MainWindow(QMainWindow):
         self.update_simulation()
 
     def change_workspace_zoom(self, value):
+        self.lbl_zoom_val.setText(f"{value}%")
         scale = value / 100.0
         self.canvas.setTransform(QTransform().scale(scale, scale))
 
@@ -1147,7 +1176,9 @@ class MainWindow(QMainWindow):
     def change_tool(self):
         if self.radio_select.isChecked():
             self.canvas.current_tool = 'select'
-            self.canvas.setDragMode(QGraphicsView.ScrollHandDrag) 
+            # CORRECTION : NoDrag laisse passer les clics pour pouvoir déplacer l'image à la main !
+            self.canvas.setDragMode(QGraphicsView.NoDrag) 
+            self.canvas.viewport().setCursor(Qt.ArrowCursor)
         elif self.radio_wall.isChecked():
             self.canvas.current_tool = 'wall'
             self.canvas.setDragMode(QGraphicsView.NoDrag)
@@ -1250,3 +1281,4 @@ if __name__ == '__main__':
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
+                          
