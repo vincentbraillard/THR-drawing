@@ -7,10 +7,13 @@
     <style>
         :root { --primary: #0078D7; --bg: #f3f3f3; --panel: #ffffff; --border: #ddd; }
         * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        body { margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; background: var(--bg); overflow: hidden; touch-action: none; }
+        
+        /* Correction iOS Safari : Empêche le rebond et fixe la taille exacte de l'écran */
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; position: fixed; overflow: hidden; background: var(--bg); touch-action: none; }
+        body { display: flex; flex-direction: column; }
         
         #top-area { display: flex; flex: 1; overflow: hidden; }
-        #canvas-wrapper { flex: 1; position: relative; overflow: hidden; background: #e5e5e5; cursor: crosshair; }
+        #canvas-wrapper { flex: 1; position: relative; overflow: hidden; background: #e5e5e5; cursor: crosshair; touch-action: none; }
         canvas { position: absolute; top: 0; left: 0; }
         
         #right-panel { width: 340px; background: var(--panel); display: flex; flex-direction: column; border-left: 1px solid var(--border); z-index: 10; }
@@ -18,7 +21,7 @@
         #undo-redo-bar button { flex: 1; padding: 8px; font-weight: bold; background: white; border: 1px solid #ccc; border-radius: 6px; cursor: pointer; }
         #undo-redo-bar button:disabled { opacity: 0.5; cursor: not-allowed; }
         
-        .tabs { display: flex; background: #eee; border-bottom: 1px solid var(--border); }
+        .tabs { display: flex; background: #eee; border-bottom: 1px solid var(--border); flex-shrink: 0; }
         .tab-btn { flex: 1; padding: 10px 5px; border: none; background: none; font-size: 13px; cursor: pointer; font-weight: 500; }
         .tab-btn.active { background: white; border-bottom: 2px solid var(--primary); font-weight: bold; color: var(--primary); }
         .tab-content { display: none; padding: 15px; flex: 1; overflow-y: auto; }
@@ -38,12 +41,13 @@
         button.btn-icon { padding: 4px 8px; font-size: 12px; }
         
         #layer-list { list-style: none; padding: 0; margin: 0; border: 1px solid var(--border); border-radius: 4px; max-height: 250px; overflow-y: auto; }
-        .layer-item { padding: 8px; border-bottom: 1px solid #eee; display: flex; align-items: center; cursor: grab; font-size: 13px; background: white;}
+        .layer-item { padding: 8px; border-bottom: 1px solid #eee; display: flex; align-items: center; font-size: 13px; background: white;}
         .layer-item.selected { background: #e3f2fd; }
         .layer-item.locked { color: #888; }
         .layer-icon { width: 16px; height: 16px; display: inline-block; margin-right: 8px; border: 1px solid #999; border-radius: 3px; }
         
-        #bottom-panel { border-top: 1px solid var(--border); background: var(--panel); padding: 10px 20px; z-index: 10; display:flex; flex-direction: column;}
+        /* Panneau du bas sécurisé pour iPad */
+        #bottom-panel { flex-shrink: 0; border-top: 1px solid var(--border); background: var(--panel); padding: 10px 20px 20px 20px; z-index: 10; display:flex; flex-direction: column; position: relative;}
     </style>
 </head>
 <body>
@@ -66,7 +70,6 @@
                 <button class="tab-btn" onclick="app.openTab(event, 'tab-layers')">📑 Calques</button>
             </div>
 
-            <!-- ONGLET FICHIER -->
             <div id="tab-file" class="tab-content active">
                 <fieldset>
                     <legend>💾 Projet (.sunae)</legend>
@@ -79,7 +82,7 @@
                 <fieldset>
                     <legend>🖥️ Espace de travail</legend>
                     <div class="row"><label>🔍 Zoom du Canevas :</label> <span class="val-badge" id="val-zoom">100%</span></div>
-                    <input type="range" id="zoom-workspace" min="10" max="1000" value="100" style="width: 100%; margin-bottom: 15px;" oninput="app.updateZoom()">
+                    <input type="range" id="zoom-workspace" min="10" max="1000" value="100" style="width: 100%; margin-bottom: 15px;" oninput="app.updateZoomFromSlider()">
                     <label style="display: flex; align-items: center; gap: 8px; font-weight: normal;">
                         <input type="checkbox" id="chk-sim-points" checked onchange="app.draw()"> 🟢/🔴 Points début/fin
                     </label>
@@ -87,7 +90,6 @@
                 <button class="btn-export" onclick="app.exportTHR()">📤 Exporter en .thr</button>
             </div>
 
-            <!-- ONGLET OUTILS -->
             <div id="tab-tools" class="tab-content">
                 <fieldset>
                     <legend>🛠️ Outils Actifs</legend>
@@ -114,7 +116,6 @@
                 </fieldset>
             </div>
 
-            <!-- ONGLET IMAGE -->
             <div id="tab-image" class="tab-content">
                 <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;" onchange="app.importImage(event)">
                 <button class="btn" style="width:100%; padding:10px; margin-bottom:15px; font-weight:bold;" onclick="document.getElementById('file-image').click()">📂 Importer Image</button>
@@ -130,12 +131,11 @@
                     </div>
                     <div style="display:flex; gap:5px; margin-top:10px;">
                         <button class="btn" style="flex:1" onclick="app.toggleFlip('H')">↔️ Miroir H</button>
-                        <button class="btn" style="flex:1" onclick="toggleFlip('V')">↕️ Miroir V</button>
+                        <button class="btn" style="flex:1" onclick="app.toggleFlip('V')">↕️ Miroir V</button>
                     </div>
                 </fieldset>
             </div>
 
-            <!-- ONGLET CALQUES -->
             <div id="tab-layers" class="tab-content">
                 <label style="margin-bottom: 8px; display:block;">Sélectionnez pour éditer :</label>
                 <ul id="layer-list"></ul>
@@ -154,6 +154,9 @@
             <span class="val-badge" id="val-sim">0.0%</span>
         </div>
         <input type="range" id="slider-sim" min="0" max="1000" value="0" style="width: 100%; height:20px;" oninput="app.updateSim()">
+        
+        <!-- Numéro de version officiel -->
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.0</span>
     </div>
 
 <script>
@@ -189,13 +192,8 @@ const app = {
         this.draw();
     },
 
-    getScenePos(e) {
+    getScenePos(clientX, clientY) {
         const rect = this.canvas.getBoundingClientRect();
-        // Gestion Toucher / Souris
-        let clientX = e.clientX, clientY = e.clientY;
-        if(e.touches && e.touches.length > 0) {
-            clientX = e.touches[0].clientX; clientY = e.touches[0].clientY;
-        }
         const x = clientX - rect.left;
         const y = clientY - rect.top;
         return {
@@ -207,25 +205,73 @@ const app = {
     setupEvents() {
         const wrapper = document.getElementById('canvas-wrapper');
         
+        // Moteur de gestion Pointeur / Toucher (Support du Pinch-to-zoom iPad)
+        let activePointers = new Map();
+        let initialPinchDistance = null;
+        let initialPinchZoom = 1.0;
+
         wrapper.addEventListener('pointerdown', (e) => {
+            e.preventDefault(); 
+            activePointers.set(e.pointerId, e);
+
+            // Gestion du Zoom à 2 doigts
+            if (activePointers.size === 2) {
+                this.ui.isDrawing = false;
+                this.ui.isPanning = false;
+                this.pos.currentPath = [];
+                let pts = Array.from(activePointers.values());
+                let dx = pts[0].clientX - pts[1].clientX;
+                let dy = pts[0].clientY - pts[1].clientY;
+                initialPinchDistance = Math.hypot(dx, dy);
+                initialPinchZoom = this.ui.zoom;
+                return;
+            }
+
+            // Souris Clic Droit ou Outil Sélection
             if (e.button === 2 || this.ui.tool === 'select') {
                 this.ui.isPanning = true;
                 this.pos.startPan = { x: e.clientX - this.ui.panX, y: e.clientY - this.ui.panY };
                 wrapper.style.cursor = 'grabbing';
                 return;
             }
-            const pt = this.getScenePos(e);
-            if (Math.hypot(pt.x, pt.y) <= this.TABLE_RADIUS) {
-                this.ui.isDrawing = true;
-                this.pos.anchor = {x: pt.x, y: pt.y};
-                this.pos.lastSmoothed = {x: pt.x, y: pt.y};
-                this.pos.currentPath = [{...this.pos.anchor}];
-                this.draw();
+
+            // Dessin
+            if (activePointers.size === 1 && (this.ui.tool === 'pen' || this.ui.tool === 'wall')) {
+                const pt = this.getScenePos(e.clientX, e.clientY);
+                if (Math.hypot(pt.x, pt.y) <= this.TABLE_RADIUS) {
+                    this.ui.isDrawing = true;
+                    this.pos.anchor = {x: pt.x, y: pt.y};
+                    this.pos.lastSmoothed = {x: pt.x, y: pt.y};
+                    this.pos.currentPath = [{...this.pos.anchor}];
+                    this.draw();
+                }
             }
         });
 
         wrapper.addEventListener('pointermove', (e) => {
             e.preventDefault();
+            if (activePointers.has(e.pointerId)) {
+                activePointers.set(e.pointerId, e);
+            }
+
+            // Application du Zoom 2 doigts
+            if (activePointers.size === 2) {
+                if (initialPinchDistance) {
+                    let pts = Array.from(activePointers.values());
+                    let dx = pts[0].clientX - pts[1].clientX;
+                    let dy = pts[0].clientY - pts[1].clientY;
+                    let dist = Math.hypot(dx, dy);
+                    let scale = dist / initialPinchDistance;
+                    
+                    this.ui.zoom = Math.max(0.1, Math.min(10.0, initialPinchZoom * scale));
+                    document.getElementById('zoom-workspace').value = this.ui.zoom * 100;
+                    document.getElementById('val-zoom').innerText = Math.round(this.ui.zoom * 100) + "%";
+                    this.draw();
+                }
+                return;
+            }
+
+            // Panoramique
             if (this.ui.isPanning) {
                 this.ui.panX = e.clientX - this.pos.startPan.x;
                 this.ui.panY = e.clientY - this.pos.startPan.y;
@@ -233,17 +279,16 @@ const app = {
                 return;
             }
 
+            // Dessin
             if (this.ui.isDrawing) {
-                const pt = this.getScenePos(e);
+                const pt = this.getScenePos(e.clientX, e.clientY);
                 
                 if (this.ui.tool === 'pen') {
-                    // Tremor Smoothing
                     let alpha = this.ui.tremor > 0 ? 1.0 - (this.ui.tremor / 105.0) : 1.0;
                     let sx = this.pos.lastSmoothed.x + alpha * (pt.x - this.pos.lastSmoothed.x);
                     let sy = this.pos.lastSmoothed.y + alpha * (pt.y - this.pos.lastSmoothed.y);
                     this.pos.lastSmoothed = {x: sx, y: sy};
                     
-                    // Rope
                     let dx = sx - this.pos.anchor.x;
                     let dy = sy - this.pos.anchor.y;
                     let d = Math.hypot(dx, dy);
@@ -253,22 +298,21 @@ const app = {
                         let nx = sx - Math.cos(angle) * this.ui.ropeLength;
                         let ny = sy - Math.sin(angle) * this.ui.ropeLength;
                         
-                        // Circle Clamp
                         let r = Math.hypot(nx, ny);
                         if (r > this.TABLE_RADIUS) {
                             nx = (nx / r) * this.TABLE_RADIUS;
                             ny = (ny / r) * this.TABLE_RADIUS;
                         }
                         
-                        // Wall Collision
+                        let testPos = {x: nx, y: ny};
                         let inWall = false;
                         for (let l of this.layers) {
-                            if (l.visible && l.type === 'wall' && this.pointInPolygon({x:nx, y:ny}, l.points)) {
+                            if (l.visible && l.type === 'wall' && this.pointInPolygon(testPos, l.points)) {
                                 inWall = true; break;
                             }
                         }
                         if (!inWall) {
-                            this.pos.anchor = {x: nx, y: ny};
+                            this.pos.anchor = testPos;
                             this.pos.currentPath.push({...this.pos.anchor});
                         }
                     }
@@ -279,19 +323,24 @@ const app = {
             }
         });
 
-        const endAction = () => {
-            this.ui.isPanning = false;
-            wrapper.style.cursor = this.ui.tool === 'select' ? 'pointer' : 'crosshair';
+        const endAction = (e) => {
+            activePointers.delete(e.pointerId);
+            if (activePointers.size < 2) {
+                initialPinchDistance = null;
+            }
+
+            if (this.ui.isPanning) {
+                this.ui.isPanning = false;
+                wrapper.style.cursor = this.ui.tool === 'select' ? 'pointer' : 'crosshair';
+            }
             
             if (this.ui.isDrawing) {
                 this.ui.isDrawing = false;
                 if (this.pos.currentPath.length > 1) {
                     if (this.ui.tool === 'wall') this.pos.currentPath.push({...this.pos.currentPath[0]});
                     this.addLayer({
-                        type: this.ui.tool,
-                        color: this.ui.color,
-                        width: this.ui.penWidth,
-                        points: [...this.pos.currentPath]
+                        type: this.ui.tool, color: this.ui.color,
+                        width: this.ui.penWidth, points: [...this.pos.currentPath]
                     });
                 }
                 this.pos.currentPath = [];
@@ -300,12 +349,15 @@ const app = {
         };
 
         wrapper.addEventListener('pointerup', endAction);
+        wrapper.addEventListener('pointercancel', endAction);
         wrapper.addEventListener('pointerleave', endAction);
+        
+        // Zoom Souris
         wrapper.addEventListener('wheel', (e) => {
             e.preventDefault();
             let delta = e.deltaY > 0 ? -10 : 10;
             document.getElementById('zoom-workspace').value = Math.max(10, Math.min(1000, parseInt(document.getElementById('zoom-workspace').value) + delta));
-            this.updateZoom();
+            this.updateZoomFromSlider();
         });
         wrapper.addEventListener('contextmenu', e => e.preventDefault());
     },
@@ -383,10 +435,7 @@ const app = {
             }
         }
 
-        // Simulation
-        if (this.ui.simPercent > 0 || document.getElementById('chk-sim-points').checked) {
-            this.drawSimulation();
-        }
+        this.drawSimulation();
     },
 
     drawSimulation() {
@@ -429,7 +478,7 @@ const app = {
 
         if (this.ui.simPercent > 0) {
             this.ctx.beginPath(); this.ctx.arc(ballPos.x, ballPos.y, 7, 0, Math.PI*2);
-            this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.stroke();
+            this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.strokeStyle="#000"; this.ctx.lineWidth=1; this.ctx.stroke();
         }
     },
 
@@ -441,7 +490,7 @@ const app = {
         evt.currentTarget.classList.add('active');
     },
 
-    updateZoom() {
+    updateZoomFromSlider() {
         let val = document.getElementById('zoom-workspace').value;
         document.getElementById('val-zoom').innerText = val + "%";
         this.ui.zoom = val / 100.0;
@@ -465,10 +514,8 @@ const app = {
     updateSliders() {
         this.ui.penWidth = document.getElementById('slider-width').value / 10.0;
         document.getElementById('val-width').innerText = this.ui.penWidth.toFixed(1);
-        
         this.ui.tremor = document.getElementById('slider-tremor').value;
         document.getElementById('val-tremor').innerText = this.ui.tremor;
-        
         this.ui.ropeLength = document.getElementById('slider-rope').value / 2.0;
         document.getElementById('val-rope').innerText = this.ui.ropeLength.toFixed(1);
     },
@@ -493,18 +540,18 @@ const app = {
         list.innerHTML = '';
         this.layers.forEach((l, i) => {
             const li = document.createElement('li');
-            li.className = `layer-item ${l.id === this.selectedLayerId ? 'selected' : ''} ${l.locked ? 'locked' : ''}`;
-            
+            li.className = `layer-item ${l.id == this.selectedLayerId ? 'selected' : ''} ${l.locked ? 'locked' : ''}`;
             let col = l.type === 'wall' ? 'red' : l.type === 'image' ? '#ccc' : l.color;
             li.innerHTML = `
                 <input type="checkbox" class="layer-vis" ${l.visible ? 'checked' : ''} onchange="app.toggleVis('${l.id}')">
                 <span class="layer-icon" style="background-color: ${col}"></span>
-                <span style="flex:1" onclick="app.selectLayer('${l.id}')">${l.name} ${l.locked ? '🔒' : '🔓'}</span>
+                <span style="flex:1; cursor:pointer;" onclick="app.selectLayer('${l.id}')">${l.name} ${l.locked ? '🔒' : '🔓'}</span>
             `;
             list.appendChild(li);
         });
 
-        let sel = this.layers.find(l => l.id === this.selectedLayerId);
+        // Correction majeure de l'égalité ID (== au lieu de ===)
+        let sel = this.layers.find(l => l.id == this.selectedLayerId);
         document.getElementById('btn-lock').disabled = !sel;
         document.getElementById('btn-delete').disabled = !sel || sel.locked;
         if(sel) document.getElementById('btn-lock').innerText = sel.locked ? "🔓 Déverrouiller" : "🔒 Verrouiller";
@@ -522,12 +569,12 @@ const app = {
         this.draw();
     },
 
-    selectLayer(id) { this.selectedLayerId = id; this.refreshLayerList(); },
-    toggleVis(id) { let l = this.layers.find(x => x.id === id); if(l) { l.visible = !l.visible; this.refreshLayerList(); } },
-    toggleLock() { let l = this.layers.find(x => x.id === this.selectedLayerId); if(l) { l.locked = !l.locked; this.refreshLayerList(); } },
+    selectLayer(id) { this.selectedLayerId = Number(id); this.refreshLayerList(); },
+    toggleVis(id) { let l = this.layers.find(x => x.id == id); if(l) { l.visible = !l.visible; this.refreshLayerList(); } },
+    toggleLock() { let l = this.layers.find(x => x.id == this.selectedLayerId); if(l) { l.locked = !l.locked; this.refreshLayerList(); } },
     deleteLayer() {
-        let l = this.layers.find(x => x.id === this.selectedLayerId);
-        if(l && !l.locked) { this.saveState(); this.layers = this.layers.filter(x => x.id !== this.selectedLayerId); this.selectedLayerId = null; this.refreshLayerList(); }
+        let l = this.layers.find(x => x.id == this.selectedLayerId);
+        if(l && !l.locked) { this.saveState(); this.layers = this.layers.filter(x => x.id != this.selectedLayerId); this.selectedLayerId = null; this.refreshLayerList(); }
     },
 
     // --- IMAGES ---
@@ -545,7 +592,7 @@ const app = {
         e.target.value = '';
     },
     updateImageTransform() {
-        let sel = this.layers.find(l => l.id === this.selectedLayerId);
+        let sel = this.layers.find(l => l.id == this.selectedLayerId);
         if(sel && sel.type === 'image') {
             this.saveState();
             sel.opacity = document.getElementById('img-opacity').value / 100.0;
@@ -556,7 +603,7 @@ const app = {
         }
     },
     toggleFlip(axis) {
-        let sel = this.layers.find(l => l.id === this.selectedLayerId);
+        let sel = this.layers.find(l => l.id == this.selectedLayerId);
         if(sel && sel.type === 'image') {
             this.saveState();
             if(axis === 'H') sel.flipH = !sel.flipH; else sel.flipV = !sel.flipV;
@@ -564,7 +611,7 @@ const app = {
         }
     },
 
-    // --- SAUVEGARDE ---
+    // --- SAUVEGARDE & UNDO ---
     saveState() {
         this.undoStack.push(JSON.stringify(this.layers.map(l => ({...l, img:null}))));
         this.redoStack = [];
@@ -590,6 +637,7 @@ const app = {
     restoreLayers(jsonStr) {
         let parsed = JSON.parse(jsonStr);
         this.layers = [];
+        let count = 0;
         parsed.forEach(l => {
             if (l.type === 'image') {
                 const img = new Image();
@@ -618,7 +666,7 @@ const app = {
         reader.onload = (evt) => {
             const proj = JSON.parse(evt.target.result);
             if(proj.settings) {
-                document.getElementById('zoom-workspace').value = proj.settings.zoom; this.updateZoom();
+                document.getElementById('zoom-workspace').value = proj.settings.zoom; this.updateZoomFromSlider();
                 document.getElementById('slider-width').value = proj.settings.width;
                 document.getElementById('slider-tremor').value = proj.settings.tremor;
                 document.getElementById('slider-rope').value = proj.settings.rope;
