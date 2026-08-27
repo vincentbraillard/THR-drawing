@@ -77,7 +77,10 @@
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
                         <input type="file" id="file-open" accept=".sunae" style="display: none;" onchange="app.loadProject(event)">
                         <button class="btn" style="flex:1" onclick="document.getElementById('file-open').click()">📂 Ouvrir</button>
-                        <button class="btn" style="flex:1" onclick="app.saveProject()">💾 Enregistrer</button>
+                    </div>
+                    <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                        <button class="btn" style="flex:1" onclick="app.saveProject(false)">💾 Enregistrer</button>
+                        <button class="btn" style="flex:1" onclick="app.saveProject(true)">📝 Sous...</button>
                     </div>
                 </fieldset>
                 <fieldset>
@@ -101,8 +104,12 @@
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="pen" checked onchange="app.changeTool()"> ✏️ Crayon (Dessin)</label>
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="wall" onchange="app.changeTool()"> 🧱 Mur (Exclusion)</label>
                     <label style="display:flex; margin-bottom:15px;"><input type="radio" name="tool" value="select" onchange="app.changeTool()"> 🖐️ Sélection/Déplacement</label>
-                    <input type="color" id="color-picker" value="#000000" style="display:none;" onchange="app.changeColor()">
-                    <button class="btn btn-primary" id="btn-color" style="width:100%; background:black;" onclick="document.getElementById('color-picker').click()">🎨 Couleur du trait</button>
+                    
+                    <!-- CORRECTION COULEUR iOS : Superposition d'un input transparent sur le bouton -->
+                    <div style="position: relative; width: 100%;">
+                        <input type="color" id="color-picker" value="#000000" style="position: absolute; top:0; left:0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 2;" onchange="app.changeColor()" oninput="app.changeColor()">
+                        <button class="btn btn-primary" id="btn-color" style="width:100%; background:black; pointer-events: none; z-index: 1; position: relative;">🎨 Couleur du trait</button>
+                    </div>
                 </fieldset>
                 <fieldset>
                     <legend>🖌️ Paramètres du pinceau</legend>
@@ -180,7 +187,7 @@
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
         
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.0.2</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.0.4</span>
     </div>
 
 <script>
@@ -190,6 +197,7 @@ const app = {
     TABLE_RADIUS: 300,
     layers: [], undoStack: [], redoStack: [],
     layerCount: 1, imgCount: 1, wallCount: 1, selectedLayerId: null,
+    currentFileName: null, // Mémorise le nom du fichier en cours
     
     ui: {
         tool: 'pen', penWidth: 2.0, ropeLength: 5.0, tremor: 0.0, color: '#000000',
@@ -249,16 +257,13 @@ const app = {
                 return;
             }
 
-            // Gestion de l'outil Sélection : Déplacer Image ou Panner
             if (e.button === 2 || this.ui.tool === 'select') {
                 let sel = this.layers.find(l => l.id == this.selectedLayerId);
-                // Si clic normal, outil select et calque image déverrouillé -> Déplacer l'image
                 if (e.button !== 2 && this.ui.tool === 'select' && sel && sel.type === 'image' && !sel.locked) {
                     this.ui.isDraggingImage = true;
                     this.pos.startImgDrag = { x: e.clientX, y: e.clientY, initX: sel.x, initY: sel.y };
                     wrapper.style.cursor = 'move';
                 } else {
-                    // Sinon -> Panner la vue globale
                     this.ui.isPanning = true;
                     this.pos.startPan = { x: e.clientX - this.ui.panX, y: e.clientY - this.ui.panY };
                     wrapper.style.cursor = 'grabbing';
@@ -266,7 +271,6 @@ const app = {
                 return;
             }
 
-            // Dessin classique
             if (activePointers.size === 1 && (this.ui.tool === 'pen' || this.ui.tool === 'wall')) {
                 const pt = this.getScenePos(e.clientX, e.clientY);
                 if (Math.hypot(pt.x, pt.y) <= this.TABLE_RADIUS) {
@@ -301,7 +305,6 @@ const app = {
                 return;
             }
 
-            // Déplacement de l'image
             if (this.ui.isDraggingImage) {
                 let sel = this.layers.find(l => l.id == this.selectedLayerId);
                 if (sel) {
@@ -483,7 +486,6 @@ const app = {
         let pts = [];
         for (let i = this.layers.length - 1; i >= 0; i--) {
             let l = this.layers[i];
-            // Fix: Les calques sauvegardés par l'outil s'appellent "pen" ou "path"
             if (l.visible && (l.type === 'path' || l.type === 'pen') && l.points) {
                 for(let j = 0; j < l.points.length; j++) {
                     pts.push(l.points[j]);
@@ -522,7 +524,6 @@ const app = {
             this.ctx.strokeStyle = "rgba(0, 120, 215, 0.8)"; this.ctx.lineWidth = 3 / this.ui.zoom; this.ctx.stroke();
         }
 
-        // On adapte la taille des points pour qu'ils soient toujours visibles quel que soit le zoom
         let pointRadius = 6 / this.ui.zoom;
         let ballRadius = 7 / this.ui.zoom;
 
@@ -538,7 +539,6 @@ const app = {
         this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.strokeStyle="#000"; this.ctx.lineWidth=1/this.ui.zoom; this.ctx.stroke();
     },
 
-    // --- LOGIQUE UI ---
     openTab(evt, tabName) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -604,7 +604,6 @@ const app = {
         this.draw();
     },
 
-    // --- CALQUES ---
     addLayer(data) {
         this.saveState();
         let name = data.type === 'image' ? `🖼️ Image ${this.imgCount++}` : data.type === 'wall' ? `🧱 Mur ${this.wallCount++}` : `✏️ Tracé ${this.layerCount++}`;
@@ -654,7 +653,6 @@ const app = {
         if(l && !l.locked) { this.saveState(); this.layers = this.layers.filter(x => x.id != this.selectedLayerId); this.selectedLayerId = null; this.refreshLayerList(); }
     },
 
-    // --- IMAGES ---
     importImage(e) {
         const file = e.target.files[0];
         if (file) {
@@ -688,7 +686,6 @@ const app = {
         }
     },
 
-    // --- SAUVEGARDE & UNDO ---
     saveState() {
         this.undoStack.push(JSON.stringify(this.layers.map(l => ({...l, img:null}))));
         this.redoStack = [];
@@ -726,10 +723,15 @@ const app = {
         this.refreshLayerList();
     },
 
-    saveProject() {
-        let filename = prompt("Nom du fichier à sauvegarder :", "mon_projet");
-        if (!filename) return; 
-        if (!filename.toLowerCase().endsWith('.sunae')) filename += '.sunae';
+    // --- SAUVEGARDE NATIVE POUR iOS / iPAD OS ---
+    saveProject(isSaveAs = false) {
+        if (isSaveAs || !this.currentFileName) {
+            let defaultName = this.currentFileName ? this.currentFileName.replace('.sunae', '') : "mon_projet";
+            let filename = prompt("Nom du fichier à sauvegarder :", defaultName);
+            if (!filename) return; 
+            if (!filename.toLowerCase().endsWith('.sunae')) filename += '.sunae';
+            this.currentFileName = filename;
+        }
 
         const proj = {
             settings: { 
@@ -740,15 +742,30 @@ const app = {
             layers: this.layers.map(l => ({...l, img:null}))
         };
         const blob = new Blob([JSON.stringify(proj)], {type: "application/json"});
+        
+        // Utilisation de l'API de Partage (Share Sheet) native de l'iPad
+        if (navigator.canShare && navigator.userAgent.match(/iPad|iPhone|iPod|Mac/i)) {
+            const file = new File([blob], this.currentFileName, {type: "application/json"});
+            if (navigator.canShare({ files: [file] })) {
+                navigator.share({
+                    files: [file],
+                    title: this.currentFileName
+                }).catch(err => console.log("Partage annulé ou échoué", err));
+                return;
+            }
+        }
+
+        // Fallback classique
         const a = document.createElement("a"); 
         a.href = URL.createObjectURL(blob); 
-        a.download = filename; 
+        a.download = this.currentFileName; 
         a.click();
     },
 
     loadProject(e) {
         const file = e.target.files[0];
         if (!file) return;
+        this.currentFileName = file.name;
         const reader = new FileReader();
         reader.onload = (evt) => {
             const proj = JSON.parse(evt.target.result);
@@ -781,7 +798,9 @@ const app = {
                 l.points.forEach(pt => {
                     let rho = Math.hypot(pt.x, pt.y) / this.TABLE_RADIUS;
                     rho = Math.max(0.0, Math.min(1.0, rho));
+                    
                     let theta = Math.atan2(pt.y, pt.x) + (Math.PI / 2);
+                    
                     while (theta - currentTheta > Math.PI) theta -= 2 * Math.PI;
                     while (theta - currentTheta < -Math.PI) theta += 2 * Math.PI;
                     currentTheta = theta;
@@ -796,6 +815,20 @@ const app = {
         if (!filename.toLowerCase().endsWith('.thr')) filename += '.thr';
 
         const blob = new Blob([thrLines.join('\n')], { type: "text/plain" });
+        
+        // Utilisation de l'API de Partage (Share Sheet) native de l'iPad
+        if (navigator.canShare && navigator.userAgent.match(/iPad|iPhone|iPod|Mac/i)) {
+            const file = new File([blob], filename, {type: "text/plain"});
+            if (navigator.canShare({ files: [file] })) {
+                navigator.share({
+                    files: [file],
+                    title: filename
+                }).catch(err => console.log("Partage annulé ou échoué", err));
+                return;
+            }
+        }
+
+        // Fallback classique
         const a = document.createElement("a"); a.href = URL.createObjectURL(blob); 
         a.download = filename; 
         a.click();
@@ -806,5 +839,4 @@ window.onload = () => app.init();
 </script>
 </body>
 </html>
-
 
