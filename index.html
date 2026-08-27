@@ -15,7 +15,6 @@
         #canvas-wrapper { flex: 1; position: relative; overflow: hidden; background: #e5e5e5; cursor: crosshair; touch-action: none; }
         canvas { position: absolute; top: 0; left: 0; }
         
-        /* Bouton flottant pour afficher/masquer le menu */
         #toggle-sidebar-btn { position: absolute; top: 15px; right: 15px; z-index: 100; padding: 10px 15px; background: white; border: 1px solid #ccc; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         
         #right-panel { width: 340px; background: var(--panel); display: flex; flex-direction: column; border-left: 1px solid var(--border); z-index: 10; transition: width 0.2s; }
@@ -181,7 +180,7 @@
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
         
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.0</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.0.1</span>
     </div>
 
 <script>
@@ -453,8 +452,12 @@ const app = {
         let pts = [];
         for (let i = this.layers.length - 1; i >= 0; i--) {
             let l = this.layers[i];
-            // On compile tous les tracés visibles pour créer la ligne de progression globale
-            if (l.visible && l.type === 'path') pts.push(...l.points);
+            if (l.visible && l.type === 'path' && l.points) {
+                // Remplacement strict du spread operator pour éviter le crash de Safari (Call stack limit)
+                for(let j = 0; j < l.points.length; j++) {
+                    pts.push(l.points[j]);
+                }
+            }
         }
         
         if (pts.length === 0) return;
@@ -468,8 +471,7 @@ const app = {
         let targetDist = (this.ui.simPercent / 1000.0) * totalDist;
         let ballPos = pts[0];
         
-        // Tracé bleu de progression
-        if (this.ui.simPercent > 0) {
+        if (this.ui.simPercent > 0 && totalDist > 0) {
             this.ctx.beginPath(); 
             this.ctx.moveTo(pts[0].x, pts[0].y);
             for (let i = 1; i < pts.length; i++) {
@@ -489,7 +491,6 @@ const app = {
             this.ctx.strokeStyle = "rgba(0, 120, 215, 0.8)"; this.ctx.lineWidth = 3; this.ctx.stroke();
         }
 
-        // Affichage optionnel des points (vert / rouge)
         if (document.getElementById('chk-sim-points').checked) {
             this.ctx.beginPath(); this.ctx.arc(pts[0].x, pts[0].y, 6, 0, Math.PI*2); 
             this.ctx.fillStyle = "green"; this.ctx.fill(); this.ctx.stroke();
@@ -498,14 +499,11 @@ const app = {
             this.ctx.fillStyle = "red"; this.ctx.fill(); this.ctx.stroke();
         }
 
-        // Dessin de la bille uniquement si le slider bouge
-        if (this.ui.simPercent > 0) {
-            this.ctx.beginPath(); this.ctx.arc(ballPos.x, ballPos.y, 7, 0, Math.PI*2);
-            this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.strokeStyle="#000"; this.ctx.lineWidth=1; this.ctx.stroke();
-        }
+        // Bille toujours visible au bon endroit
+        this.ctx.beginPath(); this.ctx.arc(ballPos.x, ballPos.y, 7, 0, Math.PI*2);
+        this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.strokeStyle="#000"; this.ctx.lineWidth=1; this.ctx.stroke();
     },
 
-    // --- LOGIQUE UI ---
     openTab(evt, tabName) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -523,7 +521,7 @@ const app = {
             panel.style.display = 'none';
             btn.innerText = '◀ Afficher le menu';
         }
-        setTimeout(() => this.resize(), 50); // Laisse le temps au DOM de se mettre à jour
+        setTimeout(() => this.resize(), 50); 
     },
 
     stepSlider(id, step) {
@@ -571,7 +569,6 @@ const app = {
         this.draw();
     },
 
-    // --- CALQUES ---
     addLayer(data) {
         this.saveState();
         let name = data.type === 'image' ? `🖼️ Image ${this.imgCount++}` : data.type === 'wall' ? `🧱 Mur ${this.wallCount++}` : `✏️ Tracé ${this.layerCount++}`;
@@ -621,7 +618,6 @@ const app = {
         if(l && !l.locked) { this.saveState(); this.layers = this.layers.filter(x => x.id != this.selectedLayerId); this.selectedLayerId = null; this.refreshLayerList(); }
     },
 
-    // --- IMAGES ---
     importImage(e) {
         const file = e.target.files[0];
         if (file) {
@@ -655,7 +651,6 @@ const app = {
         }
     },
 
-    // --- SAUVEGARDE & UNDO ---
     saveState() {
         this.undoStack.push(JSON.stringify(this.layers.map(l => ({...l, img:null}))));
         this.redoStack = [];
@@ -695,9 +690,8 @@ const app = {
     },
 
     saveProject() {
-        // Demande le nom du fichier à l'utilisateur
         let filename = prompt("Nom du fichier à sauvegarder :", "mon_projet");
-        if (!filename) return; // Annulé par l'utilisateur
+        if (!filename) return; 
         if (!filename.toLowerCase().endsWith('.sunae')) filename += '.sunae';
 
         const proj = {
@@ -724,7 +718,6 @@ const app = {
             if(proj.settings) {
                 document.getElementById('zoom-workspace').value = proj.settings.zoom; this.updateZoomFromSlider();
                 
-                // Restauration de l'état d'affichage des points
                 if (proj.settings.showPoints !== undefined) {
                     document.getElementById('chk-sim-points').checked = proj.settings.showPoints;
                 }
@@ -776,4 +769,5 @@ window.onload = () => app.init();
 </script>
 </body>
 </html>
+
 
