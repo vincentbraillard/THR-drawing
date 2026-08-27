@@ -1,1284 +1,661 @@
-import sys
-import math
-import json
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QGraphicsView, QGraphicsScene, 
-                             QGraphicsPixmapItem, QGraphicsPathItem, QGraphicsLineItem,
-                             QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QSlider, QLabel, 
-                             QListWidget, QListWidgetItem, QFileDialog, QAbstractItemView, 
-                             QRadioButton, QGroupBox, QColorDialog, QPinchGesture, QMessageBox,
-                             QTabWidget, QCheckBox)
-from PyQt5.QtCore import Qt, QPointF, QEvent, QByteArray, QBuffer, QIODevice
-from PyQt5.QtGui import QPainterPath, QPen, QPixmap, QColor, QPainter, QTransform, QBrush, QIcon
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Éditeur de Tracés Sunae</title>
+    <style>
+        :root { --primary: #0078D7; --bg: #f3f3f3; --panel: #ffffff; --border: #ddd; }
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body { margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; background: var(--bg); overflow: hidden; touch-action: none; }
+        
+        #top-area { display: flex; flex: 1; overflow: hidden; }
+        #canvas-wrapper { flex: 1; position: relative; overflow: hidden; background: #e5e5e5; cursor: crosshair; }
+        canvas { position: absolute; top: 0; left: 0; }
+        
+        #right-panel { width: 340px; background: var(--panel); display: flex; flex-direction: column; border-left: 1px solid var(--border); z-index: 10; }
+        #undo-redo-bar { display: flex; padding: 10px; border-bottom: 1px solid var(--border); gap: 10px; background: #fafafa; }
+        #undo-redo-bar button { flex: 1; padding: 8px; font-weight: bold; background: white; border: 1px solid #ccc; border-radius: 6px; cursor: pointer; }
+        #undo-redo-bar button:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .tabs { display: flex; background: #eee; border-bottom: 1px solid var(--border); }
+        .tab-btn { flex: 1; padding: 10px 5px; border: none; background: none; font-size: 13px; cursor: pointer; font-weight: 500; }
+        .tab-btn.active { background: white; border-bottom: 2px solid var(--primary); font-weight: bold; color: var(--primary); }
+        .tab-content { display: none; padding: 15px; flex: 1; overflow-y: auto; }
+        .tab-content.active { display: block; }
+        
+        fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 15px; }
+        legend { font-weight: bold; color: #333; padding: 0 5px; }
+        .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .row-slider { display: flex; align-items: center; gap: 5px; margin-bottom: 15px; }
+        label { font-size: 13px; font-weight: 500; }
+        .val-badge { font-weight: bold; font-size: 13px; color: var(--primary); }
+        
+        input[type="range"] { flex: 1; }
+        button.btn { background: #f0f0f0; border: 1px solid #ccc; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;}
+        button.btn-primary { background: var(--primary); color: white; border: none; }
+        button.btn-export { background: #2e7d32; color: white; font-weight: bold; padding: 12px; border-radius: 6px; width: 100%; font-size: 14px; border:none; margin-top: 10px;}
+        button.btn-icon { padding: 4px 8px; font-size: 12px; }
+        
+        #layer-list { list-style: none; padding: 0; margin: 0; border: 1px solid var(--border); border-radius: 4px; max-height: 250px; overflow-y: auto; }
+        .layer-item { padding: 8px; border-bottom: 1px solid #eee; display: flex; align-items: center; cursor: grab; font-size: 13px; background: white;}
+        .layer-item.selected { background: #e3f2fd; }
+        .layer-item.locked { color: #888; }
+        .layer-icon { width: 16px; height: 16px; display: inline-block; margin-right: 8px; border: 1px solid #999; border-radius: 3px; }
+        
+        #bottom-panel { border-top: 1px solid var(--border); background: var(--panel); padding: 10px 20px; z-index: 10; display:flex; flex-direction: column;}
+    </style>
+</head>
+<body>
 
-class CanvasView(QGraphicsView):
-    def __init__(self, scene, parent=None):
-        super().__init__(scene, parent)
-        self.setRenderHint(QPainter.Antialiasing)
-        
-        self.viewport().setAttribute(Qt.WA_AcceptTouchEvents)
-        self.grabGesture(Qt.PinchGesture)
-        self.grabGesture(Qt.PanGesture)
-        
-        self.setDragMode(QGraphicsView.NoDrag)
-        self.current_tool = 'pen'
-        self.is_drawing = False
-        self.is_panning = False
-        self.pan_start_pos = None
-        
-        self.rope_length = 5.0
-        self.pen_width = 2.0
-        self.pen_color = QColor(Qt.black)
-        
-        self.tremor_smoothing = 0.0
-        self.last_smoothed_pos = QPointF(0, 0)
-        
-        self.current_path = None
-        self.current_path_item = None
-        self.anchor_pos = QPointF(0, 0)
-        self.strokes = [] 
-        
-        self.show_sim_points = True
+    <div id="top-area">
+        <div id="canvas-wrapper">
+            <canvas id="canvas"></canvas>
+        </div>
 
-        self.radius = 300
+        <div id="right-panel">
+            <div id="undo-redo-bar">
+                <button id="btn-undo" onclick="app.undo()" disabled>↩️ Undo</button>
+                <button id="btn-redo" onclick="app.redo()" disabled>↪️ Redo</button>
+            </div>
+
+            <div class="tabs">
+                <button class="tab-btn active" onclick="app.openTab(event, 'tab-file')">📁 Fichier</button>
+                <button class="tab-btn" onclick="app.openTab(event, 'tab-tools')">🖌️ Outils</button>
+                <button class="tab-btn" onclick="app.openTab(event, 'tab-image')">🖼️ Image</button>
+                <button class="tab-btn" onclick="app.openTab(event, 'tab-layers')">📑 Calques</button>
+            </div>
+
+            <!-- ONGLET FICHIER -->
+            <div id="tab-file" class="tab-content active">
+                <fieldset>
+                    <legend>💾 Projet (.sunae)</legend>
+                    <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                        <input type="file" id="file-open" accept=".sunae" style="display: none;" onchange="app.loadProject(event)">
+                        <button class="btn" style="flex:1" onclick="document.getElementById('file-open').click()">📂 Ouvrir</button>
+                        <button class="btn" style="flex:1" onclick="app.saveProject()">💾 Enregistrer</button>
+                    </div>
+                </fieldset>
+                <fieldset>
+                    <legend>🖥️ Espace de travail</legend>
+                    <div class="row"><label>🔍 Zoom du Canevas :</label> <span class="val-badge" id="val-zoom">100%</span></div>
+                    <input type="range" id="zoom-workspace" min="10" max="1000" value="100" style="width: 100%; margin-bottom: 15px;" oninput="app.updateZoom()">
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal;">
+                        <input type="checkbox" id="chk-sim-points" checked onchange="app.draw()"> 🟢/🔴 Points début/fin
+                    </label>
+                </fieldset>
+                <button class="btn-export" onclick="app.exportTHR()">📤 Exporter en .thr</button>
+            </div>
+
+            <!-- ONGLET OUTILS -->
+            <div id="tab-tools" class="tab-content">
+                <fieldset>
+                    <legend>🛠️ Outils Actifs</legend>
+                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="pen" checked onchange="app.changeTool()"> ✏️ Crayon (Dessin)</label>
+                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="wall" onchange="app.changeTool()"> 🧱 Mur (Exclusion)</label>
+                    <label style="display:flex; margin-bottom:15px;"><input type="radio" name="tool" value="select" onchange="app.changeTool()"> 🖐️ Sélection/Déplacement</label>
+                    <input type="color" id="color-picker" value="#000000" style="display:none;" onchange="app.changeColor()">
+                    <button class="btn btn-primary" id="btn-color" style="width:100%; background:black;" onclick="document.getElementById('color-picker').click()">🎨 Couleur du trait</button>
+                </fieldset>
+                <fieldset>
+                    <legend>🖌️ Paramètres du pinceau</legend>
+                    <div class="row"><label>📏 Épaisseur du trait :</label> <span class="val-badge" id="val-width">2.0</span></div>
+                    <div class="row-slider">
+                        <input type="range" id="slider-width" min="10" max="100" value="20" oninput="app.updateSliders()">
+                    </div>
+                    <div class="row"><label>🫨 Lissage Anti-tremblement :</label> <span class="val-badge" id="val-tremor">0</span></div>
+                    <div class="row-slider">
+                        <input type="range" id="slider-tremor" min="0" max="100" value="0" oninput="app.updateSliders()">
+                    </div>
+                    <div class="row"><label>〰️ Lissage (Corde) :</label> <span class="val-badge" id="val-rope">5.0</span></div>
+                    <div class="row-slider">
+                        <input type="range" id="slider-rope" min="0" max="100" value="10" oninput="app.updateSliders()">
+                    </div>
+                </fieldset>
+            </div>
+
+            <!-- ONGLET IMAGE -->
+            <div id="tab-image" class="tab-content">
+                <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;" onchange="app.importImage(event)">
+                <button class="btn" style="width:100%; padding:10px; margin-bottom:15px; font-weight:bold;" onclick="document.getElementById('file-image').click()">📂 Importer Image</button>
+                <fieldset id="fs-image" disabled>
+                    <legend>🖼️ Calque Image Sélectionné</legend>
+                    <div class="row"><label>🌗 Opacité :</label></div>
+                    <input type="range" id="img-opacity" min="0" max="100" value="50" style="width:100%; margin-bottom:10px;" oninput="app.updateImageTransform()">
+                    <div class="row"><label>📐 Échelle :</label></div>
+                    <input type="range" id="img-scale" min="10" max="1000" value="100" style="width:100%; margin-bottom:10px;" oninput="app.updateImageTransform()">
+                    <div class="row"><label>🔄 Rotation :</label> <span class="val-badge" id="val-rot">0°</span></div>
+                    <div class="row-slider">
+                        <input type="range" id="img-rot" min="-180" max="180" value="0" oninput="app.updateImageTransform()">
+                    </div>
+                    <div style="display:flex; gap:5px; margin-top:10px;">
+                        <button class="btn" style="flex:1" onclick="app.toggleFlip('H')">↔️ Miroir H</button>
+                        <button class="btn" style="flex:1" onclick="toggleFlip('V')">↕️ Miroir V</button>
+                    </div>
+                </fieldset>
+            </div>
+
+            <!-- ONGLET CALQUES -->
+            <div id="tab-layers" class="tab-content">
+                <label style="margin-bottom: 8px; display:block;">Sélectionnez pour éditer :</label>
+                <ul id="layer-list"></ul>
+                <div style="display:flex; gap:5px; margin-top:10px;">
+                    <button class="btn" id="btn-lock" style="flex:1" onclick="app.toggleLock()" disabled>🔒 Verrouiller</button>
+                    <button class="btn" id="btn-delete" style="flex:1; background:#ffebee; color:#c62828;" onclick="app.deleteLayer()" disabled>🗑️ Supprimer</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ZONE SIMULATEUR -->
+    <div id="bottom-panel">
+        <div class="row">
+            <label>▶️ Simulateur de tracé (Bille) :</label>
+            <span class="val-badge" id="val-sim">0.0%</span>
+        </div>
+        <input type="range" id="slider-sim" min="0" max="1000" value="0" style="width: 100%; height:20px;" oninput="app.updateSim()">
+    </div>
+
+<script>
+const app = {
+    canvas: document.getElementById('canvas'),
+    ctx: document.getElementById('canvas').getContext('2d'),
+    TABLE_RADIUS: 300,
+    layers: [], undoStack: [], redoStack: [],
+    layerCount: 1, imgCount: 1, wallCount: 1, selectedLayerId: null,
+    
+    ui: {
+        tool: 'pen', penWidth: 2.0, ropeLength: 5.0, tremor: 0.0, color: '#000000',
+        zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false
+    },
+    
+    pos: { startPan: {x:0, y:0}, anchor: {x:0, y:0}, lastSmoothed: {x:0, y:0}, currentPath: [] },
+
+    init() {
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+        this.setupEvents();
+        this.draw();
+    },
+
+    resize() {
+        const wrapper = document.getElementById('canvas-wrapper');
+        const rect = wrapper.getBoundingClientRect();
+        this.canvas.width = rect.width * window.devicePixelRatio;
+        this.canvas.height = rect.height * window.devicePixelRatio;
+        this.canvas.style.width = rect.width + 'px';
+        this.canvas.style.height = rect.height + 'px';
+        this.vw = rect.width; this.vh = rect.height;
+        this.draw();
+    },
+
+    getScenePos(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        // Gestion Toucher / Souris
+        let clientX = e.clientX, clientY = e.clientY;
+        if(e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX; clientY = e.touches[0].clientY;
+        }
+        const x = clientX - rect.left;
+        const y = clientY - rect.top;
+        return {
+            x: (x - this.vw/2 - this.ui.panX) / this.ui.zoom,
+            y: (y - this.vh/2 - this.ui.panY) / this.ui.zoom
+        };
+    },
+
+    setupEvents() {
+        const wrapper = document.getElementById('canvas-wrapper');
         
-        self.bg_circle = self.scene().addEllipse(-self.radius, -self.radius, self.radius*2, self.radius*2, 
-                                                 QPen(Qt.black, 2), QColor(255, 255, 255))
-        self.bg_circle.setZValue(-10)
-
-        self.rope_visual = QGraphicsLineItem()
-        self.rope_visual.setPen(QPen(Qt.red, 1.5, Qt.DashLine))
-        self.rope_visual.setZValue(1000)
-        self.rope_visual.hide()
-        self.scene().addItem(self.rope_visual)
-
-        self.sim_path_item = QGraphicsPathItem()
-        self.sim_path_item.setPen(QPen(QColor(0, 120, 215, 180), 3, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-        self.sim_path_item.setZValue(2000)
-        self.scene().addItem(self.sim_path_item)
-        
-        self.sim_start = self.scene().addEllipse(-6, -6, 12, 12, QPen(Qt.black, 1.5), QColor(Qt.green))
-        self.sim_start.setZValue(2001)
-        self.sim_start.hide()
-        
-        self.sim_end = self.scene().addEllipse(-6, -6, 12, 12, QPen(Qt.black, 1.5), QColor(Qt.red))
-        self.sim_end.setZValue(2001)
-        self.sim_end.hide()
-        
-        self.sim_ball = self.scene().addEllipse(-7, -7, 14, 14, QPen(Qt.black, 1), QColor(200, 200, 200))
-        self.sim_ball.setZValue(2002)
-        self.sim_ball.hide()
-
-    def viewportEvent(self, event):
-        if event.type() in [QEvent.TouchBegin, QEvent.TouchUpdate, QEvent.TouchEnd]:
-            return super().viewportEvent(event)
-        return super().viewportEvent(event)
-
-    def event(self, event):
-        if event.type() == QEvent.Gesture:
-            pinch = event.gesture(Qt.PinchGesture)
-            if pinch:
-                scale_change = pinch.scaleFactor()
-                if scale_change > 1.02:
-                    self.window().apply_zoom_delta(5)
-                elif scale_change < 0.98:
-                    self.window().apply_zoom_delta(-5)
-                return True
-        return super().event(event)
-
-    def wheelEvent(self, event):
-        delta = event.angleDelta().y()
-        if delta > 0: self.window().apply_zoom_delta(10)
-        elif delta < 0: self.window().apply_zoom_delta(-10)
-        event.accept()
-
-    def set_rope_length(self, value):
-        self.rope_length = value / 2.0
-
-    def set_pen_width(self, value):
-        self.pen_width = value / 10.0
-        
-    def set_tremor_smoothing(self, value):
-        self.tremor_smoothing = value
-
-    def mousePressEvent(self, event):
-        # Toujours autoriser le déplacement de la vue avec le clic droit
-        if event.button() == Qt.RightButton:
-            self.is_panning = True
-            self.pan_start_pos = event.pos()
-            self.viewport().setCursor(Qt.ClosedHandCursor)
-            event.accept()
-            return
-
-        if self.current_tool == 'pen':
-            if event.button() == Qt.LeftButton:
-                pos = self.mapToScene(event.pos())
-                if math.hypot(pos.x(), pos.y()) <= self.radius:
-                    self.is_drawing = True
-                    self.anchor_pos = pos
-                    self.last_smoothed_pos = pos
-                    
-                    self.current_path = QPainterPath(self.anchor_pos)
-                    self.current_path_item = QGraphicsPathItem(self.current_path)
-                    self.current_path_item.setPen(QPen(self.pen_color, self.pen_width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-                    self.scene().addItem(self.current_path_item)
-                    
-                    if self.rope_length > 0:
-                        self.rope_visual.setLine(pos.x(), pos.y(), self.anchor_pos.x(), self.anchor_pos.y())
-                        self.rope_visual.show()
-
-        elif self.current_tool == 'wall':
-            if event.button() == Qt.LeftButton:
-                pos = self.mapToScene(event.pos())
-                self.is_drawing = True
-                self.current_path = QPainterPath(pos)
-                self.current_path_item = QGraphicsPathItem(self.current_path)
-                
-                self.current_path_item.setPen(QPen(Qt.red, 2, Qt.DashLine))
-                brush = QBrush(QColor(255, 0, 0, 60), Qt.DiagCrossPattern)
-                self.current_path_item.setBrush(brush)
-                
-                self.scene().addItem(self.current_path_item)
-        else:
-            # Outil sélection ou autre : laisse PyQt gérer (pour déplacer l'image)
-            super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if self.is_panning:
-            delta = event.pos() - self.pan_start_pos
-            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
-            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
-            self.pan_start_pos = event.pos()
-            event.accept()
-            return
-
-        if self.current_tool == 'pen' and self.is_drawing:
-            raw_pos = self.mapToScene(event.pos())
-            
-            if self.tremor_smoothing > 0:
-                alpha = 1.0 - (self.tremor_smoothing / 105.0) 
-                new_x = self.last_smoothed_pos.x() + alpha * (raw_pos.x() - self.last_smoothed_pos.x())
-                new_y = self.last_smoothed_pos.y() + alpha * (raw_pos.y() - self.last_smoothed_pos.y())
-                smoothed_pos = QPointF(new_x, new_y)
-            else:
-                smoothed_pos = raw_pos
-                
-            self.last_smoothed_pos = smoothed_pos
-            
-            dx = smoothed_pos.x() - self.anchor_pos.x()
-            dy = smoothed_pos.y() - self.anchor_pos.y()
-            dist = math.hypot(dx, dy)
-            
-            if dist > self.rope_length:
-                angle = math.atan2(dy, dx)
-                new_x = smoothed_pos.x() - math.cos(angle) * self.rope_length
-                new_y = smoothed_pos.y() - math.sin(angle) * self.rope_length
-                
-                r = math.hypot(new_x, new_y)
-                if r > self.radius:
-                    new_x = (new_x / r) * self.radius
-                    new_y = (new_y / r) * self.radius
-                
-                test_pos = QPointF(new_x, new_y)
-                
-                in_wall = False
-                for i in range(self.window().layer_list.count()):
-                    layer_item = self.window().layer_list.item(i)
-                    if layer_item.checkState() == Qt.Checked and layer_item.data(Qt.UserRole + 2):
-                        wall_item = layer_item.data(Qt.UserRole)
-                        if wall_item.path().contains(test_pos):
-                            in_wall = True
-                            break
-                
-                if not in_wall:
-                    self.anchor_pos = test_pos
-                    self.current_path.lineTo(self.anchor_pos)
-                    self.current_path_item.setPath(self.current_path)
-            
-            if self.rope_length > 0:
-                self.rope_visual.setLine(smoothed_pos.x(), smoothed_pos.y(), self.anchor_pos.x(), self.anchor_pos.y())
-
-        elif self.current_tool == 'wall' and self.is_drawing:
-            pos = self.mapToScene(event.pos())
-            self.current_path.lineTo(pos)
-            self.current_path_item.setPath(self.current_path)
-
-        else:
-            super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.RightButton:
-            self.is_panning = False
-            self.viewport().setCursor(Qt.CrossCursor if self.current_tool in ['pen', 'wall'] else Qt.ArrowCursor)
-            event.accept()
-            return
-
-        if self.current_tool == 'pen' and self.is_drawing:
-            self.is_drawing = False
-            self.rope_visual.hide()
-            if self.current_path_item:
-                self.current_path_item.setPath(self.current_path) # Mise à jour finale forcée
-                self.strokes.append(self.current_path_item)
-                self.window().add_layer(self.current_path_item, is_image=False, is_wall=False)
-        
-        elif self.current_tool == 'wall' and self.is_drawing:
-            self.is_drawing = False
-            if self.current_path_item:
-                self.current_path.closeSubpath()
-                self.current_path_item.setPath(self.current_path)
-                self.strokes.append(self.current_path_item)
-                self.window().add_layer(self.current_path_item, is_image=False, is_wall=True)
-
-        else:
-            super().mouseReleaseEvent(event)
-
-    def update_simulation_view(self, percent):
-        points = []
-        for i in range(self.window().layer_list.count()-1, -1, -1):
-            item = self.window().layer_list.item(i)
-            is_wall = item.data(Qt.UserRole + 2)
-            if item.checkState() == Qt.Checked and not is_wall:
-                graphics_item = item.data(Qt.UserRole)
-                if isinstance(graphics_item, QGraphicsPathItem):
-                    path = graphics_item.path()
-                    for j in range(path.elementCount()):
-                        el = path.elementAt(j)
-                        points.append(QPointF(el.x, el.y))
-        
-        if not points:
-            self.sim_path_item.hide()
-            self.sim_start.hide()
-            self.sim_end.hide()
-            self.sim_ball.hide()
-            return
-
-        distances = [0.0]
-        total_dist = 0.0
-        for i in range(1, len(points)):
-            p1 = points[i-1]
-            p2 = points[i]
-            d = math.hypot(p2.x() - p1.x(), p2.y() - p1.y())
-            total_dist += d
-            distances.append(total_dist)
-
-        self.sim_start.setPos(points[0])
-        self.sim_end.setPos(points[-1])
-        
-        if percent == 0 or total_dist == 0:
-            self.sim_path_item.hide()
-            self.sim_ball.setPos(points[0])
-            
-            if self.show_sim_points:
-                self.sim_start.show()
-                self.sim_end.show()
-            else:
-                self.sim_start.hide()
-                self.sim_end.hide()
-                
-            self.sim_ball.show()
-            return
-
-        target_dist = (percent / 1000.0) * total_dist
-        current_path = QPainterPath()
-        current_path.moveTo(points[0])
-        ball_pos = points[0]
-        
-        for i in range(1, len(points)):
-            if distances[i] <= target_dist:
-                current_path.lineTo(points[i])
-                ball_pos = points[i]
-            else:
-                overshoot = target_dist - distances[i-1]
-                segment_len = distances[i] - distances[i-1]
-                ratio = overshoot / segment_len if segment_len > 0 else 0
-                
-                p1 = points[i-1]
-                p2 = points[i]
-                interp_x = p1.x() + (p2.x() - p1.x()) * ratio
-                interp_y = p1.y() + (p2.y() - p1.y()) * ratio
-                
-                ball_pos = QPointF(interp_x, interp_y)
-                current_path.lineTo(ball_pos)
-                break
-                
-        self.sim_path_item.setPath(current_path)
-        self.sim_path_item.show()
-        
-        if self.show_sim_points:
-            self.sim_start.show()
-            self.sim_end.show()
-        else:
-            self.sim_start.hide()
-            self.sim_end.hide()
-            
-        self.sim_ball.setPos(ball_pos)
-        self.sim_ball.show()
-
-
-class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Éditeur de Tracés Sunae (.thr)")
-        self.resize(1400, 900)
-        
-        self.scene = QGraphicsScene(-500, -500, 1000, 1000)
-        self.canvas = CanvasView(self.scene, self)
-        
-        self.layer_counter = 1
-        self.image_counter = 1
-        self.wall_counter = 1
-        self.redo_stack = [] 
-        self.current_project_file = None 
-        
-        self.setup_ui()
-
-    def setup_ui(self):
-        main_widget = QWidget()
-        main_layout = QVBoxLayout()
-        
-        top_layout = QHBoxLayout()
-        top_layout.addWidget(self.canvas, stretch=3)
-        
-        right_panel = QVBoxLayout()
-        right_panel.setContentsMargins(0, 0, 0, 0)
-        
-        hbox_undo = QHBoxLayout()
-        self.btn_undo = QPushButton("↩️ Undo")
-        self.btn_redo = QPushButton("↪️ Redo")
-        self.btn_undo.clicked.connect(self.undo_action)
-        self.btn_redo.clicked.connect(self.redo_action)
-        self.btn_undo.setStyleSheet("padding: 8px; font-weight: bold;")
-        self.btn_redo.setStyleSheet("padding: 8px; font-weight: bold;")
-        hbox_undo.addWidget(self.btn_undo)
-        hbox_undo.addWidget(self.btn_redo)
-        right_panel.addLayout(hbox_undo)
-
-        self.tabs = QTabWidget()
-        self.tabs.setFixedWidth(340)
-
-        # ==========================================
-        # ONGLET 1 : FICHIER
-        # ==========================================
-        tab_file = QWidget()
-        layout_file = QVBoxLayout()
-        
-        group_file = QGroupBox("💾 Projet (.sunae)")
-        vbox_file = QVBoxLayout()
-        self.btn_open = QPushButton("📂 Ouvrir")
-        self.btn_save = QPushButton("💾 Enregistrer")
-        self.btn_save_as = QPushButton("📝 Enregistrer sous")
-        self.btn_open.clicked.connect(self.open_project)
-        self.btn_save.clicked.connect(self.save_project)
-        self.btn_save_as.clicked.connect(self.save_as_project)
-        vbox_file.addWidget(self.btn_open)
-        vbox_file.addWidget(self.btn_save)
-        vbox_file.addWidget(self.btn_save_as)
-        group_file.setLayout(vbox_file)
-        layout_file.addWidget(group_file)
-
-        group_workspace = QGroupBox("🖥️ Espace de travail")
-        vbox_ws = QVBoxLayout()
-        
-        hbox_ws_zoom = QHBoxLayout()
-        hbox_ws_zoom.addWidget(QLabel("🔍 Zoom du Canevas :"))
-        self.lbl_zoom_val = QLabel("100%")
-        self.lbl_zoom_val.setStyleSheet("font-weight: bold;")
-        hbox_ws_zoom.addStretch()
-        hbox_ws_zoom.addWidget(self.lbl_zoom_val)
-        vbox_ws.addLayout(hbox_ws_zoom)
-        
-        self.slider_zoom_workspace = QSlider(Qt.Horizontal)
-        self.slider_zoom_workspace.setRange(10, 1000)
-        self.slider_zoom_workspace.setValue(100)
-        self.slider_zoom_workspace.valueChanged.connect(self.change_workspace_zoom)
-        vbox_ws.addWidget(self.slider_zoom_workspace)
-        
-        self.chk_show_points = QCheckBox("🟢/🔴 Afficher les points de début et fin")
-        self.chk_show_points.setChecked(True)
-        self.chk_show_points.toggled.connect(self.toggle_sim_points)
-        vbox_ws.addWidget(self.chk_show_points)
-        
-        group_workspace.setLayout(vbox_ws)
-        layout_file.addWidget(group_workspace)
-        
-        self.btn_export = QPushButton("📤 Exporter en .thr (Machine)")
-        self.btn_export.setStyleSheet("background-color: #2e7d32; color: white; font-weight: bold; padding: 12px; margin-top: 20px;")
-        self.btn_export.clicked.connect(self.export_thr)
-        layout_file.addWidget(self.btn_export)
-
-        layout_file.addStretch() 
-        tab_file.setLayout(layout_file)
-        self.tabs.addTab(tab_file, "📁 Fichier")
-
-        # ==========================================
-        # ONGLET 2 : OUTILS
-        # ==========================================
-        tab_tools = QWidget()
-        layout_tools = QVBoxLayout()
-
-        group_tools = QGroupBox("🛠️ Outils Actifs")
-        vbox_tools = QVBoxLayout()
-        self.radio_pen = QRadioButton("✏️ Crayon (Dessiner)")
-        self.radio_wall = QRadioButton("🧱 Mur (Créer une zone d'exclusion)")
-        self.radio_select = QRadioButton("🖐️ Sélection / Déplacement")
-        
-        self.radio_pen.setChecked(True)
-        self.radio_pen.toggled.connect(self.change_tool)
-        self.radio_wall.toggled.connect(self.change_tool)
-        self.radio_select.toggled.connect(self.change_tool)
-        
-        vbox_tools.addWidget(self.radio_pen)
-        vbox_tools.addWidget(self.radio_wall)
-        vbox_tools.addWidget(self.radio_select)
-
-        self.btn_color = QPushButton("🎨 Couleur du trait")
-        self.btn_color.setStyleSheet("background-color: black; color: white; font-weight: bold; padding: 8px;")
-        self.btn_color.clicked.connect(self.choose_color)
-        vbox_tools.addWidget(self.btn_color)
-        group_tools.setLayout(vbox_tools)
-        layout_tools.addWidget(group_tools)
-
-        group_brush = QGroupBox("🖌️ Paramètres du pinceau")
-        vbox_brush = QVBoxLayout()
-        
-        hbox_width_lbl = QHBoxLayout()
-        hbox_width_lbl.addWidget(QLabel("📏 Épaisseur du trait :"))
-        self.lbl_width_val = QLabel("2.0")
-        self.lbl_width_val.setStyleSheet("font-weight: bold;")
-        hbox_width_lbl.addStretch()
-        hbox_width_lbl.addWidget(self.lbl_width_val)
-        vbox_brush.addLayout(hbox_width_lbl)
-        
-        hbox_width = QHBoxLayout()
-        self.btn_width_minus = QPushButton("➖")
-        self.btn_width_plus = QPushButton("➕")
-        self.btn_width_minus.setFixedWidth(35)
-        self.btn_width_plus.setFixedWidth(35)
-        self.slider_width = QSlider(Qt.Horizontal)
-        self.slider_width.setRange(10, 100) 
-        self.slider_width.setValue(20)
-        self.slider_width.valueChanged.connect(self.change_width)
-        self.btn_width_minus.clicked.connect(self.decrease_width)
-        self.btn_width_plus.clicked.connect(self.increase_width)
-        hbox_width.addWidget(self.btn_width_minus)
-        hbox_width.addWidget(self.slider_width)
-        hbox_width.addWidget(self.btn_width_plus)
-        vbox_brush.addLayout(hbox_width)
-        
-        hbox_tremor_lbl = QHBoxLayout()
-        hbox_tremor_lbl.addWidget(QLabel("🫨 Lissage Anti-tremblement :"))
-        self.lbl_tremor_val = QLabel("0")
-        self.lbl_tremor_val.setStyleSheet("font-weight: bold;")
-        hbox_tremor_lbl.addStretch()
-        hbox_tremor_lbl.addWidget(self.lbl_tremor_val)
-        vbox_brush.addLayout(hbox_tremor_lbl)
-        
-        hbox_tremor = QHBoxLayout()
-        self.btn_tremor_minus = QPushButton("➖")
-        self.btn_tremor_plus = QPushButton("➕")
-        self.btn_tremor_minus.setFixedWidth(35)
-        self.btn_tremor_plus.setFixedWidth(35)
-        self.slider_tremor = QSlider(Qt.Horizontal)
-        self.slider_tremor.setRange(0, 100) 
-        self.slider_tremor.setValue(0)
-        self.slider_tremor.valueChanged.connect(self.change_tremor)
-        self.btn_tremor_minus.clicked.connect(self.decrease_tremor)
-        self.btn_tremor_plus.clicked.connect(self.increase_tremor)
-        hbox_tremor.addWidget(self.btn_tremor_minus)
-        hbox_tremor.addWidget(self.slider_tremor)
-        hbox_tremor.addWidget(self.btn_tremor_plus)
-        vbox_brush.addLayout(hbox_tremor)
-
-        hbox_rope_lbl = QHBoxLayout()
-        hbox_rope_lbl.addWidget(QLabel("〰️ Lissage (Corde) :"))
-        self.lbl_rope_val = QLabel("5.0")
-        self.lbl_rope_val.setStyleSheet("font-weight: bold;")
-        hbox_rope_lbl.addStretch()
-        hbox_rope_lbl.addWidget(self.lbl_rope_val)
-        vbox_brush.addLayout(hbox_rope_lbl)
-        
-        hbox_rope = QHBoxLayout()
-        self.btn_rope_minus = QPushButton("➖")
-        self.btn_rope_plus = QPushButton("➕")
-        self.btn_rope_minus.setFixedWidth(35)
-        self.btn_rope_plus.setFixedWidth(35)
-        self.slider_rope = QSlider(Qt.Horizontal)
-        self.slider_rope.setRange(0, 100) 
-        self.slider_rope.setValue(10) 
-        self.slider_rope.valueChanged.connect(self.change_rope)
-        self.btn_rope_minus.clicked.connect(self.decrease_rope)
-        self.btn_rope_plus.clicked.connect(self.increase_rope)
-        hbox_rope.addWidget(self.btn_rope_minus)
-        hbox_rope.addWidget(self.slider_rope)
-        hbox_rope.addWidget(self.btn_rope_plus)
-        vbox_brush.addLayout(hbox_rope)
-        
-        group_brush.setLayout(vbox_brush)
-        layout_tools.addWidget(group_brush)
-
-        layout_tools.addStretch()
-        tab_tools.setLayout(layout_tools)
-        self.tabs.addTab(tab_tools, "🖌️ Outils")
-
-        # ==========================================
-        # ONGLET 3 : IMAGE
-        # ==========================================
-        tab_image = QWidget()
-        layout_image = QVBoxLayout()
-        
-        self.btn_import = QPushButton("📂 Importer Nouvelle Image")
-        self.btn_import.setStyleSheet("padding: 10px; font-weight:bold;")
-        self.btn_import.clicked.connect(self.import_image)
-        layout_image.addWidget(self.btn_import)
-        
-        group_image = QGroupBox("🖼️ Calque Image Sélectionné")
-        vbox_image = QVBoxLayout()
-        
-        vbox_image.addWidget(QLabel("🌗 Opacité :"))
-        self.slider_opacity = QSlider(Qt.Horizontal)
-        self.slider_opacity.setRange(0, 100)
-        self.slider_opacity.setValue(50)
-        self.slider_opacity.setEnabled(False) 
-        self.slider_opacity.valueChanged.connect(self.change_opacity)
-        vbox_image.addWidget(self.slider_opacity)
-
-        vbox_image.addWidget(QLabel("📐 Échelle :"))
-        self.slider_scale = QSlider(Qt.Horizontal)
-        self.slider_scale.setRange(10, 1000) 
-        self.slider_scale.setValue(100)
-        self.slider_scale.setEnabled(False)
-        self.slider_scale.valueChanged.connect(self.change_scale)
-        vbox_image.addWidget(self.slider_scale)
-
-        hbox_rot_lbl = QHBoxLayout()
-        hbox_rot_lbl.addWidget(QLabel("🔄 Rotation :"))
-        self.lbl_rot_val = QLabel("0°")
-        self.lbl_rot_val.setStyleSheet("font-weight: bold;")
-        hbox_rot_lbl.addStretch()
-        hbox_rot_lbl.addWidget(self.lbl_rot_val)
-        vbox_image.addLayout(hbox_rot_lbl)
-
-        hbox_rot = QHBoxLayout()
-        self.btn_rot_minus = QPushButton("➖")
-        self.btn_rot_plus = QPushButton("➕")
-        self.btn_rot_minus.setFixedWidth(35)
-        self.btn_rot_plus.setFixedWidth(35)
-        self.btn_rot_minus.setEnabled(False)
-        self.btn_rot_plus.setEnabled(False)
-        
-        self.slider_rotation = QSlider(Qt.Horizontal)
-        self.slider_rotation.setRange(-180, 180)
-        self.slider_rotation.setValue(0)
-        self.slider_rotation.setEnabled(False)
-        
-        self.btn_rot_minus.clicked.connect(self.decrease_rotation)
-        self.btn_rot_plus.clicked.connect(self.increase_rotation)
-        self.slider_rotation.valueChanged.connect(self.change_rotation)
-        
-        hbox_rot.addWidget(self.btn_rot_minus)
-        hbox_rot.addWidget(self.slider_rotation)
-        hbox_rot.addWidget(self.btn_rot_plus)
-        vbox_image.addLayout(hbox_rot)
-
-        hbox_flip = QHBoxLayout()
-        self.btn_flip_h = QPushButton("↔️ Miroir H")
-        self.btn_flip_v = QPushButton("↕️ Miroir V")
-        self.btn_flip_h.setEnabled(False)
-        self.btn_flip_v.setEnabled(False)
-        self.btn_flip_h.clicked.connect(self.toggle_flip_h)
-        self.btn_flip_v.clicked.connect(self.toggle_flip_v)
-        hbox_flip.addWidget(self.btn_flip_h)
-        hbox_flip.addWidget(self.btn_flip_v)
-        vbox_image.addLayout(hbox_flip)
-        
-        group_image.setLayout(vbox_image)
-        layout_image.addWidget(group_image)
-        
-        layout_image.addStretch()
-        tab_image.setLayout(layout_image)
-        self.tabs.addTab(tab_image, "🖼️ Image")
-
-        # ==========================================
-        # ONGLET 4 : CALQUES
-        # ==========================================
-        tab_layers = QWidget()
-        layout_layers = QVBoxLayout()
-        
-        layout_layers.addWidget(QLabel("Glissez pour réorganiser :"))
-        self.layer_list = QListWidget()
-        self.layer_list.setIconSize(self.layer_list.iconSize() * 1.5)
-        self.layer_list.setDragDropMode(QAbstractItemView.InternalMove)
-        self.layer_list.itemChanged.connect(self.toggle_layer_visibility)
-        self.layer_list.itemSelectionChanged.connect(self.on_layer_selection_changed)
-        self.layer_list.model().rowsMoved.connect(self.update_z_values)
-        layout_layers.addWidget(self.layer_list)
-        
-        hbox_layer_actions = QHBoxLayout()
-        self.btn_lock_layer = QPushButton("🔒 Verrouiller")
-        self.btn_lock_layer.clicked.connect(self.toggle_layer_lock)
-        self.btn_lock_layer.setEnabled(False) 
-        self.btn_delete_layer = QPushButton("🗑️ Supprimer")
-        self.btn_delete_layer.clicked.connect(self.delete_layer)
-        self.btn_delete_layer.setEnabled(False)
-        hbox_layer_actions.addWidget(self.btn_lock_layer)
-        hbox_layer_actions.addWidget(self.btn_delete_layer)
-        layout_layers.addLayout(hbox_layer_actions)
-        
-        tab_layers.setLayout(layout_layers) 
-        self.tabs.addTab(tab_layers, "📑 Calques")
-
-        right_panel.addWidget(self.tabs)
-        top_layout.addLayout(right_panel)
-        main_layout.addLayout(top_layout)
-
-        # ==========================================
-        # ZONE INFERIEURE : SIMULATEUR DE TRACE
-        # ==========================================
-        group_sim = QGroupBox("▶️ Simulateur de tracé (Bille)")
-        group_sim.setStyleSheet("QGroupBox { font-weight: bold; }")
-        vbox_sim = QVBoxLayout()
-        
-        hbox_sim_lbl = QHBoxLayout()
-        hbox_sim_lbl.addWidget(QLabel("Progression de la bille sur la table :"))
-        self.lbl_sim_val = QLabel("0%")
-        self.lbl_sim_val.setStyleSheet("font-weight: bold; color: #0078D7; font-size: 14px;")
-        hbox_sim_lbl.addStretch()
-        hbox_sim_lbl.addWidget(self.lbl_sim_val)
-        vbox_sim.addLayout(hbox_sim_lbl)
-        
-        self.slider_sim = QSlider(Qt.Horizontal)
-        self.slider_sim.setRange(0, 1000) 
-        self.slider_sim.setValue(0)
-        self.slider_sim.setMinimumHeight(30)
-        self.slider_sim.valueChanged.connect(self.on_sim_slider_changed)
-        vbox_sim.addWidget(self.slider_sim)
-        
-        group_sim.setLayout(vbox_sim)
-        main_layout.addWidget(group_sim)
-
-        main_widget.setLayout(main_layout)
-        self.setCentralWidget(main_widget)
-        
-        # Ajout du numéro de version en bas à droite
-        version_label = QLabel("v1.0")
-        version_label.setStyleSheet("color: #888; font-weight: bold;")
-        self.statusBar().addPermanentWidget(version_label)
-        
-        self.update_undo_redo_buttons()
-
-    def _set_layer_icon(self, item, graphics_item, is_image, is_wall):
-        pixmap = QPixmap(16, 16)
-        if is_image:
-            pixmap.fill(QColor(200, 200, 200)) 
-        elif is_wall:
-            pixmap.fill(Qt.red)                
-        else:
-            if isinstance(graphics_item, QGraphicsPathItem):
-                pixmap.fill(graphics_item.pen().color()) 
-            else:
-                pixmap.fill(Qt.black)
-                
-        item.setIcon(QIcon(pixmap))
-
-    def toggle_sim_points(self, checked):
-        self.canvas.show_sim_points = checked
-        self.update_simulation()
-
-    def apply_image_transform(self, graphics_item):
-        scale = graphics_item.data(100)
-        if scale is None: scale = 1.0
-        flip_h = graphics_item.data(101) or False
-        flip_v = graphics_item.data(102) or False
-        rot = graphics_item.data(103) or 0.0
-
-        sx = -scale if flip_h else scale
-        sy = -scale if flip_v else scale
-        
-        transform = QTransform()
-        transform.scale(sx, sy)
-        transform.rotate(rot)
-        
-        graphics_item.setTransform(transform)
-
-    def save_project(self):
-        if not self.current_project_file:
-            self.save_as_project()
-        else:
-            self.write_project_to_file(self.current_project_file)
-
-    def save_as_project(self):
-        fname, _ = QFileDialog.getSaveFileName(self, 'Enregistrer le projet sous', '', 'Projet Sunae (*.sunae)')
-        if fname:
-            if not fname.endswith('.sunae'):
-                fname += '.sunae'
-            self.current_project_file = fname
-            self.write_project_to_file(self.current_project_file)
-
-    def write_project_to_file(self, filename):
-        layers_data = []
-        for i in range(self.layer_list.count()):
-            item = self.layer_list.item(i)
-            graphics_item = item.data(Qt.UserRole)
-            is_locked = item.data(Qt.UserRole + 1)
-            is_wall = item.data(Qt.UserRole + 2) or False
-            visible = item.checkState() == Qt.Checked
-            
-            layer_dict = {
-                'name': item.text(),
-                'locked': is_locked,
-                'is_wall': is_wall,
-                'visible': visible
+        wrapper.addEventListener('pointerdown', (e) => {
+            if (e.button === 2 || this.ui.tool === 'select') {
+                this.ui.isPanning = true;
+                this.pos.startPan = { x: e.clientX - this.ui.panX, y: e.clientY - this.ui.panY };
+                wrapper.style.cursor = 'grabbing';
+                return;
             }
+            const pt = this.getScenePos(e);
+            if (Math.hypot(pt.x, pt.y) <= this.TABLE_RADIUS) {
+                this.ui.isDrawing = true;
+                this.pos.anchor = {x: pt.x, y: pt.y};
+                this.pos.lastSmoothed = {x: pt.x, y: pt.y};
+                this.pos.currentPath = [{...this.pos.anchor}];
+                this.draw();
+            }
+        });
+
+        wrapper.addEventListener('pointermove', (e) => {
+            e.preventDefault();
+            if (this.ui.isPanning) {
+                this.ui.panX = e.clientX - this.pos.startPan.x;
+                this.ui.panY = e.clientY - this.pos.startPan.y;
+                this.draw();
+                return;
+            }
+
+            if (this.ui.isDrawing) {
+                const pt = this.getScenePos(e);
+                
+                if (this.ui.tool === 'pen') {
+                    // Tremor Smoothing
+                    let alpha = this.ui.tremor > 0 ? 1.0 - (this.ui.tremor / 105.0) : 1.0;
+                    let sx = this.pos.lastSmoothed.x + alpha * (pt.x - this.pos.lastSmoothed.x);
+                    let sy = this.pos.lastSmoothed.y + alpha * (pt.y - this.pos.lastSmoothed.y);
+                    this.pos.lastSmoothed = {x: sx, y: sy};
+                    
+                    // Rope
+                    let dx = sx - this.pos.anchor.x;
+                    let dy = sy - this.pos.anchor.y;
+                    let d = Math.hypot(dx, dy);
+                    
+                    if (d > this.ui.ropeLength) {
+                        let angle = Math.atan2(dy, dx);
+                        let nx = sx - Math.cos(angle) * this.ui.ropeLength;
+                        let ny = sy - Math.sin(angle) * this.ui.ropeLength;
+                        
+                        // Circle Clamp
+                        let r = Math.hypot(nx, ny);
+                        if (r > this.TABLE_RADIUS) {
+                            nx = (nx / r) * this.TABLE_RADIUS;
+                            ny = (ny / r) * this.TABLE_RADIUS;
+                        }
+                        
+                        // Wall Collision
+                        let inWall = false;
+                        for (let l of this.layers) {
+                            if (l.visible && l.type === 'wall' && this.pointInPolygon({x:nx, y:ny}, l.points)) {
+                                inWall = true; break;
+                            }
+                        }
+                        if (!inWall) {
+                            this.pos.anchor = {x: nx, y: ny};
+                            this.pos.currentPath.push({...this.pos.anchor});
+                        }
+                    }
+                } else if (this.ui.tool === 'wall') {
+                    this.pos.currentPath.push(pt);
+                }
+                this.draw();
+            }
+        });
+
+        const endAction = () => {
+            this.ui.isPanning = false;
+            wrapper.style.cursor = this.ui.tool === 'select' ? 'pointer' : 'crosshair';
             
-            if isinstance(graphics_item, QGraphicsPathItem):
-                layer_dict['type'] = 'wall' if is_wall else 'path'
-                pen = graphics_item.pen()
-                layer_dict['color'] = pen.color().name()
-                layer_dict['width'] = pen.widthF()
-                
-                path = graphics_item.path()
-                points = []
-                for j in range(path.elementCount()):
-                    el = path.elementAt(j)
-                    points.append({'type': int(el.type), 'x': el.x, 'y': el.y})
-                layer_dict['points'] = points
-                
-            elif isinstance(graphics_item, QGraphicsPixmapItem):
-                layer_dict['type'] = 'image'
-                layer_dict['opacity'] = graphics_item.opacity()
-                layer_dict['x'] = graphics_item.pos().x()
-                layer_dict['y'] = graphics_item.pos().y()
-                
-                layer_dict['scale'] = graphics_item.data(100) or 1.0
-                layer_dict['flip_h'] = graphics_item.data(101) or False
-                layer_dict['flip_v'] = graphics_item.data(102) or False
-                layer_dict['rot'] = graphics_item.data(103) or 0.0
-                
-                pixmap = graphics_item.pixmap()
-                byte_array = QByteArray()
-                buffer = QBuffer(byte_array)
-                buffer.open(QIODevice.WriteOnly)
-                pixmap.save(buffer, "PNG")
-                layer_dict['image_b64'] = byte_array.toBase64().data().decode('utf-8')
-                
-            layers_data.append(layer_dict)
+            if (this.ui.isDrawing) {
+                this.ui.isDrawing = false;
+                if (this.pos.currentPath.length > 1) {
+                    if (this.ui.tool === 'wall') this.pos.currentPath.push({...this.pos.currentPath[0]});
+                    this.addLayer({
+                        type: this.ui.tool,
+                        color: this.ui.color,
+                        width: this.ui.penWidth,
+                        points: [...this.pos.currentPath]
+                    });
+                }
+                this.pos.currentPath = [];
+                this.draw();
+            }
+        };
+
+        wrapper.addEventListener('pointerup', endAction);
+        wrapper.addEventListener('pointerleave', endAction);
+        wrapper.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            let delta = e.deltaY > 0 ? -10 : 10;
+            document.getElementById('zoom-workspace').value = Math.max(10, Math.min(1000, parseInt(document.getElementById('zoom-workspace').value) + delta));
+            this.updateZoom();
+        });
+        wrapper.addEventListener('contextmenu', e => e.preventDefault());
+    },
+
+    pointInPolygon(point, vs) {
+        let x = point.x, y = point.y, inside = false;
+        for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+            let xi = vs[i].x, yi = vs[i].y, xj = vs[j].x, yj = vs[j].y;
+            let intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
+    },
+
+    draw() {
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        let pr = window.devicePixelRatio;
+        this.ctx.translate(this.vw/2 * pr, this.vh/2 * pr);
+        this.ctx.translate(this.ui.panX * pr, this.ui.panY * pr);
+        this.ctx.scale(this.ui.zoom * pr, this.ui.zoom * pr);
+
+        // Table
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, this.TABLE_RADIUS, 0, Math.PI*2);
+        this.ctx.fillStyle = "#ffffff"; this.ctx.fill();
+        this.ctx.lineWidth = 2; this.ctx.strokeStyle = "#000000"; this.ctx.stroke();
+
+        // Calques
+        for (let i = this.layers.length - 1; i >= 0; i--) {
+            let l = this.layers[i];
+            if (!l.visible) continue;
             
-        project_data = {
-            'layers': layers_data,
-            'settings': {
-                'zoom_workspace': self.slider_zoom_workspace.value(),
-                'show_sim_points': self.chk_show_points.isChecked(),
-                'pen_width': self.slider_width.value(),
-                'tremor_smoothing': self.slider_tremor.value(),
-                'rope_smoothing': self.slider_rope.value(),
-                'pen_color': self.canvas.pen_color.name()
+            if (l.type === 'image' && l.img) {
+                this.ctx.save();
+                this.ctx.translate(l.x, l.y);
+                this.ctx.rotate(l.rot * Math.PI / 180);
+                this.ctx.scale(l.scale * (l.flipH ? -1 : 1), l.scale * (l.flipV ? -1 : 1));
+                this.ctx.globalAlpha = l.opacity;
+                this.ctx.drawImage(l.img, -l.img.width/2, -l.img.height/2);
+                this.ctx.restore();
+            } else if (l.points && l.points.length > 1) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(l.points[0].x, l.points[0].y);
+                for(let j=1; j<l.points.length; j++) this.ctx.lineTo(l.points[j].x, l.points[j].y);
+                
+                if (l.type === 'wall') {
+                    this.ctx.fillStyle = "rgba(255, 0, 0, 0.2)"; this.ctx.fill();
+                    this.ctx.strokeStyle = "red"; this.ctx.lineWidth = 2;
+                    this.ctx.setLineDash([5, 5]); this.ctx.stroke(); this.ctx.setLineDash([]);
+                } else {
+                    this.ctx.strokeStyle = l.color; this.ctx.lineWidth = l.width;
+                    this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round'; this.ctx.stroke();
+                }
             }
         }
-        
-        try:
-            with open(filename, 'w', encoding='utf-8') as f:
-                json.dump(project_data, f)
-            QMessageBox.information(self, "Succès", "Projet enregistré avec succès !")
-        except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Erreur lors de l'enregistrement : {e}")
 
-    def open_project(self):
-        fname, _ = QFileDialog.getOpenFileName(self, 'Ouvrir un projet', '', 'Projet Sunae (*.sunae)')
-        if not fname:
-            return
+        // Trait en cours
+        if (this.ui.isDrawing && this.pos.currentPath.length > 0) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(this.pos.currentPath[0].x, this.pos.currentPath[0].y);
+            for(let j=1; j<this.pos.currentPath.length; j++) this.ctx.lineTo(this.pos.currentPath[j].x, this.pos.currentPath[j].y);
             
-        try:
-            with open(fname, 'r', encoding='utf-8') as f:
-                project_data = json.load(f)
+            if (this.ui.tool === 'wall') {
+                this.ctx.strokeStyle = "red"; this.ctx.lineWidth = 2; this.ctx.setLineDash([5,5]); this.ctx.stroke(); this.ctx.setLineDash([]);
+            } else {
+                this.ctx.strokeStyle = this.ui.color; this.ctx.lineWidth = this.ui.penWidth;
+                this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round'; this.ctx.stroke();
                 
-            self.clear_scene()
-            self.current_project_file = fname
-            
-            settings = project_data.get('settings', {})
-            if settings:
-                if 'zoom_workspace' in settings:
-                    self.slider_zoom_workspace.setValue(settings['zoom_workspace'])
-                if 'show_sim_points' in settings:
-                    self.chk_show_points.setChecked(settings['show_sim_points'])
-                if 'pen_width' in settings:
-                    self.slider_width.setValue(settings['pen_width'])
-                if 'tremor_smoothing' in settings:
-                    self.slider_tremor.setValue(settings['tremor_smoothing'])
-                if 'rope_smoothing' in settings:
-                    self.slider_rope.setValue(settings['rope_smoothing'])
-                if 'pen_color' in settings:
-                    color = QColor(settings['pen_color'])
-                    self.canvas.pen_color = color
-                    text_color = "white" if color.lightness() < 128 else "black"
-                    self.btn_color.setStyleSheet(f"background-color: {color.name()}; color: {text_color}; font-weight: bold; padding: 8px;")
+                if (this.ui.ropeLength > 0) {
+                    this.ctx.beginPath(); this.ctx.moveTo(this.pos.lastSmoothed.x, this.pos.lastSmoothed.y); this.ctx.lineTo(this.pos.anchor.x, this.pos.anchor.y);
+                    this.ctx.strokeStyle = "red"; this.ctx.lineWidth = 1.5; this.ctx.setLineDash([4,4]); this.ctx.stroke(); this.ctx.setLineDash([]);
+                }
+            }
+        }
 
-            for layer_dict in reversed(project_data.get('layers', [])):
-                if layer_dict.get('type') in ['path', 'wall']:
-                    is_wall = layer_dict.get('is_wall', layer_dict.get('type') == 'wall')
-                    
-                    path = QPainterPath()
-                    for pt in layer_dict['points']:
-                        if pt['type'] == 0:
-                            path.moveTo(pt['x'], pt['y'])
-                        elif pt['type'] == 1:
-                            path.lineTo(pt['x'], pt['y'])
-                            
-                    path_item = QGraphicsPathItem(path)
-                    
-                    if is_wall:
-                        path_item.setPen(QPen(Qt.red, 2, Qt.DashLine))
-                        brush = QBrush(QColor(255, 0, 0, 60), Qt.DiagCrossPattern)
-                        path_item.setBrush(brush)
-                    else:
-                        path_item.setPen(QPen(QColor(layer_dict['color']), layer_dict['width'], Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-                    
-                    self.scene.addItem(path_item)
-                    self.canvas.strokes.append(path_item)
-                    self.add_layer_from_data(path_item, layer_dict)
-                    
-                elif layer_dict.get('type') == 'image':
-                    byte_array = QByteArray.fromBase64(layer_dict['image_b64'].encode('utf-8'))
-                    pixmap = QPixmap()
-                    pixmap.loadFromData(byte_array, "PNG")
-                    
-                    image_item = QGraphicsPixmapItem(pixmap)
-                    image_item.setOffset(-pixmap.width()/2, -pixmap.height()/2)
-                    image_item.setPos(layer_dict['x'], layer_dict['y'])
-                    image_item.setOpacity(layer_dict['opacity'])
-                    
-                    image_item.setData(100, layer_dict.get('scale', 1.0))
-                    image_item.setData(101, layer_dict.get('flip_h', False))
-                    image_item.setData(102, layer_dict.get('flip_v', False))
-                    image_item.setData(103, layer_dict.get('rot', 0.0))
-                    self.apply_image_transform(image_item)
-                    
-                    image_item.setFlag(QGraphicsPixmapItem.ItemIsMovable, not layer_dict['locked'])
-                    image_item.setFlag(QGraphicsPixmapItem.ItemIsSelectable, not layer_dict['locked'])
-                    
-                    self.scene.addItem(image_item)
-                    self.add_layer_from_data(image_item, layer_dict)
-                    
-            self.update_z_values()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Erreur lors de l'ouverture : {e}")
+        // Simulation
+        if (this.ui.simPercent > 0 || document.getElementById('chk-sim-points').checked) {
+            this.drawSimulation();
+        }
+    },
 
-    def clear_scene(self):
-        while self.layer_list.count() > 0:
-            item = self.layer_list.takeItem(0)
-            graphics_item = item.data(Qt.UserRole)
-            self.scene.removeItem(graphics_item)
-        self.canvas.strokes.clear()
-        self.redo_stack.clear()
-        self.layer_counter = 1
-        self.image_counter = 1
-        self.wall_counter = 1
-        self.update_undo_redo_buttons()
-        self.update_simulation()
+    drawSimulation() {
+        let pts = [];
+        for (let i = this.layers.length - 1; i >= 0; i--) {
+            let l = this.layers[i];
+            if (l.visible && l.type === 'path') pts.push(...l.points);
+        }
+        if (pts.length === 0) return;
 
-    def add_layer_from_data(self, graphics_item, layer_dict):
-        item = QListWidgetItem(layer_dict['name'])
-        item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsDragEnabled)
+        let dists = [0], totalDist = 0;
+        for (let i = 1; i < pts.length; i++) {
+            totalDist += dist(pts[i-1], pts[i]);
+            dists.push(totalDist);
+        }
+
+        let targetDist = (this.ui.simPercent / 1000.0) * totalDist;
+        let ballPos = pts[0];
         
-        is_wall = layer_dict.get('is_wall', False)
-        is_image = layer_dict.get('type') == 'image'
+        if (this.ui.simPercent > 0) {
+            this.ctx.beginPath(); this.ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length; i++) {
+                if (dists[i] <= targetDist) {
+                    this.ctx.lineTo(pts[i].x, pts[i].y);
+                    ballPos = pts[i];
+                } else {
+                    let ratio = (targetDist - dists[i-1]) / (dists[i] - dists[i-1]);
+                    ballPos = { x: pts[i-1].x + (pts[i].x - pts[i-1].x) * ratio, y: pts[i-1].y + (pts[i].y - pts[i-1].y) * ratio };
+                    this.ctx.lineTo(ballPos.x, ballPos.y);
+                    break;
+                }
+            }
+            this.ctx.strokeStyle = "rgba(0, 120, 215, 0.7)"; this.ctx.lineWidth = 3; this.ctx.stroke();
+        }
+
+        if (document.getElementById('chk-sim-points').checked) {
+            this.ctx.beginPath(); this.ctx.arc(pts[0].x, pts[0].y, 6, 0, Math.PI*2); this.ctx.fillStyle = "green"; this.ctx.fill(); this.ctx.stroke();
+            this.ctx.beginPath(); this.ctx.arc(pts[pts.length-1].x, pts[pts.length-1].y, 6, 0, Math.PI*2); this.ctx.fillStyle = "red"; this.ctx.fill(); this.ctx.stroke();
+        }
+
+        if (this.ui.simPercent > 0) {
+            this.ctx.beginPath(); this.ctx.arc(ballPos.x, ballPos.y, 7, 0, Math.PI*2);
+            this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.stroke();
+        }
+    },
+
+    // --- LOGIQUE UI ---
+    openTab(evt, tabName) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById(tabName).classList.add('active');
+        evt.currentTarget.classList.add('active');
+    },
+
+    updateZoom() {
+        let val = document.getElementById('zoom-workspace').value;
+        document.getElementById('val-zoom').innerText = val + "%";
+        this.ui.zoom = val / 100.0;
+        this.draw();
+    },
+
+    changeTool() {
+        this.ui.tool = document.querySelector('input[name="tool"]:checked').value;
+        document.getElementById('canvas-wrapper').style.cursor = this.ui.tool === 'select' ? 'pointer' : 'crosshair';
+    },
+
+    changeColor() {
+        this.ui.color = document.getElementById('color-picker').value;
+        const btn = document.getElementById('btn-color');
+        btn.style.backgroundColor = this.ui.color;
+        const hex = this.ui.color.replace('#', '');
+        const r = parseInt(hex.substr(0,2),16), g = parseInt(hex.substr(2,2),16), b = parseInt(hex.substr(4,2),16);
+        btn.style.color = ((r*299 + g*587 + b*114) / 1000) > 128 ? 'black' : 'white';
+    },
+
+    updateSliders() {
+        this.ui.penWidth = document.getElementById('slider-width').value / 10.0;
+        document.getElementById('val-width').innerText = this.ui.penWidth.toFixed(1);
         
-        # Bloquer temporairement les signaux pour éviter de déclencher toggle_layer_visibility trop tôt
-        self.layer_list.blockSignals(True)
-        item.setCheckState(Qt.Checked if layer_dict['visible'] else Qt.Unchecked)
-        item.setData(Qt.UserRole, graphics_item)
-        item.setData(Qt.UserRole + 1, layer_dict.get('locked', False))
-        item.setData(Qt.UserRole + 2, is_wall)
+        this.ui.tremor = document.getElementById('slider-tremor').value;
+        document.getElementById('val-tremor').innerText = this.ui.tremor;
         
-        self._set_layer_icon(item, graphics_item, is_image, is_wall)
-        self.layer_list.insertItem(0, item)
-        self.layer_list.blockSignals(False)
-        
-        graphics_item.setVisible(layer_dict['visible'])
-        
-        name = layer_dict['name']
-        if "Tracé" in name:
-            try:
-                num = int(''.join(filter(str.isdigit, name)))
-                if num >= self.layer_counter: self.layer_counter = num + 1
-            except: pass
-        if "Image" in name:
-            try:
-                num = int(''.join(filter(str.isdigit, name)))
-                if num >= self.image_counter: self.image_counter = num + 1
-            except: pass
-        if "Mur" in name:
-            try:
-                num = int(''.join(filter(str.isdigit, name)))
-                if num >= self.wall_counter: self.wall_counter = num + 1
-            except: pass
+        this.ui.ropeLength = document.getElementById('slider-rope').value / 2.0;
+        document.getElementById('val-rope').innerText = this.ui.ropeLength.toFixed(1);
+    },
 
-    def on_sim_slider_changed(self, value):
-        percent = (value / 1000.0) * 100
-        self.lbl_sim_val.setText(f"{percent:.1f}%")
-        self.canvas.update_simulation_view(value)
+    updateSim() {
+        this.ui.simPercent = parseInt(document.getElementById('slider-sim').value);
+        document.getElementById('val-sim').innerText = (this.ui.simPercent / 10.0).toFixed(1) + "%";
+        this.draw();
+    },
 
-    def update_simulation(self):
-        self.canvas.update_simulation_view(self.slider_sim.value())
+    // --- CALQUES ---
+    addLayer(data) {
+        this.saveState();
+        let name = data.type === 'image' ? `🖼️ Image ${this.imgCount++}` : data.type === 'wall' ? `🧱 Mur ${this.wallCount++}` : `✏️ Tracé ${this.layerCount++}`;
+        this.layers.unshift({ id: Date.now()+Math.random(), type: data.type, name: name, visible: true, locked: false, ...data });
+        this.selectedLayerId = this.layers[0].id;
+        this.refreshLayerList();
+    },
 
-    def toggle_layer_lock(self):
-        current_item = self.layer_list.currentItem()
-        if current_item:
-            is_locked = current_item.data(Qt.UserRole + 1)
-            new_lock_state = not is_locked
-            current_item.setData(Qt.UserRole + 1, new_lock_state)
+    refreshLayerList() {
+        const list = document.getElementById('layer-list');
+        list.innerHTML = '';
+        this.layers.forEach((l, i) => {
+            const li = document.createElement('li');
+            li.className = `layer-item ${l.id === this.selectedLayerId ? 'selected' : ''} ${l.locked ? 'locked' : ''}`;
             
-            base_text = current_item.text().replace(" 🔓", "").replace(" 🔒", "")
-            current_item.setText(f"{base_text} {'🔒' if new_lock_state else '🔓'}")
-            
-            graphics_item = current_item.data(Qt.UserRole)
-            if isinstance(graphics_item, QGraphicsPixmapItem):
-                graphics_item.setFlag(QGraphicsPixmapItem.ItemIsMovable, not new_lock_state)
-                graphics_item.setFlag(QGraphicsPixmapItem.ItemIsSelectable, not new_lock_state)
-            
-            self.on_layer_selection_changed()
+            let col = l.type === 'wall' ? 'red' : l.type === 'image' ? '#ccc' : l.color;
+            li.innerHTML = `
+                <input type="checkbox" class="layer-vis" ${l.visible ? 'checked' : ''} onchange="app.toggleVis('${l.id}')">
+                <span class="layer-icon" style="background-color: ${col}"></span>
+                <span style="flex:1" onclick="app.selectLayer('${l.id}')">${l.name} ${l.locked ? '🔒' : '🔓'}</span>
+            `;
+            list.appendChild(li);
+        });
 
-    def on_layer_selection_changed(self):
-        current_item = self.layer_list.currentItem()
-        if current_item:
-            is_locked = current_item.data(Qt.UserRole + 1)
-            self.btn_delete_layer.setEnabled(not is_locked)
-            self.btn_lock_layer.setEnabled(True)
-            self.btn_lock_layer.setText("🔓 Déverrouiller" if is_locked else "🔒 Verrouiller")
-            
-            graphics_item = current_item.data(Qt.UserRole)
-            if isinstance(graphics_item, QGraphicsPixmapItem):
-                self.slider_opacity.setEnabled(True)
-                self.slider_scale.setEnabled(True)
-                self.slider_rotation.setEnabled(True)
-                self.btn_rot_minus.setEnabled(True)
-                self.btn_rot_plus.setEnabled(True)
-                self.btn_flip_h.setEnabled(True)
-                self.btn_flip_v.setEnabled(True)
-                
-                self.slider_opacity.blockSignals(True)
-                self.slider_opacity.setValue(int(graphics_item.opacity() * 100))
-                self.slider_opacity.blockSignals(False)
-                
-                scale = graphics_item.data(100)
-                if scale is None: scale = 1.0
-                self.slider_scale.blockSignals(True)
-                self.slider_scale.setValue(int(scale * 100))
-                self.slider_scale.blockSignals(False)
+        let sel = this.layers.find(l => l.id === this.selectedLayerId);
+        document.getElementById('btn-lock').disabled = !sel;
+        document.getElementById('btn-delete').disabled = !sel || sel.locked;
+        if(sel) document.getElementById('btn-lock').innerText = sel.locked ? "🔓 Déverrouiller" : "🔒 Verrouiller";
 
-                rot = graphics_item.data(103) or 0
-                self.slider_rotation.blockSignals(True)
-                self.slider_rotation.setValue(rot)
-                self.lbl_rot_val.setText(f"{rot}°")
-                self.slider_rotation.blockSignals(False)
-            else:
-                self.slider_opacity.setEnabled(False)
-                self.slider_scale.setEnabled(False)
-                self.slider_rotation.setEnabled(False)
-                self.btn_rot_minus.setEnabled(False)
-                self.btn_rot_plus.setEnabled(False)
-                self.btn_flip_h.setEnabled(False)
-                self.btn_flip_v.setEnabled(False)
-        else:
-            self.btn_delete_layer.setEnabled(False)
-            self.btn_lock_layer.setEnabled(False)
-            self.slider_opacity.setEnabled(False)
-            self.slider_scale.setEnabled(False)
-            self.slider_rotation.setEnabled(False)
-            self.btn_rot_minus.setEnabled(False)
-            self.btn_rot_plus.setEnabled(False)
-            self.btn_flip_h.setEnabled(False)
-            self.btn_flip_v.setEnabled(False)
+        const fsImg = document.getElementById('fs-image');
+        if (sel && sel.type === 'image' && !sel.locked) {
+            fsImg.disabled = false;
+            document.getElementById('img-opacity').value = sel.opacity * 100;
+            document.getElementById('img-scale').value = sel.scale * 100;
+            document.getElementById('img-rot').value = sel.rot;
+            document.getElementById('val-rot').innerText = sel.rot + "°";
+        } else {
+            fsImg.disabled = true;
+        }
+        this.draw();
+    },
 
-    def change_opacity(self, value):
-        current_item = self.layer_list.currentItem()
-        if current_item:
-            graphics_item = current_item.data(Qt.UserRole)
-            if isinstance(graphics_item, QGraphicsPixmapItem):
-                graphics_item.setOpacity(value / 100.0)
+    selectLayer(id) { this.selectedLayerId = id; this.refreshLayerList(); },
+    toggleVis(id) { let l = this.layers.find(x => x.id === id); if(l) { l.visible = !l.visible; this.refreshLayerList(); } },
+    toggleLock() { let l = this.layers.find(x => x.id === this.selectedLayerId); if(l) { l.locked = !l.locked; this.refreshLayerList(); } },
+    deleteLayer() {
+        let l = this.layers.find(x => x.id === this.selectedLayerId);
+        if(l && !l.locked) { this.saveState(); this.layers = this.layers.filter(x => x.id !== this.selectedLayerId); this.selectedLayerId = null; this.refreshLayerList(); }
+    },
 
-    def change_scale(self, value):
-        current_item = self.layer_list.currentItem()
-        if current_item:
-            graphics_item = current_item.data(Qt.UserRole)
-            if isinstance(graphics_item, QGraphicsPixmapItem):
-                graphics_item.setData(100, value / 100.0)
-                self.apply_image_transform(graphics_item)
+    // --- IMAGES ---
+    importImage(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => this.addLayer({ type: 'image', img: img, src: event.target.result, x: 0, y: 0, scale: 1.0, opacity: 0.5, rot: 0, flipH: false, flipV: false });
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        e.target.value = '';
+    },
+    updateImageTransform() {
+        let sel = this.layers.find(l => l.id === this.selectedLayerId);
+        if(sel && sel.type === 'image') {
+            this.saveState();
+            sel.opacity = document.getElementById('img-opacity').value / 100.0;
+            sel.scale = document.getElementById('img-scale').value / 100.0;
+            sel.rot = parseInt(document.getElementById('img-rot').value);
+            document.getElementById('val-rot').innerText = sel.rot + "°";
+            this.draw();
+        }
+    },
+    toggleFlip(axis) {
+        let sel = this.layers.find(l => l.id === this.selectedLayerId);
+        if(sel && sel.type === 'image') {
+            this.saveState();
+            if(axis === 'H') sel.flipH = !sel.flipH; else sel.flipV = !sel.flipV;
+            this.draw();
+        }
+    },
 
-    def change_rotation(self, value):
-        self.lbl_rot_val.setText(f"{value}°")
-        current_item = self.layer_list.currentItem()
-        if current_item:
-            graphics_item = current_item.data(Qt.UserRole)
-            if isinstance(graphics_item, QGraphicsPixmapItem):
-                graphics_item.setData(103, value)
-                self.apply_image_transform(graphics_item)
+    // --- SAUVEGARDE ---
+    saveState() {
+        this.undoStack.push(JSON.stringify(this.layers.map(l => ({...l, img:null}))));
+        this.redoStack = [];
+        document.getElementById('btn-undo').disabled = false;
+        document.getElementById('btn-redo').disabled = true;
+    },
+    undo() {
+        if (this.undoStack.length > 0) {
+            this.redoStack.push(JSON.stringify(this.layers.map(l => ({...l, img:null}))));
+            this.restoreLayers(this.undoStack.pop());
+            document.getElementById('btn-undo').disabled = this.undoStack.length === 0;
+            document.getElementById('btn-redo').disabled = false;
+        }
+    },
+    redo() {
+        if (this.redoStack.length > 0) {
+            this.undoStack.push(JSON.stringify(this.layers.map(l => ({...l, img:null}))));
+            this.restoreLayers(this.redoStack.pop());
+            document.getElementById('btn-undo').disabled = false;
+            document.getElementById('btn-redo').disabled = this.redoStack.length === 0;
+        }
+    },
+    restoreLayers(jsonStr) {
+        let parsed = JSON.parse(jsonStr);
+        this.layers = [];
+        parsed.forEach(l => {
+            if (l.type === 'image') {
+                const img = new Image();
+                img.onload = () => { l.img = img; this.draw(); };
+                img.src = l.src;
+            }
+            this.layers.push(l);
+        });
+        this.selectedLayerId = null;
+        this.refreshLayerList();
+    },
 
-    def decrease_rotation(self):
-        val = self.slider_rotation.value()
-        if val > self.slider_rotation.minimum():
-            self.slider_rotation.setValue(val - 1)
+    saveProject() {
+        const proj = {
+            settings: { zoom: this.ui.zoom*100, tool: this.ui.tool, width: this.ui.penWidth*10, tremor: this.ui.tremor, rope: this.ui.ropeLength*2, color: this.ui.color },
+            layers: this.layers.map(l => ({...l, img:null}))
+        };
+        const blob = new Blob([JSON.stringify(proj)], {type: "application/json"});
+        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "projet.sunae"; a.click();
+    },
 
-    def increase_rotation(self):
-        val = self.slider_rotation.value()
-        if val < self.slider_rotation.maximum():
-            self.slider_rotation.setValue(val + 1)
+    loadProject(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            const proj = JSON.parse(evt.target.result);
+            if(proj.settings) {
+                document.getElementById('zoom-workspace').value = proj.settings.zoom; this.updateZoom();
+                document.getElementById('slider-width').value = proj.settings.width;
+                document.getElementById('slider-tremor').value = proj.settings.tremor;
+                document.getElementById('slider-rope').value = proj.settings.rope;
+                this.updateSliders();
+                document.getElementById('color-picker').value = proj.settings.color; this.changeColor();
+            }
+            this.undoStack = []; this.redoStack = [];
+            this.restoreLayers(JSON.stringify(proj.layers));
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+    },
 
-    def toggle_flip_h(self):
-        current_item = self.layer_list.currentItem()
-        if current_item:
-            graphics_item = current_item.data(Qt.UserRole)
-            if isinstance(graphics_item, QGraphicsPixmapItem):
-                current_flip = graphics_item.data(101) or False
-                graphics_item.setData(101, not current_flip)
-                self.apply_image_transform(graphics_item)
+    exportTHR() {
+        let thrLines = [];
+        let currentTheta = 0.0;
+        for (let i = this.layers.length - 1; i >= 0; i--) {
+            let l = this.layers[i];
+            if (l.visible && l.type === 'path') {
+                l.points.forEach(pt => {
+                    let rho = Math.hypot(pt.x, pt.y) / this.TABLE_RADIUS;
+                    rho = Math.max(0.0, Math.min(1.0, rho));
+                    let theta = Math.atan2(pt.y, pt.x) + (Math.PI / 2);
+                    while (theta - currentTheta > Math.PI) theta -= 2 * Math.PI;
+                    while (theta - currentTheta < -Math.PI) theta += 2 * Math.PI;
+                    currentTheta = theta;
+                    thrLines.push(`${theta.toFixed(5)} ${rho.toFixed(5)}`);
+                });
+            }
+        }
+        if (thrLines.length === 0) return alert("Aucun tracé à exporter !");
+        const blob = new Blob([thrLines.join('\n')], { type: "text/plain" });
+        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "export.thr"; a.click();
+    }
+};
 
-    def toggle_flip_v(self):
-        current_item = self.layer_list.currentItem()
-        if current_item:
-            graphics_item = current_item.data(Qt.UserRole)
-            if isinstance(graphics_item, QGraphicsPixmapItem):
-                current_flip = graphics_item.data(102) or False
-                graphics_item.setData(102, not current_flip)
-                self.apply_image_transform(graphics_item)
-
-    def change_width(self, value):
-        self.lbl_width_val.setText(f"{value / 10.0:.1f}")
-        self.canvas.set_pen_width(value)
-
-    def change_rope(self, value):
-        self.lbl_rope_val.setText(f"{value / 2.0:.1f}")
-        self.canvas.set_rope_length(value)
-
-    def change_tremor(self, value):
-        self.lbl_tremor_val.setText(str(value))
-        self.canvas.set_tremor_smoothing(value)
-
-    def decrease_width(self):
-        val = self.slider_width.value()
-        if val > self.slider_width.minimum(): self.slider_width.setValue(val - 1)
-
-    def increase_width(self):
-        val = self.slider_width.value()
-        if val < self.slider_width.maximum(): self.slider_width.setValue(val + 1)
-
-    def decrease_rope(self):
-        val = self.slider_rope.value()
-        if val > self.slider_rope.minimum(): self.slider_rope.setValue(val - 1)
-
-    def increase_rope(self):
-        val = self.slider_rope.value()
-        if val < self.slider_rope.maximum(): self.slider_rope.setValue(val + 1)
-
-    def decrease_tremor(self):
-        val = self.slider_tremor.value()
-        if val > self.slider_tremor.minimum(): self.slider_tremor.setValue(val - 1)
-
-    def increase_tremor(self):
-        val = self.slider_tremor.value()
-        if val < self.slider_tremor.maximum(): self.slider_tremor.setValue(val + 1)
-
-    def choose_color(self):
-        color = QColorDialog.getColor(self.canvas.pen_color, self, "Choisir la couleur")
-        if color.isValid():
-            self.canvas.pen_color = color
-            text_color = "white" if color.lightness() < 128 else "black"
-            self.btn_color.setStyleSheet(f"background-color: {color.name()}; color: {text_color}; font-weight: bold; padding: 8px;")
-
-    def undo_action(self):
-        if self.layer_list.count() > 0:
-            item = self.layer_list.takeItem(0)
-            path_item = item.data(Qt.UserRole)
-            self.scene.removeItem(path_item)
-            
-            is_locked = item.data(Qt.UserRole + 1)
-            is_wall = item.data(Qt.UserRole + 2)
-            self.redo_stack.append((item.text(), path_item, is_locked, is_wall))
-            
-            self.update_z_values()
-            self.update_undo_redo_buttons()
-            self.on_layer_selection_changed()
-            self.update_simulation()
-
-    def redo_action(self):
-        if self.redo_stack:
-            text, path_item, is_locked, is_wall = self.redo_stack.pop()
-            self.scene.addItem(path_item)
-            
-            item = QListWidgetItem(text)
-            item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsDragEnabled)
-            
-            self.layer_list.blockSignals(True)
-            item.setCheckState(Qt.Checked)
-            item.setData(Qt.UserRole, path_item)
-            item.setData(Qt.UserRole + 1, is_locked)
-            item.setData(Qt.UserRole + 2, is_wall)
-            
-            is_image = text.startswith("🖼️")
-            self._set_layer_icon(item, path_item, is_image, is_wall)
-            
-            self.layer_list.insertItem(0, item)
-            self.layer_list.blockSignals(False)
-            
-            path_item.setVisible(True)
-            self.update_z_values()
-            self.update_undo_redo_buttons()
-            self.on_layer_selection_changed()
-            self.update_simulation()
-
-    def update_undo_redo_buttons(self):
-        self.btn_undo.setEnabled(self.layer_list.count() > 0)
-        self.btn_redo.setEnabled(len(self.redo_stack) > 0)
-
-    def add_layer(self, graphics_item, is_image=False, is_wall=False):
-        if is_image:
-            name = f"🖼️ Image {self.image_counter} 🔓"
-            self.image_counter += 1
-        elif is_wall:
-            name = f"🧱 Mur {self.wall_counter} 🔓"
-            self.wall_counter += 1
-        else:
-            name = f"✏️ Tracé {self.layer_counter} 🔓"
-            self.layer_counter += 1
-
-        item = QListWidgetItem(name)
-        item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsDragEnabled)
-        
-        # Bloque les signaux temporairement pour que la checkbox ne cache pas l'élément lors de son insertion
-        self.layer_list.blockSignals(True)
-        item.setCheckState(Qt.Checked)
-        item.setData(Qt.UserRole, graphics_item)
-        item.setData(Qt.UserRole + 1, False) 
-        item.setData(Qt.UserRole + 2, is_wall)
-        
-        self._set_layer_icon(item, graphics_item, is_image, is_wall)
-        
-        self.layer_list.insertItem(0, item)
-        self.layer_list.setCurrentItem(item)
-        self.layer_list.blockSignals(False)
-        
-        graphics_item.setVisible(True) # Force la visibilité
-        
-        self.redo_stack.clear()
-        self.update_z_values()
-        self.update_undo_redo_buttons()
-        self.update_simulation()
-
-    def change_workspace_zoom(self, value):
-        self.lbl_zoom_val.setText(f"{value}%")
-        scale = value / 100.0
-        self.canvas.setTransform(QTransform().scale(scale, scale))
-
-    def apply_zoom_delta(self, delta):
-        current = self.slider_zoom_workspace.value()
-        new_val = max(10, min(1000, current + delta))
-        self.slider_zoom_workspace.setValue(new_val)
-
-    def change_tool(self):
-        if self.radio_select.isChecked():
-            self.canvas.current_tool = 'select'
-            # CORRECTION : NoDrag laisse passer les clics pour pouvoir déplacer l'image à la main !
-            self.canvas.setDragMode(QGraphicsView.NoDrag) 
-            self.canvas.viewport().setCursor(Qt.ArrowCursor)
-        elif self.radio_wall.isChecked():
-            self.canvas.current_tool = 'wall'
-            self.canvas.setDragMode(QGraphicsView.NoDrag)
-            self.canvas.viewport().setCursor(Qt.CrossCursor)
-        else:
-            self.canvas.current_tool = 'pen'
-            self.canvas.setDragMode(QGraphicsView.NoDrag)
-            self.canvas.viewport().setCursor(Qt.CrossCursor)
-
-    def import_image(self):
-        fname, _ = QFileDialog.getOpenFileName(self, 'Ouvrir une image', '', 'Images (*.png *.jpg *.jpeg)')
-        if fname:
-            pixmap = QPixmap(fname)
-            image_item = QGraphicsPixmapItem(pixmap)
-            image_item.setOffset(-pixmap.width()/2, -pixmap.height()/2)
-            
-            image_item.setFlag(QGraphicsPixmapItem.ItemIsMovable)
-            image_item.setFlag(QGraphicsPixmapItem.ItemIsSelectable)
-            
-            image_item.setData(100, 1.0) 
-            image_item.setData(101, False) 
-            image_item.setData(102, False) 
-            image_item.setData(103, 0)     
-            image_item.setOpacity(1.0)
-            self.apply_image_transform(image_item)
-            
-            self.scene.addItem(image_item)
-            self.add_layer(image_item, is_image=True)
-
-    def toggle_layer_visibility(self, item):
-        graphics_item = item.data(Qt.UserRole)
-        if graphics_item:
-            graphics_item.setVisible(item.checkState() == Qt.Checked)
-            self.update_simulation()
-
-    def delete_layer(self):
-        current_item = self.layer_list.currentItem()
-        if current_item and not current_item.data(Qt.UserRole + 1):
-            graphics_item = current_item.data(Qt.UserRole)
-            self.scene.removeItem(graphics_item)
-            
-            if isinstance(graphics_item, QGraphicsPathItem) and graphics_item in self.canvas.strokes:
-                self.canvas.strokes.remove(graphics_item)
-                
-            self.layer_list.takeItem(self.layer_list.row(current_item))
-            self.update_z_values()
-            self.update_undo_redo_buttons()
-            self.on_layer_selection_changed()
-            self.update_simulation()
-
-    def update_z_values(self):
-        for i in range(self.layer_list.count()):
-            item = self.layer_list.item(i)
-            graphics_item = item.data(Qt.UserRole)
-            if graphics_item:
-                graphics_item.setZValue(self.layer_list.count() - i)
-        self.update_simulation()
-
-    def export_thr(self):
-        fname, _ = QFileDialog.getSaveFileName(self, 'Sauvegarder en .thr', '', 'Fichier Table (*.thr)')
-        if not fname:
-            return
-            
-        radius = self.canvas.radius
-        thr_lines = []
-        current_theta = 0.0
-        
-        for i in range(self.layer_list.count()-1, -1, -1):
-            item = self.layer_list.item(i)
-            is_wall = item.data(Qt.UserRole + 2)
-            
-            if item.checkState() == Qt.Checked and not is_wall:
-                graphics_item = item.data(Qt.UserRole)
-                
-                if isinstance(graphics_item, QGraphicsPathItem):
-                    path = graphics_item.path()
-                    for j in range(path.elementCount()):
-                        element = path.elementAt(j)
-                        x, y = element.x, element.y
-                        
-                        rho = math.hypot(x, y) / radius
-                        rho = max(0.0, min(1.0, rho))
-                        
-                        theta = math.atan2(y, x) + (math.pi / 2)
-                        
-                        while theta - current_theta > math.pi:
-                            theta -= 2 * math.pi
-                        while theta - current_theta < -math.pi:
-                            theta += 2 * math.pi
-                            
-                        current_theta = theta
-                        thr_lines.append(f"{theta:.5f} {rho:.5f}")
-
-        with open(fname, 'w', encoding='utf-8') as f:
-            f.write("\n".join(thr_lines))
-        print("Export terminé.")
-
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec_())
-                          
+window.onload = () => app.init();
+</script>
+</body>
+</html>
