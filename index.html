@@ -5,240 +5,877 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Éditeur de Tracés Sunae</title>
     <style>
-        body { margin: 0; padding: 0; display: flex; height: 100vh; font-family: -apple-system, sans-serif; background: #e0e0e0; overflow: hidden; }
-        #canvas-container { flex: 1; position: relative; display: flex; justify-content: center; align-items: center; overflow: hidden; touch-action: none; }
-        canvas { background: white; border-radius: 50%; box-shadow: 0 10px 30px rgba(0,0,0,0.1); cursor: crosshair; position: absolute; z-index: 10; }
-        #bg-image { position: absolute; opacity: 0.5; pointer-events: none; z-index: 5; transform-origin: center; }
-        #sidebar { width: 320px; background: white; padding: 20px; box-shadow: -5px 0 15px rgba(0,0,0,0.05); overflow-y: auto; z-index: 20; }
-        h2 { font-size: 18px; margin-top: 0; }
-        .control-group { margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee; }
-        label { display: block; font-size: 14px; margin-bottom: 5px; font-weight: bold; }
-        input[type="range"] { width: 100%; margin-bottom: 10px; }
-        button { background: #007aff; color: white; border: none; padding: 10px 15px; border-radius: 8px; width: 100%; font-size: 14px; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
-        button.export { background: #34c759; }
-        button.danger { background: #ff3b30; }
-        .info { font-size: 12px; color: #666; text-align: center; }
+        :root { --primary: #0078D7; --bg: #f3f3f3; --panel: #ffffff; --border: #ddd; }
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body { margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; background: var(--bg); overflow: hidden; }
+        
+        /* Layout Principal */
+        #top-area { display: flex; flex: 1; overflow: hidden; }
+        #canvas-wrapper { flex: 1; position: relative; overflow: hidden; touch-action: none; background: #e5e5e5; cursor: crosshair; }
+        canvas { position: absolute; top: 0; left: 0; }
+        
+        /* Panneau Droit */
+        #right-panel { width: 340px; background: var(--panel); display: flex; flex-direction: column; border-left: 1px solid var(--border); z-index: 10; }
+        
+        /* Undo / Redo Bar */
+        #undo-redo-bar { display: flex; padding: 10px; border-bottom: 1px solid var(--border); gap: 10px; background: #fafafa; }
+        #undo-redo-bar button { flex: 1; padding: 8px; font-weight: bold; background: white; border: 1px solid #ccc; border-radius: 6px; cursor: pointer; }
+        #undo-redo-bar button:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        /* Tabs */
+        .tabs { display: flex; background: #eee; border-bottom: 1px solid var(--border); }
+        .tab-btn { flex: 1; padding: 10px 5px; border: none; background: none; font-size: 13px; cursor: pointer; font-weight: 500; }
+        .tab-btn.active { background: white; border-bottom: 2px solid var(--primary); font-weight: bold; color: var(--primary); }
+        .tab-content { display: none; padding: 15px; flex: 1; overflow-y: auto; }
+        .tab-content.active { display: block; }
+        
+        /* GroupBox & UI Elements */
+        fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 15px; }
+        legend { font-weight: bold; color: #333; padding: 0 5px; }
+        .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .row-slider { display: flex; align-items: center; gap: 5px; margin-bottom: 15px; }
+        label { font-size: 13px; font-weight: 500; }
+        .val-badge { font-weight: bold; font-size: 13px; color: var(--primary); }
+        
+        input[type="range"] { flex: 1; }
+        button.btn { background: #f0f0f0; border: 1px solid #ccc; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;}
+        button.btn-primary { background: var(--primary); color: white; border: none; }
+        button.btn-export { background: #2e7d32; color: white; font-weight: bold; padding: 12px; border-radius: 6px; width: 100%; font-size: 14px; border:none; margin-top: 10px;}
+        button.btn-icon { padding: 4px 8px; font-size: 12px; }
+        
+        /* Layer List */
+        #layer-list { list-style: none; padding: 0; margin: 0; border: 1px solid var(--border); border-radius: 4px; max-height: 200px; overflow-y: auto; }
+        .layer-item { padding: 8px; border-bottom: 1px solid #eee; display: flex; align-items: center; cursor: grab; font-size: 13px; background: white;}
+        .layer-item.selected { background: #e3f2fd; }
+        .layer-item.locked { color: #888; }
+        .layer-icon { width: 16px; height: 16px; display: inline-block; margin-right: 8px; border: 1px solid #999; border-radius: 3px; }
+        .layer-vis { margin-right: 8px; cursor: pointer; }
+        
+        /* Simulation Bar (Bottom) */
+        #bottom-panel { border-top: 1px solid var(--border); background: var(--panel); padding: 10px 20px; z-index: 10; display:flex; flex-direction: column;}
+        #bottom-panel label { font-weight: bold; margin-bottom: 5px;}
     </style>
 </head>
 <body>
 
-    <div id="canvas-container">
-        <img id="bg-image" style="display:none;" />
-        <canvas id="drawing-canvas"></canvas>
+    <div id="top-area">
+        <!-- Zone de Dessin -->
+        <div id="canvas-wrapper">
+            <canvas id="canvas"></canvas>
+        </div>
+
+        <!-- Panneau de Contrôle -->
+        <div id="right-panel">
+            <div id="undo-redo-bar">
+                <button id="btn-undo" onclick="undo()" disabled>↩️ Undo</button>
+                <button id="btn-redo" onclick="redo()" disabled>↪️ Redo</button>
+            </div>
+
+            <div class="tabs">
+                <button class="tab-btn active" onclick="openTab(event, 'tab-file')">📁 Fichier</button>
+                <button class="tab-btn" onclick="openTab(event, 'tab-tools')">🖌️ Outils</button>
+                <button class="tab-btn" onclick="openTab(event, 'tab-image')">🖼️ Image</button>
+                <button class="tab-btn" onclick="openTab(event, 'tab-layers')">📑 Calques</button>
+            </div>
+
+            <!-- ONGLET FICHIER -->
+            <div id="tab-file" class="tab-content active">
+                <fieldset>
+                    <legend>💾 Projet (.sunae)</legend>
+                    <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                        <input type="file" id="file-open" accept=".sunae" style="display: none;" onchange="loadProject(event)">
+                        <button class="btn" style="flex:1" onclick="document.getElementById('file-open').click()">📂 Ouvrir</button>
+                        <button class="btn" style="flex:1" onclick="saveProject()">💾 Enregistrer</button>
+                    </div>
+                </fieldset>
+                
+                <fieldset>
+                    <legend>🖥️ Espace de travail</legend>
+                    <div class="row"><label>🔍 Zoom du Canevas :</label></div>
+                    <input type="range" id="zoom-workspace" min="10" max="1000" value="100" style="width: 100%; margin-bottom: 15px;">
+                    
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal;">
+                        <input type="checkbox" id="chk-sim-points" checked onchange="draw()"> 
+                        🟢/🔴 Afficher les points début/fin
+                    </label>
+                </fieldset>
+                
+                <button class="btn-export" onclick="exportTHR()">📤 Exporter en .thr (Machine)</button>
+            </div>
+
+            <!-- ONGLET OUTILS -->
+            <div id="tab-tools" class="tab-content">
+                <fieldset>
+                    <legend>🛠️ Outils Actifs</legend>
+                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="pen" checked onchange="changeTool()"> ✏️ Crayon (Dessin)</label>
+                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="wall" onchange="changeTool()"> 🧱 Mur (Zone exclusion)</label>
+                    <label style="display:flex; margin-bottom:15px;"><input type="radio" name="tool" value="select" onchange="changeTool()"> 🖐️ Sélection/Déplacement</label>
+                    
+                    <input type="color" id="color-picker" value="#000000" style="display:none;" onchange="changeColor()">
+                    <button class="btn btn-primary" id="btn-color" style="width:100%; background:black;" onclick="document.getElementById('color-picker').click()">🎨 Couleur du trait</button>
+                </fieldset>
+
+                <fieldset>
+                    <legend>🖌️ Paramètres du pinceau</legend>
+                    <div class="row"><label>📏 Épaisseur du trait :</label> <span class="val-badge" id="val-width">2.0</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="stepSlider('slider-width', -1)">➖</button>
+                        <input type="range" id="slider-width" min="10" max="100" value="20">
+                        <button class="btn btn-icon" onclick="stepSlider('slider-width', 1)">➕</button>
+                    </div>
+
+                    <div class="row"><label>🫨 Lissage Anti-tremblement :</label> <span class="val-badge" id="val-tremor">0</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="stepSlider('slider-tremor', -1)">➖</button>
+                        <input type="range" id="slider-tremor" min="0" max="100" value="0">
+                        <button class="btn btn-icon" onclick="stepSlider('slider-tremor', 1)">➕</button>
+                    </div>
+
+                    <div class="row"><label>〰️ Lissage (Corde) :</label> <span class="val-badge" id="val-rope">5.0</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="stepSlider('slider-rope', -1)">➖</button>
+                        <input type="range" id="slider-rope" min="0" max="100" value="10">
+                        <button class="btn btn-icon" onclick="stepSlider('slider-rope', 1)">➕</button>
+                    </div>
+                </fieldset>
+            </div>
+
+            <!-- ONGLET IMAGE -->
+            <div id="tab-image" class="tab-content">
+                <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;" onchange="importImage(event)">
+                <button class="btn" style="width:100%; padding:10px; margin-bottom:15px; font-weight:bold;" onclick="document.getElementById('file-image').click()">📂 Importer Nouvelle Image</button>
+
+                <fieldset id="fs-image" disabled>
+                    <legend>🖼️ Calque Image Sélectionné</legend>
+                    
+                    <div class="row"><label>🌗 Opacité :</label></div>
+                    <input type="range" id="img-opacity" min="0" max="100" value="50" style="width:100%; margin-bottom:10px;" oninput="updateImage()">
+                    
+                    <div class="row"><label>📐 Échelle :</label></div>
+                    <input type="range" id="img-scale" min="10" max="1000" value="100" style="width:100%; margin-bottom:10px;" oninput="updateImage()">
+
+                    <div class="row"><label>🔄 Rotation :</label> <span class="val-badge" id="val-rot">0°</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="stepSlider('img-rot', -1)">➖</button>
+                        <input type="range" id="img-rot" min="-180" max="180" value="0" oninput="updateImage()">
+                        <button class="btn btn-icon" onclick="stepSlider('img-rot', 1)">➕</button>
+                    </div>
+
+                    <div style="display:flex; gap:5px; margin-top:10px;">
+                        <button class="btn" style="flex:1" onclick="toggleFlip('H')">↔️ Miroir H</button>
+                        <button class="btn" style="flex:1" onclick="toggleFlip('V')">↕️ Miroir V</button>
+                    </div>
+                </fieldset>
+            </div>
+
+            <!-- ONGLET CALQUES -->
+            <div id="tab-layers" class="tab-content">
+                <label style="margin-bottom: 8px; display:block;">Glissez pour réorganiser :</label>
+                <ul id="layer-list"></ul>
+                
+                <div style="display:flex; gap:5px; margin-top:10px;">
+                    <button class="btn" id="btn-lock" style="flex:1" onclick="toggleLock()" disabled>🔒 Verrouiller</button>
+                    <button class="btn" id="btn-delete" style="flex:1; background:#ffebee; color:#c62828;" onclick="deleteLayer()" disabled>🗑️ Supprimer</button>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div id="sidebar">
-        <h2>🛠️ Éditeur Sunae</h2>
+    <!-- ZONE SIMULATEUR -->
+    <div id="bottom-panel">
+        <div class="row">
+            <label>▶️ Simulateur de tracé (Bille) :</label>
+            <span class="val-badge" id="val-sim">0.0%</span>
+        </div>
+        <input type="range" id="slider-sim" min="0" max="1000" value="0" style="width: 100%; height:20px;" oninput="updateSimValue()">
+    </div>
+
+<script>
+/* =========================================================================
+   MOTEUR DE L'APPLICATION (Équivalent de PyQt5 View/Scene/Logic)
+========================================================================= */
+
+// --- Variables Globales ---
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const TABLE_RADIUS = 300;
+let vw = 0, vh = 0; // Viewport size
+
+let layers = []; // Array of objects {id, name, type (path/wall/image), visible, locked, data}
+let undoStack = [];
+let redoStack = [];
+let layerCount = 1, imageCount = 1, wallCount = 1;
+let selectedLayerId = null;
+
+// État de l'interface
+let ui = {
+    tool: 'pen',
+    penWidth: 2.0,
+    ropeLength: 5.0,
+    tremorAlpha: 1.0,
+    color: '#000000',
+    zoom: 1.0,
+    panX: 0, panY: 0,
+    simPercent: 0,
+    showPoints: true
+};
+
+// État de dessin
+let isDrawing = false, isPanning = false;
+let startPan = {x:0, y:0};
+let anchorPos = {x:0, y:0};
+let lastSmoothed = {x:0, y:0};
+let currentPath = [];
+
+// Cache pour la simulation
+let simPoints = [];
+let totalDist = 0;
+let distances = [];
+
+// --- Initialisation Canvas ---
+function resizeCanvas() {
+    const rect = document.getElementById('canvas-wrapper').getBoundingClientRect();
+    canvas.width = rect.width * window.devicePixelRatio;
+    canvas.height = rect.height * window.devicePixelRatio;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+    vw = rect.width; vh = rect.height;
+    draw();
+}
+window.addEventListener('resize', resizeCanvas);
+setTimeout(resizeCanvas, 100);
+
+// --- Math & Utilitaires ---
+function dist(p1, p2) { return Math.hypot(p2.x - p1.x, p2.y - p1.y); }
+
+function pointInPolygon(point, vs) {
+    let x = point.x, y = point.y, inside = false;
+    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+        let xi = vs[i].x, yi = vs[i].y, xj = vs[j].x, yj = vs[j].y;
+        let intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+    }
+    return inside;
+}
+
+// Convertit un événement pointeur en coordonnées de la scène (0,0 = centre de la table)
+function getScenePos(e) {
+    const rect = canvas.getBoundingClientRect();
+    // Coordonnées écran relatives au canvas
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    // Appliquer l'inverse du pan/zoom
+    return {
+        x: (x - vw/2 - ui.panX) / ui.zoom,
+        y: (y - vh/2 - ui.panY) / ui.zoom
+    };
+}
+
+// --- Événements Pointeur (Souris, Doigt, Pencil) ---
+const wrapper = document.getElementById('canvas-wrapper');
+
+wrapper.addEventListener('pointerdown', (e) => {
+    if (e.button === 2 || (e.pointerType==='touch' && ui.tool==='select')) {
+        isPanning = true;
+        startPan = {x: e.clientX - ui.panX, y: e.clientY - ui.panY};
+        return;
+    }
+
+    const pos = getScenePos(e);
+    if (ui.tool === 'pen' || ui.tool === 'wall') {
+        if (Math.hypot(pos.x, pos.y) <= TABLE_RADIUS) {
+            isDrawing = true;
+            anchorPos = {x: pos.x, y: pos.y};
+            lastSmoothed = {x: pos.x, y: pos.y};
+            currentPath = [{...anchorPos}];
+            draw();
+        }
+    }
+});
+
+wrapper.addEventListener('pointermove', (e) => {
+    e.preventDefault();
+    if (isPanning) {
+        ui.panX = e.clientX - startPan.x;
+        ui.panY = e.clientY - startPan.y;
+        draw();
+        return;
+    }
+
+    if (isDrawing && ui.tool === 'pen') {
+        const rawPos = getScenePos(e);
         
-        <div class="control-group">
-            <label>📏 Épaisseur du trait : <span id="val-width">2</span></label>
-            <input type="range" id="slider-width" min="1" max="10" value="2">
+        // Tremor Smoothing (Low-pass filter)
+        let sx = lastSmoothed.x + ui.tremorAlpha * (rawPos.x - lastSmoothed.x);
+        let sy = lastSmoothed.y + ui.tremorAlpha * (rawPos.y - lastSmoothed.y);
+        lastSmoothed = {x: sx, y: sy};
+        
+        // Rope Smoothing
+        let dx = sx - anchorPos.x;
+        let dy = sy - anchorPos.y;
+        let d = Math.hypot(dx, dy);
+        
+        if (d > ui.ropeLength) {
+            let angle = Math.atan2(dy, dx);
+            let nx = sx - Math.cos(angle) * ui.ropeLength;
+            let ny = sy - Math.sin(angle) * ui.ropeLength;
             
-            <label>〰️ Lissage (Corde) : <span id="val-rope">10</span></label>
-            <input type="range" id="slider-rope" min="0" max="50" value="10">
-        </div>
-
-        <div class="control-group">
-            <label>🖼️ Image de fond</label>
-            <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;">
-            <button onclick="document.getElementById('file-image').click()">📂 Importer une image</button>
-            <label>Échelle de l'image :</label>
-            <input type="range" id="slider-scale" min="10" max="300" value="100">
-            <label>Opacité :</label>
-            <input type="range" id="slider-opacity" min="0" max="100" value="50">
-        </div>
-
-        <div class="control-group">
-            <button class="danger" id="btn-clear">🗑️ Effacer tout</button>
-            <button class="export" id="btn-export">📤 Exporter en .thr</button>
-        </div>
-        
-        <p class="info">Utilisez l'Apple Pencil pour dessiner.<br>Les traits sont lissés et limités au diamètre de la table.</p>
-    </div>
-
-    <script>
-        const canvas = document.getElementById('drawing-canvas');
-        const ctx = canvas.getContext('2d');
-        const container = document.getElementById('canvas-container');
-        const bgImage = document.getElementById('bg-image');
-
-        // Paramètres de la table origin
-        const TABLE_RADIUS = 300; 
-        const CANVAS_SIZE = TABLE_RADIUS * 2;
-        
-        // Ajustement pour la haute résolution (Retina sur iPad)
-        canvas.width = CANVAS_SIZE * window.devicePixelRatio;
-        canvas.height = CANVAS_SIZE * window.devicePixelRatio;
-        canvas.style.width = CANVAS_SIZE + 'px';
-        canvas.style.height = CANVAS_SIZE + 'px';
-        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-        
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        // Variables d'état
-        let isDrawing = false;
-        let anchorPos = { x: 0, y: 0 };
-        let currentStroke = [];
-        let allStrokes = [];
-        
-        // Contrôles UI
-        const ropeSlider = document.getElementById('slider-rope');
-        const widthSlider = document.getElementById('slider-width');
-
-        function redraw() {
-            ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-            // Dessiner les traits précédents
-            allStrokes.forEach(stroke => {
-                if(stroke.points.length < 2) return;
-                ctx.beginPath();
-                ctx.lineWidth = stroke.width;
-                ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-                for(let i=1; i<stroke.points.length; i++) {
-                    ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+            // Clamping au bord de la table
+            let r = Math.hypot(nx, ny);
+            if (r > TABLE_RADIUS) {
+                nx = (nx / r) * TABLE_RADIUS;
+                ny = (ny / r) * TABLE_RADIUS;
+            }
+            
+            let testPos = {x: nx, y: ny};
+            
+            // Vérification des murs
+            let inWall = false;
+            for (let l of layers) {
+                if (l.visible && l.type === 'wall' && pointInPolygon(testPos, l.data.points)) {
+                    inWall = true; break;
                 }
-                ctx.stroke();
+            }
+            
+            if (!inWall) {
+                anchorPos = testPos;
+                currentPath.push({...anchorPos});
+            }
+        }
+        draw();
+    } else if (isDrawing && ui.tool === 'wall') {
+        currentPath.push(getScenePos(e));
+        draw();
+    }
+});
+
+function endDraw() {
+    isPanning = false;
+    if (isDrawing) {
+        isDrawing = false;
+        if (currentPath.length > 1) {
+            if (ui.tool === 'wall') currentPath.push({...currentPath[0]}); // Fermer le mur
+            addLayer({
+                type: ui.tool,
+                color: ui.color,
+                width: ui.penWidth,
+                points: currentPath
             });
+        }
+        currentPath = [];
+        draw();
+    }
+}
+wrapper.addEventListener('pointerup', endDraw);
+wrapper.addEventListener('pointerleave', endDraw);
+
+// Zoom avec molette
+wrapper.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    let delta = e.deltaY > 0 ? -10 : 10;
+    document.getElementById('zoom-workspace').value = Math.max(10, Math.min(1000, parseInt(document.getElementById('zoom-workspace').value) + delta));
+    updateWorkspaceZoom();
+});
+
+// Empecher menu contextuel clic droit
+wrapper.addEventListener('contextmenu', e => e.preventDefault());
+
+
+/* =========================================================================
+   RENDU GRAPHIQUE (Canvas)
+========================================================================= */
+function draw() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Mettre l'origine au centre avec pan & zoom
+    ctx.translate(vw/2 * window.devicePixelRatio, vh/2 * window.devicePixelRatio);
+    ctx.translate(ui.panX * window.devicePixelRatio, ui.panY * window.devicePixelRatio);
+    ctx.scale(ui.zoom * window.devicePixelRatio, ui.zoom * window.devicePixelRatio);
+
+    // Fond (Table ronde)
+    ctx.beginPath();
+    ctx.arc(0, 0, TABLE_RADIUS, 0, Math.PI*2);
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#000000";
+    ctx.stroke();
+    
+    // Dessin des calques (de bas en haut)
+    for (let i = layers.length - 1; i >= 0; i--) {
+        let l = layers[i];
+        if (!l.visible) continue;
+        
+        if (l.type === 'image' && l.data.img) {
+            ctx.save();
+            ctx.translate(l.data.x, l.data.y);
+            ctx.rotate(l.data.rot * Math.PI / 180);
+            ctx.scale(l.data.scale * (l.data.flipH ? -1 : 1), l.data.scale * (l.data.flipV ? -1 : 1));
+            ctx.globalAlpha = l.data.opacity;
+            ctx.drawImage(l.data.img, -l.data.img.width/2, -l.data.img.height/2);
+            ctx.restore();
+        } 
+        else if (l.type === 'path' || l.type === 'wall') {
+            const pts = l.data.points;
+            if (pts.length < 2) continue;
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for(let j=1; j<pts.length; j++) ctx.lineTo(pts[j].x, pts[j].y);
             
-            // Dessiner le trait en cours
-            if (currentStroke.length > 1) {
-                ctx.beginPath();
-                ctx.lineWidth = widthSlider.value;
-                ctx.moveTo(currentStroke[0].x, currentStroke[0].y);
-                for(let i=1; i<currentStroke.length; i++) {
-                    ctx.lineTo(currentStroke[i].x, currentStroke[i].y);
-                }
+            if (l.type === 'wall') {
+                ctx.fillStyle = "rgba(255, 0, 0, 0.2)";
+                ctx.fill();
+                ctx.strokeStyle = "red";
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            } else {
+                ctx.strokeStyle = l.data.color;
+                ctx.lineWidth = l.data.width;
+                ctx.lineCap = 'round'; ctx.lineJoin = 'round';
                 ctx.stroke();
             }
         }
+    }
 
-        function getMousePos(e) {
-            const rect = canvas.getBoundingClientRect();
-            // L'origine (0,0) est placée au centre du cercle pour les mathématiques
-            return {
-                x: e.clientX - rect.left - TABLE_RADIUS,
-                y: e.clientY - rect.top - TABLE_RADIUS
-            };
+    // Dessin du trait en cours
+    if (isDrawing && currentPath.length > 0) {
+        ctx.beginPath();
+        ctx.moveTo(currentPath[0].x, currentPath[0].y);
+        for(let j=1; j<currentPath.length; j++) ctx.lineTo(currentPath[j].x, currentPath[j].y);
+        
+        if (ui.tool === 'wall') {
+            ctx.strokeStyle = "red"; ctx.lineWidth = 2; ctx.setLineDash([5,5]); ctx.stroke(); ctx.setLineDash([]);
+        } else {
+            ctx.strokeStyle = ui.color; ctx.lineWidth = ui.penWidth; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.stroke();
+            // Corde visuelle
+            if (ui.ropeLength > 0) {
+                ctx.beginPath(); ctx.moveTo(lastSmoothed.x, lastSmoothed.y); ctx.lineTo(anchorPos.x, anchorPos.y);
+                ctx.strokeStyle = "red"; ctx.lineWidth = 1.5; ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
+            }
         }
+    }
 
-        // Pointer Events (Gère Souris, Doigt et Apple Pencil)
-        canvas.addEventListener('pointerdown', (e) => {
-            const pos = getMousePos(e);
-            if (Math.hypot(pos.x, pos.y) <= TABLE_RADIUS) {
-                isDrawing = true;
-                anchorPos = { x: pos.x, y: pos.y };
-                // Pour dessiner, on décale l'origine au centre du canvas HTML
-                currentStroke = [{ x: pos.x + TABLE_RADIUS, y: pos.y + TABLE_RADIUS }];
+    // Dessin de la Simulation
+    if (ui.simPercent > 0 && simPoints.length > 0) {
+        let targetDist = (ui.simPercent / 1000.0) * totalDist;
+        ctx.beginPath();
+        ctx.moveTo(simPoints[0].x, simPoints[0].y);
+        
+        let ballPos = simPoints[0];
+        for (let i = 1; i < simPoints.length; i++) {
+            if (distances[i] <= targetDist) {
+                ctx.lineTo(simPoints[i].x, simPoints[i].y);
+                ballPos = simPoints[i];
+            } else {
+                let overshoot = targetDist - distances[i-1];
+                let seg = distances[i] - distances[i-1];
+                let ratio = seg > 0 ? overshoot / seg : 0;
+                let nx = simPoints[i-1].x + (simPoints[i].x - simPoints[i-1].x) * ratio;
+                let ny = simPoints[i-1].y + (simPoints[i].y - simPoints[i-1].y) * ratio;
+                ballPos = {x: nx, y: ny};
+                ctx.lineTo(nx, ny);
+                break;
             }
-        });
+        }
+        ctx.strokeStyle = "rgba(0, 120, 215, 0.7)";
+        ctx.lineWidth = 3; ctx.stroke();
+        
+        // Bille
+        ctx.beginPath(); ctx.arc(ballPos.x, ballPos.y, 7, 0, Math.PI*2);
+        ctx.fillStyle = "#ccc"; ctx.fill(); ctx.strokeStyle="#000"; ctx.lineWidth=1; ctx.stroke();
+    }
+    
+    // Points Début/Fin
+    if (ui.showPoints && simPoints.length > 0) {
+        ctx.beginPath(); ctx.arc(simPoints[0].x, simPoints[0].y, 6, 0, Math.PI*2); ctx.fillStyle = "green"; ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(simPoints[simPoints.length-1].x, simPoints[simPoints.length-1].y, 6, 0, Math.PI*2); ctx.fillStyle = "red"; ctx.fill(); ctx.stroke();
+    }
+}
 
-        canvas.addEventListener('pointermove', (e) => {
-            if (!isDrawing) return;
-            e.preventDefault(); // Empêche le défilement de la page sur iPad
-            
-            const rawPos = getMousePos(e);
-            const ropeLength = parseFloat(ropeSlider.value);
-            
-            const dx = rawPos.x - anchorPos.x;
-            const dy = rawPos.y - anchorPos.y;
-            const dist = Math.hypot(dx, dy);
-            
-            if (dist > ropeLength) {
-                const angle = Math.atan2(dy, dx);
-                let newX = rawPos.x - Math.cos(angle) * ropeLength;
-                let newY = rawPos.y - Math.sin(angle) * ropeLength;
-                
-                // Clamping : Ne pas sortir du cercle
-                const r = Math.hypot(newX, newY);
-                if (r > TABLE_RADIUS) {
-                    newX = (newX / r) * TABLE_RADIUS;
-                    newY = (newY / r) * TABLE_RADIUS;
-                }
-                
-                anchorPos = { x: newX, y: newY };
-                currentStroke.push({ x: newX + TABLE_RADIUS, y: newY + TABLE_RADIUS });
-                redraw();
-            }
-        });
 
-        const stopDrawing = () => {
-            if (isDrawing) {
-                isDrawing = false;
-                if (currentStroke.length > 1) {
-                    allStrokes.push({ points: currentStroke, width: widthSlider.value });
-                }
-                currentStroke = [];
+/* =========================================================================
+   GESTION DES CALQUES ET ETATS
+========================================================================= */
+
+function addLayer(dataOptions) {
+    saveState();
+    let type = dataOptions.type;
+    let name = type === 'image' ? `🖼️ Image ${imageCount++} 🔓` : 
+               type === 'wall' ? `🧱 Mur ${wallCount++} 🔓` : 
+               `✏️ Tracé ${layerCount++} 🔓`;
+               
+    let newLayer = {
+        id: Date.now() + Math.random(),
+        type: type,
+        name: name,
+        visible: true,
+        locked: false,
+        data: dataOptions
+    };
+    layers.unshift(newLayer); // Ajouter en haut
+    selectedLayerId = newLayer.id;
+    updateLayerUI();
+    recalcSimulation();
+}
+
+function updateLayerUI() {
+    const list = document.getElementById('layer-list');
+    list.innerHTML = '';
+    
+    layers.forEach((l, index) => {
+        const li = document.createElement('li');
+        li.className = 'layer-item' + (l.id === selectedLayerId ? ' selected' : '') + (l.locked ? ' locked' : '');
+        li.draggable = true;
+        
+        // Couleurs des icones
+        let color = '#ccc';
+        if (l.type === 'wall') color = 'red';
+        else if (l.type === 'path') color = l.data.color;
+        
+        li.innerHTML = `
+            <input type="checkbox" class="layer-vis" ${l.visible ? 'checked' : ''} onchange="toggleVis('${l.id}')">
+            <span class="layer-icon" style="background-color: ${color}"></span>
+            <span style="flex:1" onclick="selectLayer('${l.id}')">${l.name}</span>
+        `;
+        
+        // Event listeners pour le drag and drop
+        li.ondragstart = (e) => e.dataTransfer.setData('text/plain', index);
+        li.ondragover = (e) => e.preventDefault();
+        li.ondrop = (e) => {
+            e.preventDefault();
+            const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+            const toIndex = index;
+            if (fromIndex !== toIndex) {
+                saveState();
+                const moved = layers.splice(fromIndex, 1)[0];
+                layers.splice(toIndex, 0, moved);
+                updateLayerUI();
+                recalcSimulation();
             }
         };
+        list.appendChild(li);
+    });
 
-        canvas.addEventListener('pointerup', stopDrawing);
-        canvas.addEventListener('pointerout', stopDrawing);
+    // Mettre à jour les boutons et l'onglet Image
+    let sel = layers.find(l => l.id === selectedLayerId);
+    document.getElementById('btn-lock').disabled = !sel;
+    document.getElementById('btn-delete').disabled = !sel || (sel && sel.locked);
+    
+    if (sel) {
+        document.getElementById('btn-lock').innerText = sel.locked ? "🔓 Déverrouiller" : "🔒 Verrouiller";
+    }
 
-        // UI Listeners
-        ropeSlider.addEventListener('input', e => document.getElementById('val-rope').innerText = e.target.value);
-        widthSlider.addEventListener('input', e => document.getElementById('val-width').innerText = e.target.value);
-        
-        document.getElementById('btn-clear').addEventListener('click', () => {
-            allStrokes = [];
-            redraw();
-        });
+    const fsImg = document.getElementById('fs-image');
+    if (sel && sel.type === 'image' && !sel.locked) {
+        fsImg.disabled = false;
+        document.getElementById('img-opacity').value = sel.data.opacity * 100;
+        document.getElementById('img-scale').value = sel.data.scale * 100;
+        document.getElementById('img-rot').value = sel.data.rot;
+        document.getElementById('val-rot').innerText = sel.data.rot + "°";
+    } else {
+        fsImg.disabled = true;
+    }
+}
 
-        // Gestion de l'image de fond
-        document.getElementById('file-image').addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    bgImage.src = event.target.result;
-                    bgImage.style.display = 'block';
-                };
-                reader.readAsDataURL(file);
-            }
-        });
+function selectLayer(id) { selectedLayerId = id; updateLayerUI(); }
 
-        document.getElementById('slider-scale').addEventListener('input', (e) => {
-            bgImage.style.transform = `scale(${e.target.value / 100})`;
-        });
-        document.getElementById('slider-opacity').addEventListener('input', (e) => {
-            bgImage.style.opacity = e.target.value / 100;
-        });
+function toggleVis(id) {
+    let l = layers.find(x => x.id === id);
+    if(l) { l.visible = !l.visible; recalcSimulation(); updateLayerUI(); }
+}
 
-        // Export THR
-        document.getElementById('btn-export').addEventListener('click', () => {
-            if(allStrokes.length === 0) return alert("Rien à exporter !");
-            
-            let thrLines = [];
-            let currentTheta = 0.0;
-            
-            allStrokes.forEach(stroke => {
-                stroke.points.forEach(pt => {
-                    // Repasser du repère (0 à 600) au repère centré (-300 à 300)
-                    const x = pt.x - TABLE_RADIUS;
-                    const y = pt.y - TABLE_RADIUS;
-                    
-                    let rho = Math.hypot(x, y) / TABLE_RADIUS;
-                    rho = Math.max(0.0, Math.min(1.0, rho));
-                    
-                    // +90 degrés (Pi/2) pour corriger la rotation matérielle
-                    let theta = Math.atan2(y, x) + (Math.PI / 2);
-                    
-                    // Unwrapping
-                    while (theta - currentTheta > Math.PI) theta -= 2 * Math.PI;
-                    while (theta - currentTheta < -Math.PI) theta += 2 * Math.PI;
-                    
-                    currentTheta = theta;
-                    thrLines.push(`${theta.toFixed(5)} ${rho.toFixed(5)}`);
+function toggleLock() {
+    let l = layers.find(x => x.id === selectedLayerId);
+    if(l) { 
+        l.locked = !l.locked;
+        l.name = l.name.replace(/ 🔓| 🔒/, l.locked ? " 🔒" : " 🔓");
+        updateLayerUI(); 
+    }
+}
+
+function deleteLayer() {
+    let l = layers.find(x => x.id === selectedLayerId);
+    if(l && !l.locked) {
+        saveState();
+        layers = layers.filter(x => x.id !== selectedLayerId);
+        selectedLayerId = null;
+        updateLayerUI();
+        recalcSimulation();
+    }
+}
+
+// --- Simulation Logic ---
+function recalcSimulation() {
+    simPoints = [];
+    // Calculer les points des calques visibles (sans les murs/images), de bas en haut
+    for (let i = layers.length - 1; i >= 0; i--) {
+        let l = layers[i];
+        if (l.visible && l.type === 'path') {
+            simPoints.push(...l.data.points);
+        }
+    }
+    
+    totalDist = 0;
+    distances = [0];
+    for (let i = 1; i < simPoints.length; i++) {
+        totalDist += dist(simPoints[i-1], simPoints[i]);
+        distances.push(totalDist);
+    }
+    draw();
+}
+
+function updateSimValue() {
+    ui.simPercent = parseInt(document.getElementById('slider-sim').value);
+    document.getElementById('val-sim').innerText = (ui.simPercent / 10.0).toFixed(1) + "%";
+    draw();
+}
+
+// --- Historique (Undo/Redo) ---
+function saveState() {
+    undoStack.push(JSON.stringify(layers));
+    redoStack = [];
+    updateUndoRedoBtns();
+}
+function undo() {
+    if (undoStack.length > 0) {
+        redoStack.push(JSON.stringify(layers));
+        layers = JSON.parse(undoStack.pop());
+        selectedLayerId = null;
+        updateLayerUI(); recalcSimulation(); updateUndoRedoBtns();
+    }
+}
+function redo() {
+    if (redoStack.length > 0) {
+        undoStack.push(JSON.stringify(layers));
+        layers = JSON.parse(redoStack.pop());
+        selectedLayerId = null;
+        updateLayerUI(); recalcSimulation(); updateUndoRedoBtns();
+    }
+}
+function updateUndoRedoBtns() {
+    document.getElementById('btn-undo').disabled = undoStack.length === 0;
+    document.getElementById('btn-redo').disabled = redoStack.length === 0;
+}
+
+/* =========================================================================
+   INTERACTIONS UI (Onglets, Sliders, Outils)
+========================================================================= */
+
+function openTab(evt, tabName) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById(tabName).classList.add('active');
+    evt.currentTarget.classList.add('active');
+}
+
+function stepSlider(id, dir) {
+    const el = document.getElementById(id);
+    el.value = parseInt(el.value) + dir;
+    el.dispatchEvent(new Event('input'));
+    el.dispatchEvent(new Event('change'));
+}
+
+// UI Bindings (Outils)
+function changeTool() {
+    ui.tool = document.querySelector('input[name="tool"]:checked').value;
+    canvas.style.cursor = ui.tool === 'select' ? 'pointer' : 'crosshair';
+}
+function changeColor() {
+    ui.color = document.getElementById('color-picker').value;
+    const btn = document.getElementById('btn-color');
+    btn.style.backgroundColor = ui.color;
+    // Texte clair ou sombre selon la couleur
+    const hex = ui.color.replace('#', '');
+    const r = parseInt(hex.substr(0, 2), 16), g = parseInt(hex.substr(2, 2), 16), b = parseInt(hex.substr(4, 2), 16);
+    btn.style.color = ((r*299 + g*587 + b*114) / 1000) > 128 ? 'black' : 'white';
+}
+
+function change_width() { 
+    ui.penWidth = document.getElementById('slider-width').value / 10.0;
+    document.getElementById('val-width').innerText = ui.penWidth.toFixed(1);
+}
+function change_tremor() { 
+    let val = document.getElementById('slider-tremor').value;
+    ui.tremorAlpha = 1.0 - (val / 105.0);
+    document.getElementById('val-tremor').innerText = val;
+}
+function change_rope() { 
+    ui.ropeLength = document.getElementById('slider-rope').value / 2.0;
+    document.getElementById('val-rope').innerText = ui.ropeLength.toFixed(1);
+}
+document.getElementById('slider-width').addEventListener('input', change_width);
+document.getElementById('slider-tremor').addEventListener('input', change_tremor);
+document.getElementById('slider-rope').addEventListener('input', change_rope);
+
+// Workspace 
+function updateWorkspaceZoom() {
+    ui.zoom = document.getElementById('zoom-workspace').value / 100.0;
+    draw();
+}
+
+// Image Edit
+function updateImage() {
+    let sel = layers.find(l => l.id === selectedLayerId);
+    if(sel && sel.type === 'image') {
+        saveState();
+        sel.data.opacity = document.getElementById('img-opacity').value / 100.0;
+        sel.data.scale = document.getElementById('img-scale').value / 100.0;
+        sel.data.rot = parseInt(document.getElementById('img-rot').value);
+        document.getElementById('val-rot').innerText = sel.data.rot + "°";
+        draw();
+    }
+}
+function toggleFlip(axis) {
+    let sel = layers.find(l => l.id === selectedLayerId);
+    if(sel && sel.type === 'image') {
+        saveState();
+        if(axis === 'H') sel.data.flipH = !sel.data.flipH;
+        else sel.data.flipV = !sel.data.flipV;
+        draw();
+    }
+}
+
+function importImage(e) {
+    const file = e.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const img = new Image();
+            img.onload = function() {
+                addLayer({
+                    type: 'image',
+                    img: img,
+                    srcBase64: event.target.result, // Sauvegardé pour le JSON
+                    x: 0, y: 0,
+                    scale: 1.0, opacity: 0.5, rot: 0, flipH: false, flipV: false
                 });
-            });
+            }
+            img.src = event.target.result;
+        }
+        reader.readAsDataURL(file);
+    }
+    e.target.value = ''; // Reset
+}
+
+/* =========================================================================
+   FICHIERS (Sunae & THR)
+========================================================================= */
+
+function saveProject() {
+    const project = {
+        settings: {
+            zoom: document.getElementById('zoom-workspace').value,
+            showPoints: document.getElementById('chk-sim-points').checked,
+            penWidth: document.getElementById('slider-width').value,
+            tremor: document.getElementById('slider-tremor').value,
+            rope: document.getElementById('slider-rope').value,
+            color: ui.color
+        },
+        layers: layers.map(l => {
+            let cleanData = {...l.data};
+            if(l.type === 'image') delete cleanData.img; // On ne garde que le srcBase64
+            return { id: l.id, type: l.type, name: l.name, visible: l.visible, locked: l.locked, data: cleanData };
+        })
+    };
+    
+    const blob = new Blob([JSON.stringify(project)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "projet.sunae";
+    a.click();
+}
+
+function loadProject(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        try {
+            const project = JSON.parse(event.target.result);
             
-            const blob = new Blob([thrLines.join('\n')], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'tracé_sunae.thr';
-            a.click();
-            URL.revokeObjectURL(url);
-        });
-    </script>
+            // Restauration Settings
+            if (project.settings) {
+                document.getElementById('zoom-workspace').value = project.settings.zoom; updateWorkspaceZoom();
+                document.getElementById('chk-sim-points').checked = project.settings.showPoints; ui.showPoints = project.settings.showPoints;
+                document.getElementById('slider-width').value = project.settings.penWidth; change_width();
+                document.getElementById('slider-tremor').value = project.settings.tremor; change_tremor();
+                document.getElementById('slider-rope').value = project.settings.rope; change_rope();
+                document.getElementById('color-picker').value = project.settings.color; changeColor();
+            }
+
+            // Restauration Layers
+            layers = [];
+            let loadedCount = 0;
+            project.layers.forEach(l => {
+                if (l.type === 'image') {
+                    const img = new Image();
+                    img.onload = () => {
+                        l.data.img = img;
+                        layers.push(l);
+                        loadedCount++;
+                        if(loadedCount === project.layers.length) finalizeLoad();
+                    };
+                    img.src = l.data.srcBase64;
+                } else {
+                    layers.push(l);
+                    loadedCount++;
+                }
+            });
+            if(loadedCount === project.layers.length) finalizeLoad();
+            
+        } catch(err) { alert("Erreur lors de la lecture du fichier : " + err); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+}
+
+function finalizeLoad() {
+    // Trier car l'asynchrone des images a pu mélanger
+    layers.sort((a,b) => b.id - a.id); // Hack simple, ou on garde l'ordre strict
+    undoStack = []; redoStack = [];
+    selectedLayerId = null;
+    updateLayerUI(); recalcSimulation();
+}
+
+function exportTHR() {
+    let thrLines = [];
+    let currentTheta = 0.0;
+    
+    // Parcourir de bas en haut
+    for (let i = layers.length - 1; i >= 0; i--) {
+        let l = layers[i];
+        if (l.visible && l.type === 'path') {
+            l.data.points.forEach(pt => {
+                let rho = Math.hypot(pt.x, pt.y) / TABLE_RADIUS;
+                rho = Math.max(0.0, Math.min(1.0, rho));
+                
+                // +90 degrés (Pi/2) pour contrer la rotation matérielle de la machine
+                let theta = Math.atan2(pt.y, pt.x) + (Math.PI / 2);
+                
+                // Unwrapping
+                while (theta - currentTheta > Math.PI) theta -= 2 * Math.PI;
+                while (theta - currentTheta < -Math.PI) theta += 2 * Math.PI;
+                
+                currentTheta = theta;
+                thrLines.push(`${theta.toFixed(5)} ${rho.toFixed(5)}`);
+            });
+        }
+    }
+    
+    if (thrLines.length === 0) return alert("Aucun tracé visible à exporter !");
+    
+    const blob = new Blob([thrLines.join('\n')], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "export_sunae.thr";
+    a.click();
+}
+
+</script>
 </body>
 </html>
