@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -41,11 +42,12 @@
         button.btn-export { background: #2e7d32; color: white; font-weight: bold; padding: 12px; border-radius: 6px; width: 100%; font-size: 14px; border:none; margin-top: 10px;}
         button.btn-icon { padding: 4px 8px; font-size: 12px; }
         
-        #layer-list { list-style: none; padding: 0; margin: 0; border: 1px solid var(--border); border-radius: 4px; max-height: 250px; overflow-y: auto; }
-        .layer-item { padding: 8px; border-bottom: 1px solid #eee; display: flex; align-items: center; font-size: 13px; background: white;}
+        #layer-list { list-style: none; padding: 0; margin: 0; border: 1px solid var(--border); border-radius: 4px; max-height: 250px; overflow-y: auto; background: white; }
+        .layer-item { padding: 6px 8px; border-bottom: 1px solid #eee; display: flex; align-items: center; font-size: 13px; }
         .layer-item.selected { background: #e3f2fd; }
         .layer-item.locked { color: #888; }
-        .layer-icon { width: 16px; height: 16px; display: inline-block; margin-right: 8px; border: 1px solid #999; border-radius: 3px; }
+        .layer-icon { width: 14px; height: 14px; display: inline-block; margin-right: 8px; border: 1px solid #999; border-radius: 3px; flex-shrink: 0;}
+        .rename-btn { cursor: pointer; color: #666; font-size: 11px; padding: 2px 5px; background: #eee; border-radius: 4px; margin-left: 5px; }
         
         #bottom-panel { flex-shrink: 0; border-top: 1px solid var(--border); background: var(--panel); padding: 10px 20px 20px 20px; z-index: 10; display:flex; flex-direction: column; position: relative;}
     </style>
@@ -55,7 +57,7 @@
     <div id="top-area">
         <div id="canvas-wrapper">
             <canvas id="canvas"></canvas>
-            <button id="toggle-sidebar-btn" onclick="app.toggleSidebar()">▶ Cacher le menu</button>
+            <button id="toggle-sidebar-btn" onclick="app.toggleSidebar()">▶ Cacher</button>
         </div>
 
         <div id="right-panel">
@@ -105,7 +107,6 @@
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="wall" onchange="app.changeTool()"> 🧱 Mur (Exclusion)</label>
                     <label style="display:flex; margin-bottom:15px;"><input type="radio" name="tool" value="select" onchange="app.changeTool()"> 🖐️ Sélection/Déplacement</label>
                     
-                    <!-- CORRECTION COULEUR iOS : Superposition d'un input transparent sur le bouton -->
                     <div style="position: relative; width: 100%;">
                         <input type="color" id="color-picker" value="#000000" style="position: absolute; top:0; left:0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 2;" onchange="app.changeColor()" oninput="app.changeColor()">
                         <button class="btn btn-primary" id="btn-color" style="width:100%; background:black; pointer-events: none; z-index: 1; position: relative;">🎨 Couleur du trait</button>
@@ -165,11 +166,25 @@
             </div>
 
             <div id="tab-layers" class="tab-content">
-                <label style="margin-bottom: 8px; display:block;">Sélectionnez pour éditer :</label>
+                <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <label>Organisation :</label>
+                    <label style="background: #e3f2fd; padding: 3px 8px; border-radius: 12px; font-size:12px;">
+                        <input type="checkbox" id="multi-select-mode" onchange="app.refreshLayerList()"> Choix multiple
+                    </label>
+                </div>
+                
+                <div style="display:flex; gap:5px; margin-bottom:10px;">
+                    <button class="btn" title="Monter" onclick="app.moveLayer(-1)">⬆️</button>
+                    <button class="btn" title="Descendre" onclick="app.moveLayer(1)">⬇️</button>
+                    <button class="btn" style="flex:1" onclick="app.groupSelected()">📁 Grouper</button>
+                    <button class="btn" style="flex:1" onclick="app.ungroupSelected()">📂 Sortir</button>
+                </div>
+
                 <ul id="layer-list"></ul>
+                
                 <div style="display:flex; gap:5px; margin-top:10px;">
-                    <button class="btn" id="btn-lock" style="flex:1" onclick="app.toggleLock()" disabled>🔒 Verrouiller</button>
-                    <button class="btn" id="btn-delete" style="flex:1; background:#ffebee; color:#c62828;" onclick="app.deleteLayer()" disabled>🗑️ Supprimer</button>
+                    <button class="btn" id="btn-lock" style="flex:1" onclick="app.toggleLock()">🔒 Verrouiller</button>
+                    <button class="btn" id="btn-delete" style="flex:1; background:#ffebee; color:#c62828;" onclick="app.deleteSelected()">🗑️ Supprimer</button>
                 </div>
             </div>
         </div>
@@ -186,8 +201,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.0.4</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.1</span>
     </div>
 
 <script>
@@ -195,9 +209,12 @@ const app = {
     canvas: document.getElementById('canvas'),
     ctx: document.getElementById('canvas').getContext('2d'),
     TABLE_RADIUS: 300,
-    layers: [], undoStack: [], redoStack: [],
-    layerCount: 1, imgCount: 1, wallCount: 1, selectedLayerId: null,
-    currentFileName: null, // Mémorise le nom du fichier en cours
+    
+    layers: [], // Structure en arbre (peut contenir des dossiers)
+    undoStack: [], redoStack: [],
+    layerCount: 1, imgCount: 1, wallCount: 1, folderCount: 1,
+    selectedIds: [], 
+    currentFileName: null,
     
     ui: {
         tool: 'pen', penWidth: 2.0, ropeLength: 5.0, tremor: 0.0, color: '#000000',
@@ -258,8 +275,10 @@ const app = {
             }
 
             if (e.button === 2 || this.ui.tool === 'select') {
-                let sel = this.layers.find(l => l.id == this.selectedLayerId);
-                if (e.button !== 2 && this.ui.tool === 'select' && sel && sel.type === 'image' && !sel.locked) {
+                let selInfo = this.selectedIds.length === 1 ? this.findLayer(this.selectedIds[0]) : null;
+                let sel = selInfo ? selInfo.layer : null;
+                
+                if (e.button !== 2 && this.ui.tool === 'select' && sel && sel.type === 'image' && !sel.effectiveLocked) {
                     this.ui.isDraggingImage = true;
                     this.pos.startImgDrag = { x: e.clientX, y: e.clientY, initX: sel.x, initY: sel.y };
                     wrapper.style.cursor = 'move';
@@ -285,9 +304,7 @@ const app = {
 
         wrapper.addEventListener('pointermove', (e) => {
             e.preventDefault();
-            if (activePointers.has(e.pointerId)) {
-                activePointers.set(e.pointerId, e);
-            }
+            if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, e);
 
             if (activePointers.size === 2) {
                 if (initialPinchDistance) {
@@ -306,7 +323,7 @@ const app = {
             }
 
             if (this.ui.isDraggingImage) {
-                let sel = this.layers.find(l => l.id == this.selectedLayerId);
+                let sel = this.findLayer(this.selectedIds[0]).layer;
                 if (sel) {
                     let dx = (e.clientX - this.pos.startImgDrag.x) / this.ui.zoom;
                     let dy = (e.clientY - this.pos.startImgDrag.y) / this.ui.zoom;
@@ -326,7 +343,6 @@ const app = {
 
             if (this.ui.isDrawing) {
                 const pt = this.getScenePos(e.clientX, e.clientY);
-                
                 if (this.ui.tool === 'pen') {
                     let alpha = this.ui.tremor > 0 ? 1.0 - (this.ui.tremor / 105.0) : 1.0;
                     let sx = this.pos.lastSmoothed.x + alpha * (pt.x - this.pos.lastSmoothed.x);
@@ -350,8 +366,9 @@ const app = {
                         
                         let testPos = {x: nx, y: ny};
                         let inWall = false;
-                        for (let l of this.layers) {
-                            if (l.visible && l.type === 'wall' && this.pointInPolygon(testPos, l.points)) {
+                        let flat = this.getFlatLayers();
+                        for (let l of flat) {
+                            if (l.effectiveVisible && l.type === 'wall' && this.pointInPolygon(testPos, l.points)) {
                                 inWall = true; break;
                             }
                         }
@@ -369,9 +386,7 @@ const app = {
 
         const endAction = (e) => {
             activePointers.delete(e.pointerId);
-            if (activePointers.size < 2) {
-                initialPinchDistance = null;
-            }
+            if (activePointers.size < 2) initialPinchDistance = null;
 
             if (this.ui.isDraggingImage) {
                 this.ui.isDraggingImage = false;
@@ -388,10 +403,7 @@ const app = {
                 this.ui.isDrawing = false;
                 if (this.pos.currentPath.length > 1) {
                     if (this.ui.tool === 'wall') this.pos.currentPath.push({...this.pos.currentPath[0]});
-                    this.addLayer({
-                        type: this.ui.tool, color: this.ui.color,
-                        width: this.ui.penWidth, points: [...this.pos.currentPath]
-                    });
+                    this.addLayer({ type: this.ui.tool, color: this.ui.color, width: this.ui.penWidth, points: [...this.pos.currentPath] });
                 }
                 this.pos.currentPath = [];
                 this.draw();
@@ -419,6 +431,32 @@ const app = {
         return inside;
     },
 
+    // --- HIERARCHIE DES CALQUES ---
+    getFlatLayers(arr = this.layers, parentVisible = true, parentLocked = false) {
+        let res = [];
+        for (let l of arr) {
+            l.effectiveVisible = parentVisible && l.visible;
+            l.effectiveLocked = parentLocked || l.locked;
+            if (l.type === 'folder') {
+                res.push(...this.getFlatLayers(l.layers, l.effectiveVisible, l.effectiveLocked));
+            } else {
+                res.push(l);
+            }
+        }
+        return res;
+    },
+
+    findLayer(id, arr = this.layers) {
+        for (let i = 0; i < arr.length; i++) {
+            if (arr[i].id == id) return { layer: arr[i], parentArr: arr, idx: i };
+            if (arr[i].type === 'folder') {
+                let res = this.findLayer(id, arr[i].layers);
+                if (res) return res;
+            }
+        }
+        return null;
+    },
+
     draw() {
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -433,9 +471,11 @@ const app = {
         this.ctx.fillStyle = "#ffffff"; this.ctx.fill();
         this.ctx.lineWidth = 2; this.ctx.strokeStyle = "#000000"; this.ctx.stroke();
 
-        for (let i = this.layers.length - 1; i >= 0; i--) {
-            let l = this.layers[i];
-            if (!l.visible) continue;
+        let flatLayers = this.getFlatLayers();
+        
+        for (let i = flatLayers.length - 1; i >= 0; i--) {
+            let l = flatLayers[i];
+            if (!l.effectiveVisible) continue;
             
             if (l.type === 'image' && l.img) {
                 this.ctx.save();
@@ -479,17 +519,15 @@ const app = {
             }
         }
 
-        this.drawSimulation();
+        this.drawSimulation(flatLayers);
     },
 
-    drawSimulation() {
+    drawSimulation(flatLayers) {
         let pts = [];
-        for (let i = this.layers.length - 1; i >= 0; i--) {
-            let l = this.layers[i];
-            if (l.visible && (l.type === 'path' || l.type === 'pen') && l.points) {
-                for(let j = 0; j < l.points.length; j++) {
-                    pts.push(l.points[j]);
-                }
+        for (let i = flatLayers.length - 1; i >= 0; i--) {
+            let l = flatLayers[i];
+            if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen') && l.points) {
+                for(let j = 0; j < l.points.length; j++) pts.push(l.points[j]);
             }
         }
         
@@ -539,6 +577,7 @@ const app = {
         this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.strokeStyle="#000"; this.ctx.lineWidth=1/this.ui.zoom; this.ctx.stroke();
     },
 
+    // --- UI ---
     openTab(evt, tabName) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -551,10 +590,10 @@ const app = {
         const btn = document.getElementById('toggle-sidebar-btn');
         if (panel.style.display === 'none') {
             panel.style.display = 'flex';
-            btn.innerText = '▶ Cacher le menu';
+            btn.innerText = '▶ Cacher';
         } else {
             panel.style.display = 'none';
-            btn.innerText = '◀ Afficher le menu';
+            btn.innerText = '◀ Afficher';
         }
         setTimeout(() => this.resize(), 50); 
     },
@@ -604,36 +643,55 @@ const app = {
         this.draw();
     },
 
+    // --- GESTION CALQUES & DOSSIERS ---
     addLayer(data) {
         this.saveState();
         let name = data.type === 'image' ? `🖼️ Image ${this.imgCount++}` : data.type === 'wall' ? `🧱 Mur ${this.wallCount++}` : `✏️ Tracé ${this.layerCount++}`;
-        this.layers.unshift({ id: Date.now()+Math.random(), type: data.type, name: name, visible: true, locked: false, ...data });
-        this.selectedLayerId = this.layers[0].id;
+        let newL = { id: Date.now()+Math.random(), type: data.type, name: name, visible: true, locked: false, ...data };
+        this.layers.unshift(newL);
+        this.selectedIds = [newL.id];
         this.refreshLayerList();
     },
 
-    refreshLayerList() {
-        const list = document.getElementById('layer-list');
-        list.innerHTML = '';
-        this.layers.forEach((l, i) => {
-            const li = document.createElement('li');
-            li.className = `layer-item ${l.id == this.selectedLayerId ? 'selected' : ''} ${l.locked ? 'locked' : ''}`;
-            let col = l.type === 'wall' ? 'red' : l.type === 'image' ? '#ccc' : l.color;
-            li.innerHTML = `
-                <input type="checkbox" class="layer-vis" ${l.visible ? 'checked' : ''} onchange="app.toggleVis('${l.id}')">
+    renderTree(arr, depth) {
+        let html = '';
+        arr.forEach(l => {
+            let isSel = this.selectedIds.includes(l.id);
+            let pad = depth * 20 + 8;
+            let col = l.type === 'wall' ? 'red' : l.type === 'image' ? '#ccc' : (l.type === 'folder' ? '#ffd700' : l.color);
+            
+            let icon = '';
+            if (l.type === 'folder') {
+                icon = `<span onclick="app.toggleFolder(${l.id}, event)" style="cursor:pointer; margin-right:5px; width:12px; display:inline-block; font-size:10px;">${l.isOpen ? '▼' : '▶'}</span>`;
+            }
+
+            html += `<li class="layer-item ${isSel ? 'selected' : ''} ${l.locked ? 'locked' : ''}" style="padding-left: ${pad}px">
+                <input type="checkbox" style="margin-right:8px;" ${l.visible ? 'checked' : ''} onchange="app.toggleVis('${l.id}')">
+                ${icon}
                 <span class="layer-icon" style="background-color: ${col}"></span>
                 <span style="flex:1; cursor:pointer;" onclick="app.selectLayer('${l.id}')">${l.name} ${l.locked ? '🔒' : '🔓'}</span>
-            `;
-            list.appendChild(li);
+                <span class="rename-btn" onclick="app.renameLayer('${l.id}', event)">✏️</span>
+            </li>`;
+            
+            if (l.type === 'folder' && l.isOpen) {
+                html += this.renderTree(l.layers, depth + 1);
+            }
         });
+        return html;
+    },
 
-        let sel = this.layers.find(l => l.id == this.selectedLayerId);
-        document.getElementById('btn-lock').disabled = !sel;
-        document.getElementById('btn-delete').disabled = !sel || sel.locked;
+    refreshLayerList() {
+        document.getElementById('layer-list').innerHTML = this.renderTree(this.layers, 0);
+
+        let selInfo = this.selectedIds.length === 1 ? this.findLayer(this.selectedIds[0]) : null;
+        let sel = selInfo ? selInfo.layer : null;
+
+        document.getElementById('btn-lock').disabled = this.selectedIds.length === 0;
+        document.getElementById('btn-delete').disabled = this.selectedIds.length === 0;
         if(sel) document.getElementById('btn-lock').innerText = sel.locked ? "🔓 Déverrouiller" : "🔒 Verrouiller";
 
         const fsImg = document.getElementById('fs-image');
-        if (sel && sel.type === 'image' && !sel.locked) {
+        if (sel && sel.type === 'image' && !sel.effectiveLocked) {
             fsImg.disabled = false;
             document.getElementById('img-opacity').value = sel.opacity * 100;
             document.getElementById('img-scale').value = sel.scale * 100;
@@ -645,14 +703,124 @@ const app = {
         this.draw();
     },
 
-    selectLayer(id) { this.selectedLayerId = Number(id); this.refreshLayerList(); },
-    toggleVis(id) { let l = this.layers.find(x => x.id == id); if(l) { l.visible = !l.visible; this.refreshLayerList(); } },
-    toggleLock() { let l = this.layers.find(x => x.id == this.selectedLayerId); if(l) { l.locked = !l.locked; this.refreshLayerList(); } },
-    deleteLayer() {
-        let l = this.layers.find(x => x.id == this.selectedLayerId);
-        if(l && !l.locked) { this.saveState(); this.layers = this.layers.filter(x => x.id != this.selectedLayerId); this.selectedLayerId = null; this.refreshLayerList(); }
+    selectLayer(id) {
+        id = Number(id);
+        let multi = document.getElementById('multi-select-mode').checked;
+        if (multi) {
+            if (this.selectedIds.includes(id)) this.selectedIds = this.selectedIds.filter(x => x !== id);
+            else this.selectedIds.push(id);
+        } else {
+            this.selectedIds = [id];
+        }
+        this.refreshLayerList();
+    },
+    
+    toggleVis(id) { let l = this.findLayer(id).layer; if(l) { l.visible = !l.visible; this.refreshLayerList(); } },
+    toggleLock() { 
+        this.selectedIds.forEach(id => {
+            let l = this.findLayer(id).layer; if(l) l.locked = !l.locked;
+        });
+        this.refreshLayerList(); 
+    },
+    deleteSelected() {
+        if(this.selectedIds.length === 0) return;
+        this.saveState(); 
+        
+        let toDelete = [...this.selectedIds];
+        const removeRecursive = (arr) => {
+            for(let i=0; i<arr.length; i++) {
+                if (toDelete.includes(arr[i].id)) {
+                    arr.splice(i, 1); i--;
+                } else if (arr[i].type === 'folder') {
+                    removeRecursive(arr[i].layers);
+                }
+            }
+        };
+        removeRecursive(this.layers);
+        this.selectedIds = []; 
+        this.refreshLayerList();
     },
 
+    renameLayer(id, e) {
+        e.stopPropagation();
+        let l = this.findLayer(id).layer;
+        if(l) {
+            let baseName = l.name.replace(' 🔓','').replace(' 🔒','');
+            let n = prompt("Nouveau nom :", baseName);
+            if (n) { l.name = n; this.saveState(); this.refreshLayerList(); }
+        }
+    },
+
+    toggleFolder(id, e) {
+        e.stopPropagation();
+        let l = this.findLayer(id).layer;
+        if(l && l.type === 'folder') { l.isOpen = !l.isOpen; this.refreshLayerList(); }
+    },
+
+    moveLayer(dir) {
+        if(this.selectedIds.length !== 1) { alert("Veuillez sélectionner exactement 1 calque pour le déplacer."); return; }
+        this.saveState();
+        let info = this.findLayer(this.selectedIds[0]);
+        let arr = info.parentArr;
+        let idx = info.idx;
+        
+        if (dir === -1 && idx > 0) {
+            let t = arr[idx]; arr[idx] = arr[idx-1]; arr[idx-1] = t;
+        } else if (dir === 1 && idx < arr.length - 1) {
+            let t = arr[idx]; arr[idx] = arr[idx+1]; arr[idx+1] = t;
+        }
+        this.refreshLayerList();
+    },
+
+    groupSelected() {
+        if(this.selectedIds.length === 0) return;
+        this.saveState();
+        
+        let newFolder = { id: Date.now()+Math.random(), type: 'folder', name: '📁 Dossier ' + this.folderCount++, visible: true, locked: false, isOpen: true, layers: [] };
+        let extracted = [];
+        let firstParent = null; let firstIdx = -1;
+
+        const extract = (arr) => {
+            for(let i=0; i<arr.length; i++) {
+                if (this.selectedIds.includes(arr[i].id)) {
+                    if(!firstParent) { firstParent = arr; firstIdx = i; }
+                    extracted.push(arr.splice(i, 1)[0]);
+                    i--;
+                } else if (arr[i].type === 'folder') {
+                    extract(arr[i].layers);
+                }
+            }
+        };
+        extract(this.layers);
+        
+        newFolder.layers = extracted;
+        if(firstParent) firstParent.splice(firstIdx, 0, newFolder);
+        else this.layers.unshift(newFolder);
+        
+        this.selectedIds = [newFolder.id];
+        document.getElementById('multi-select-mode').checked = false;
+        this.refreshLayerList();
+    },
+
+    ungroupSelected() {
+        if(this.selectedIds.length !== 1) return;
+        let info = this.findLayer(this.selectedIds[0]);
+        if(info && info.layer.type === 'folder') {
+            this.saveState();
+            let children = info.layer.layers;
+            info.parentArr.splice(info.idx, 1, ...children);
+            this.selectedIds = [];
+            this.refreshLayerList();
+        } else if (info && info.parentArr !== this.layers) {
+            // Sortir un calque de son dossier parent
+            this.saveState();
+            let l = info.parentArr.splice(info.idx, 1)[0];
+            this.layers.unshift(l); // Le met tout en haut
+            this.refreshLayerList();
+        }
+    },
+
+    // --- IMAGES ---
     importImage(e) {
         const file = e.target.files[0];
         if (file) {
@@ -667,34 +835,41 @@ const app = {
         e.target.value = '';
     },
     updateImageTransform() {
-        let sel = this.layers.find(l => l.id == this.selectedLayerId);
-        if(sel && sel.type === 'image') {
+        let sel = this.findLayer(this.selectedIds[0]);
+        if(sel && sel.layer.type === 'image') {
             this.saveState();
-            sel.opacity = document.getElementById('img-opacity').value / 100.0;
-            sel.scale = document.getElementById('img-scale').value / 100.0;
-            sel.rot = parseInt(document.getElementById('img-rot').value);
-            document.getElementById('val-rot').innerText = sel.rot + "°";
+            sel.layer.opacity = document.getElementById('img-opacity').value / 100.0;
+            sel.layer.scale = document.getElementById('img-scale').value / 100.0;
+            sel.layer.rot = parseInt(document.getElementById('img-rot').value);
+            document.getElementById('val-rot').innerText = sel.layer.rot + "°";
             this.draw();
         }
     },
     toggleFlip(axis) {
-        let sel = this.layers.find(l => l.id == this.selectedLayerId);
-        if(sel && sel.type === 'image') {
+        let sel = this.findLayer(this.selectedIds[0]);
+        if(sel && sel.layer.type === 'image') {
             this.saveState();
-            if(axis === 'H') sel.flipH = !sel.flipH; else sel.flipV = !sel.flipV;
+            if(axis === 'H') sel.layer.flipH = !sel.layer.flipH; else sel.layer.flipV = !sel.layer.flipV;
             this.draw();
         }
     },
 
+    // --- SAUVEGARDE & UNDO ---
     saveState() {
-        this.undoStack.push(JSON.stringify(this.layers.map(l => ({...l, img:null}))));
+        const cleanLayers = (arr) => arr.map(l => {
+            let cl = {...l, img:null};
+            if(cl.type === 'folder') cl.layers = cleanLayers(cl.layers);
+            return cl;
+        });
+        this.undoStack.push(JSON.stringify(cleanLayers(this.layers)));
         this.redoStack = [];
         document.getElementById('btn-undo').disabled = false;
         document.getElementById('btn-redo').disabled = true;
     },
     undo() {
         if (this.undoStack.length > 0) {
-            this.redoStack.push(JSON.stringify(this.layers.map(l => ({...l, img:null}))));
+            const cleanLayers = (arr) => arr.map(l => { let cl={...l, img:null}; if(cl.type==='folder') cl.layers=cleanLayers(cl.layers); return cl; });
+            this.redoStack.push(JSON.stringify(cleanLayers(this.layers)));
             this.restoreLayers(this.undoStack.pop());
             document.getElementById('btn-undo').disabled = this.undoStack.length === 0;
             document.getElementById('btn-redo').disabled = false;
@@ -702,7 +877,8 @@ const app = {
     },
     redo() {
         if (this.redoStack.length > 0) {
-            this.undoStack.push(JSON.stringify(this.layers.map(l => ({...l, img:null}))));
+            const cleanLayers = (arr) => arr.map(l => { let cl={...l, img:null}; if(cl.type==='folder') cl.layers=cleanLayers(cl.layers); return cl; });
+            this.undoStack.push(JSON.stringify(cleanLayers(this.layers)));
             this.restoreLayers(this.redoStack.pop());
             document.getElementById('btn-undo').disabled = false;
             document.getElementById('btn-redo').disabled = this.redoStack.length === 0;
@@ -710,20 +886,24 @@ const app = {
     },
     restoreLayers(jsonStr) {
         let parsed = JSON.parse(jsonStr);
-        this.layers = [];
-        parsed.forEach(l => {
-            if (l.type === 'image') {
-                const img = new Image();
-                img.onload = () => { l.img = img; this.draw(); };
-                img.src = l.src;
-            }
-            this.layers.push(l);
-        });
-        this.selectedLayerId = null;
+        
+        const rebuildImgs = (arr) => {
+            arr.forEach(l => {
+                if (l.type === 'image') {
+                    const img = new Image();
+                    img.onload = () => { l.img = img; this.draw(); };
+                    img.src = l.src;
+                } else if (l.type === 'folder') {
+                    rebuildImgs(l.layers);
+                }
+            });
+        };
+        rebuildImgs(parsed);
+        this.layers = parsed;
+        this.selectedIds = [];
         this.refreshLayerList();
     },
 
-    // --- SAUVEGARDE NATIVE POUR iOS / iPAD OS ---
     saveProject(isSaveAs = false) {
         if (isSaveAs || !this.currentFileName) {
             let defaultName = this.currentFileName ? this.currentFileName.replace('.sunae', '') : "mon_projet";
@@ -733,29 +913,31 @@ const app = {
             this.currentFileName = filename;
         }
 
+        const cleanLayers = (arr) => arr.map(l => {
+            let cl = {...l, img:null};
+            if(cl.type === 'folder') cl.layers = cleanLayers(cl.layers);
+            return cl;
+        });
+
         const proj = {
             settings: { 
                 zoom: this.ui.zoom*100, 
                 showPoints: document.getElementById('chk-sim-points').checked,
                 tool: this.ui.tool, width: this.ui.penWidth*10, tremor: this.ui.tremor, rope: this.ui.ropeLength*2, color: this.ui.color 
             },
-            layers: this.layers.map(l => ({...l, img:null}))
+            layers: cleanLayers(this.layers)
         };
+        
         const blob = new Blob([JSON.stringify(proj)], {type: "application/json"});
         
-        // Utilisation de l'API de Partage (Share Sheet) native de l'iPad
         if (navigator.canShare && navigator.userAgent.match(/iPad|iPhone|iPod|Mac/i)) {
             const file = new File([blob], this.currentFileName, {type: "application/json"});
             if (navigator.canShare({ files: [file] })) {
-                navigator.share({
-                    files: [file],
-                    title: this.currentFileName
-                }).catch(err => console.log("Partage annulé ou échoué", err));
+                navigator.share({ files: [file], title: this.currentFileName }).catch(e=>{});
                 return;
             }
         }
 
-        // Fallback classique
         const a = document.createElement("a"); 
         a.href = URL.createObjectURL(blob); 
         a.download = this.currentFileName; 
@@ -771,11 +953,7 @@ const app = {
             const proj = JSON.parse(evt.target.result);
             if(proj.settings) {
                 document.getElementById('zoom-workspace').value = proj.settings.zoom; this.updateZoomFromSlider();
-                
-                if (proj.settings.showPoints !== undefined) {
-                    document.getElementById('chk-sim-points').checked = proj.settings.showPoints;
-                }
-
+                if (proj.settings.showPoints !== undefined) document.getElementById('chk-sim-points').checked = proj.settings.showPoints;
                 document.getElementById('slider-width').value = proj.settings.width;
                 document.getElementById('slider-tremor').value = proj.settings.tremor;
                 document.getElementById('slider-rope').value = proj.settings.rope;
@@ -792,9 +970,11 @@ const app = {
     exportTHR() {
         let thrLines = [];
         let currentTheta = 0.0;
-        for (let i = this.layers.length - 1; i >= 0; i--) {
-            let l = this.layers[i];
-            if (l.visible && (l.type === 'path' || l.type === 'pen')) {
+        let flatLayers = this.getFlatLayers();
+        
+        for (let i = flatLayers.length - 1; i >= 0; i--) {
+            let l = flatLayers[i];
+            if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen')) {
                 l.points.forEach(pt => {
                     let rho = Math.hypot(pt.x, pt.y) / this.TABLE_RADIUS;
                     rho = Math.max(0.0, Math.min(1.0, rho));
@@ -816,19 +996,14 @@ const app = {
 
         const blob = new Blob([thrLines.join('\n')], { type: "text/plain" });
         
-        // Utilisation de l'API de Partage (Share Sheet) native de l'iPad
         if (navigator.canShare && navigator.userAgent.match(/iPad|iPhone|iPod|Mac/i)) {
             const file = new File([blob], filename, {type: "text/plain"});
             if (navigator.canShare({ files: [file] })) {
-                navigator.share({
-                    files: [file],
-                    title: filename
-                }).catch(err => console.log("Partage annulé ou échoué", err));
+                navigator.share({ files: [file], title: filename }).catch(e=>{});
                 return;
             }
         }
 
-        // Fallback classique
         const a = document.createElement("a"); a.href = URL.createObjectURL(blob); 
         a.download = filename; 
         a.click();
