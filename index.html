@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Éditeur de Tracés Sunae</title>
+    <style>
+        body { margin: 0; padding: 0; display: flex; height: 100vh; font-family: -apple-system, sans-serif; background: #e0e0e0; overflow: hidden; }
+        #canvas-container { flex: 1; position: relative; display: flex; justify-content: center; align-items: center; overflow: hidden; touch-action: none; }
+        canvas { background: white; border-radius: 50%; box-shadow: 0 10px 30px rgba(0,0,0,0.1); cursor: crosshair; position: absolute; z-index: 10; }
+        #bg-image { position: absolute; opacity: 0.5; pointer-events: none; z-index: 5; transform-origin: center; }
+        #sidebar { width: 320px; background: white; padding: 20px; box-shadow: -5px 0 15px rgba(0,0,0,0.05); overflow-y: auto; z-index: 20; }
+        h2 { font-size: 18px; margin-top: 0; }
+        .control-group { margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee; }
+        label { display: block; font-size: 14px; margin-bottom: 5px; font-weight: bold; }
+        input[type="range"] { width: 100%; margin-bottom: 10px; }
+        button { background: #007aff; color: white; border: none; padding: 10px 15px; border-radius: 8px; width: 100%; font-size: 14px; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
+        button.export { background: #34c759; }
+        button.danger { background: #ff3b30; }
+        .info { font-size: 12px; color: #666; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container">
+        <img id="bg-image" style="display:none;" />
+        <canvas id="drawing-canvas"></canvas>
+    </div>
+
+    <div id="sidebar">
+        <h2>🛠️ Éditeur Sunae</h2>
+        
+        <div class="control-group">
+            <label>📏 Épaisseur du trait : <span id="val-width">2</span></label>
+            <input type="range" id="slider-width" min="1" max="10" value="2">
+            
+            <label>〰️ Lissage (Corde) : <span id="val-rope">10</span></label>
+            <input type="range" id="slider-rope" min="0" max="50" value="10">
+        </div>
+
+        <div class="control-group">
+            <label>🖼️ Image de fond</label>
+            <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;">
+            <button onclick="document.getElementById('file-image').click()">📂 Importer une image</button>
+            <label>Échelle de l'image :</label>
+            <input type="range" id="slider-scale" min="10" max="300" value="100">
+            <label>Opacité :</label>
+            <input type="range" id="slider-opacity" min="0" max="100" value="50">
+        </div>
+
+        <div class="control-group">
+            <button class="danger" id="btn-clear">🗑️ Effacer tout</button>
+            <button class="export" id="btn-export">📤 Exporter en .thr</button>
+        </div>
+        
+        <p class="info">Utilisez l'Apple Pencil pour dessiner.<br>Les traits sont lissés et limités au diamètre de la table.</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('drawing-canvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+        const bgImage = document.getElementById('bg-image');
+
+        // Paramètres de la table origin
+        const TABLE_RADIUS = 300; 
+        const CANVAS_SIZE = TABLE_RADIUS * 2;
+        
+        // Ajustement pour la haute résolution (Retina sur iPad)
+        canvas.width = CANVAS_SIZE * window.devicePixelRatio;
+        canvas.height = CANVAS_SIZE * window.devicePixelRatio;
+        canvas.style.width = CANVAS_SIZE + 'px';
+        canvas.style.height = CANVAS_SIZE + 'px';
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // Variables d'état
+        let isDrawing = false;
+        let anchorPos = { x: 0, y: 0 };
+        let currentStroke = [];
+        let allStrokes = [];
+        
+        // Contrôles UI
+        const ropeSlider = document.getElementById('slider-rope');
+        const widthSlider = document.getElementById('slider-width');
+
+        function redraw() {
+            ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+            // Dessiner les traits précédents
+            allStrokes.forEach(stroke => {
+                if(stroke.points.length < 2) return;
+                ctx.beginPath();
+                ctx.lineWidth = stroke.width;
+                ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+                for(let i=1; i<stroke.points.length; i++) {
+                    ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+                }
+                ctx.stroke();
+            });
+            
+            // Dessiner le trait en cours
+            if (currentStroke.length > 1) {
+                ctx.beginPath();
+                ctx.lineWidth = widthSlider.value;
+                ctx.moveTo(currentStroke[0].x, currentStroke[0].y);
+                for(let i=1; i<currentStroke.length; i++) {
+                    ctx.lineTo(currentStroke[i].x, currentStroke[i].y);
+                }
+                ctx.stroke();
+            }
+        }
+
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            // L'origine (0,0) est placée au centre du cercle pour les mathématiques
+            return {
+                x: e.clientX - rect.left - TABLE_RADIUS,
+                y: e.clientY - rect.top - TABLE_RADIUS
+            };
+        }
+
+        // Pointer Events (Gère Souris, Doigt et Apple Pencil)
+        canvas.addEventListener('pointerdown', (e) => {
+            const pos = getMousePos(e);
+            if (Math.hypot(pos.x, pos.y) <= TABLE_RADIUS) {
+                isDrawing = true;
+                anchorPos = { x: pos.x, y: pos.y };
+                // Pour dessiner, on décale l'origine au centre du canvas HTML
+                currentStroke = [{ x: pos.x + TABLE_RADIUS, y: pos.y + TABLE_RADIUS }];
+            }
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+            if (!isDrawing) return;
+            e.preventDefault(); // Empêche le défilement de la page sur iPad
+            
+            const rawPos = getMousePos(e);
+            const ropeLength = parseFloat(ropeSlider.value);
+            
+            const dx = rawPos.x - anchorPos.x;
+            const dy = rawPos.y - anchorPos.y;
+            const dist = Math.hypot(dx, dy);
+            
+            if (dist > ropeLength) {
+                const angle = Math.atan2(dy, dx);
+                let newX = rawPos.x - Math.cos(angle) * ropeLength;
+                let newY = rawPos.y - Math.sin(angle) * ropeLength;
+                
+                // Clamping : Ne pas sortir du cercle
+                const r = Math.hypot(newX, newY);
+                if (r > TABLE_RADIUS) {
+                    newX = (newX / r) * TABLE_RADIUS;
+                    newY = (newY / r) * TABLE_RADIUS;
+                }
+                
+                anchorPos = { x: newX, y: newY };
+                currentStroke.push({ x: newX + TABLE_RADIUS, y: newY + TABLE_RADIUS });
+                redraw();
+            }
+        });
+
+        const stopDrawing = () => {
+            if (isDrawing) {
+                isDrawing = false;
+                if (currentStroke.length > 1) {
+                    allStrokes.push({ points: currentStroke, width: widthSlider.value });
+                }
+                currentStroke = [];
+            }
+        };
+
+        canvas.addEventListener('pointerup', stopDrawing);
+        canvas.addEventListener('pointerout', stopDrawing);
+
+        // UI Listeners
+        ropeSlider.addEventListener('input', e => document.getElementById('val-rope').innerText = e.target.value);
+        widthSlider.addEventListener('input', e => document.getElementById('val-width').innerText = e.target.value);
+        
+        document.getElementById('btn-clear').addEventListener('click', () => {
+            allStrokes = [];
+            redraw();
+        });
+
+        // Gestion de l'image de fond
+        document.getElementById('file-image').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    bgImage.src = event.target.result;
+                    bgImage.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        document.getElementById('slider-scale').addEventListener('input', (e) => {
+            bgImage.style.transform = `scale(${e.target.value / 100})`;
+        });
+        document.getElementById('slider-opacity').addEventListener('input', (e) => {
+            bgImage.style.opacity = e.target.value / 100;
+        });
+
+        // Export THR
+        document.getElementById('btn-export').addEventListener('click', () => {
+            if(allStrokes.length === 0) return alert("Rien à exporter !");
+            
+            let thrLines = [];
+            let currentTheta = 0.0;
+            
+            allStrokes.forEach(stroke => {
+                stroke.points.forEach(pt => {
+                    // Repasser du repère (0 à 600) au repère centré (-300 à 300)
+                    const x = pt.x - TABLE_RADIUS;
+                    const y = pt.y - TABLE_RADIUS;
+                    
+                    let rho = Math.hypot(x, y) / TABLE_RADIUS;
+                    rho = Math.max(0.0, Math.min(1.0, rho));
+                    
+                    // +90 degrés (Pi/2) pour corriger la rotation matérielle
+                    let theta = Math.atan2(y, x) + (Math.PI / 2);
+                    
+                    // Unwrapping
+                    while (theta - currentTheta > Math.PI) theta -= 2 * Math.PI;
+                    while (theta - currentTheta < -Math.PI) theta += 2 * Math.PI;
+                    
+                    currentTheta = theta;
+                    thrLines.push(`${theta.toFixed(5)} ${rho.toFixed(5)}`);
+                });
+            });
+            
+            const blob = new Blob([thrLines.join('\n')], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'tracé_sunae.thr';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+    </script>
+</body>
+</html>
