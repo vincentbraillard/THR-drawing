@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Éditeur de Tracés Sunae</title>
+    
+    <!-- Polyfill pour forcer le Drag & Drop tactile sur iPadOS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/default.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js"></script>
+
     <style>
         :root { --primary: #0078D7; --bg: #f3f3f3; --panel: #ffffff; --border: #ddd; }
         * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
@@ -42,7 +47,12 @@
         button.btn-icon { padding: 4px 8px; font-size: 12px; }
         
         #layer-list { list-style: none; padding: 0; margin: 0; border: 1px solid var(--border); border-radius: 4px; max-height: 250px; overflow-y: auto; background: white; }
-        .layer-item { padding: 6px 8px; border-bottom: 1px solid #eee; display: flex; align-items: center; font-size: 13px; transition: background 0.2s; }
+        
+        /* CORRECTION iOS : Désactivation sélection de texte et loupe */
+        .layer-item { 
+            padding: 6px 8px; border-bottom: 1px solid #eee; display: flex; align-items: center; font-size: 13px; transition: background 0.2s; 
+            -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+        }
         .layer-item.selected { background: #e3f2fd; }
         .layer-item.locked { color: #888; }
         .layer-icon { width: 14px; height: 14px; display: inline-block; margin-right: 8px; border: 1px solid #999; border-radius: 3px; flex-shrink: 0;}
@@ -206,10 +216,16 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.3</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.4</span>
     </div>
 
 <script>
+// Initialisation du Polyfill pour forcer iOS Safari à accepter le Drag and Drop
+MobileDragDrop.polyfill({
+    holdToDrag: 300 // Délai de 0.3s pour déclencher le glisser-déposer
+});
+window.addEventListener('touchmove', function() {}, {passive: false});
+
 const app = {
     canvas: document.getElementById('canvas'),
     ctx: document.getElementById('canvas').getContext('2d'),
@@ -220,7 +236,7 @@ const app = {
     layerCount: 1, imgCount: 1, wallCount: 1, folderCount: 1,
     selectedIds: [], 
     currentFileName: null,
-    draggedId: null, // Gestion du Drag & Drop
+    draggedId: null,
     
     ui: {
         tool: 'pen', penWidth: 2.0, ropeLength: 5.0, tremor: 0.0, color: '#000000',
@@ -268,7 +284,6 @@ const app = {
             e.preventDefault(); 
             activePointers.set(e.pointerId, e);
 
-            // GESTION 2 DOIGTS (PAN & ZOOM UNIVERSEL)
             if (activePointers.size === 2) {
                 this.ui.isDrawing = false;
                 this.ui.isPanning = false;
@@ -316,7 +331,6 @@ const app = {
             e.preventDefault();
             if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, e);
 
-            // GESTION 2 DOIGTS CONTINU (PAN & ZOOM)
             if (activePointers.size === 2) {
                 if (initialPinchDistance && initialPinchCenter) {
                     let pts = Array.from(activePointers.values());
@@ -599,7 +613,6 @@ const app = {
         this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.strokeStyle="#000"; this.ctx.lineWidth=1/this.ui.zoom; this.ctx.stroke();
     },
 
-    // --- UI ---
     openTab(evt, tabName) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -665,7 +678,7 @@ const app = {
         this.draw();
     },
 
-    // --- GESTION CALQUES, DOSSIERS ET DRAG & DROP ---
+    // --- GESTION CALQUES & DRAG & DROP ---
     onDragStart(e, id) {
         this.draggedId = id;
         e.dataTransfer.effectAllowed = 'move';
@@ -710,7 +723,7 @@ const app = {
 
         this.saveState();
         let draggedLayer = draggedInfo.parentArr.splice(draggedInfo.idx, 1)[0];
-        targetInfo = this.findLayer(targetId); // Re-find in case indices shifted
+        targetInfo = this.findLayer(targetId);
 
         if (targetInfo.layer.type === 'folder') {
             targetInfo.layer.layers.unshift(draggedLayer);
@@ -727,6 +740,33 @@ const app = {
     onDragEnd(e) {
         e.target.style.opacity = '1';
         this.draggedId = null;
+    },
+
+    addLayer(data) {
+        this.saveState();
+        let name = data.type === 'image' ? `🖼️ Image ${this.imgCount++}` : data.type === 'wall' ? `🧱 Mur ${this.wallCount++}` : `✏️ Tracé ${this.layerCount++}`;
+        let newL = { id: Date.now()+Math.random(), type: data.type, name: name, visible: true, locked: false, ...data };
+        
+        let targetArr = this.layers;
+        let insertIndex = 0; 
+        
+        if (this.selectedIds.length === 1) {
+            let info = this.findLayer(this.selectedIds[0]);
+            if (info) {
+                if (info.layer.type === 'folder') {
+                    targetArr = info.layer.layers;
+                    insertIndex = 0; 
+                    info.layer.isOpen = true; 
+                } else {
+                    targetArr = info.parentArr;
+                    insertIndex = info.idx; 
+                }
+            }
+        }
+        
+        targetArr.splice(insertIndex, 0, newL);
+        this.selectedIds = [newL.id];
+        this.refreshLayerList();
     },
 
     renderTree(arr, depth) {
@@ -937,7 +977,39 @@ const app = {
         this.refreshLayerList();
     },
 
-    // --- SAUVEGARDE ET EXPORT ---
+    importImage(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => this.addLayer({ type: 'image', img: img, src: event.target.result, x: 0, y: 0, scale: 1.0, opacity: 0.5, rot: 0, flipH: false, flipV: false });
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        e.target.value = '';
+    },
+    updateImageTransform() {
+        let sel = this.findLayer(this.selectedIds[0]);
+        if(sel && sel.layer.type === 'image') {
+            this.saveState();
+            sel.layer.opacity = document.getElementById('img-opacity').value / 100.0;
+            sel.layer.scale = document.getElementById('img-scale').value / 100.0;
+            sel.layer.rot = parseInt(document.getElementById('img-rot').value);
+            document.getElementById('val-rot').innerText = sel.layer.rot + "°";
+            this.draw();
+        }
+    },
+    toggleFlip(axis) {
+        let sel = this.findLayer(this.selectedIds[0]);
+        if(sel && sel.layer.type === 'image') {
+            this.saveState();
+            if(axis === 'H') sel.layer.flipH = !sel.layer.flipH; else sel.layer.flipV = !sel.layer.flipV;
+            this.draw();
+        }
+    },
+
     saveState() {
         const cleanLayers = (arr) => arr.map(l => {
             let cl = {...l, img:null};
@@ -1003,7 +1075,8 @@ const app = {
 
         const proj = {
             settings: { 
-                zoom: this.ui.zoom*100, showPoints: document.getElementById('chk-sim-points').checked,
+                zoom: this.ui.zoom*100, 
+                showPoints: document.getElementById('chk-sim-points').checked,
                 tool: this.ui.tool, width: this.ui.penWidth*10, tremor: this.ui.tremor, rope: this.ui.ropeLength*2, color: this.ui.color 
             },
             layers: cleanLayers(this.layers)
@@ -1018,7 +1091,8 @@ const app = {
             }
         }
 
-        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); 
+        const a = document.createElement("a"); 
+        a.href = URL.createObjectURL(blob); 
         a.download = this.currentFileName; a.click();
     },
 
@@ -1088,5 +1162,6 @@ window.onload = () => app.init();
 </script>
 </body>
 </html>
+
 
 
