@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -43,11 +42,15 @@
         button.btn-icon { padding: 4px 8px; font-size: 12px; }
         
         #layer-list { list-style: none; padding: 0; margin: 0; border: 1px solid var(--border); border-radius: 4px; max-height: 250px; overflow-y: auto; background: white; }
-        .layer-item { padding: 6px 8px; border-bottom: 1px solid #eee; display: flex; align-items: center; font-size: 13px; }
+        .layer-item { padding: 6px 8px; border-bottom: 1px solid #eee; display: flex; align-items: center; font-size: 13px; transition: background 0.2s; }
         .layer-item.selected { background: #e3f2fd; }
         .layer-item.locked { color: #888; }
         .layer-icon { width: 14px; height: 14px; display: inline-block; margin-right: 8px; border: 1px solid #999; border-radius: 3px; flex-shrink: 0;}
         .rename-btn { cursor: pointer; color: #666; font-size: 11px; padding: 2px 5px; background: #eee; border-radius: 4px; margin-left: 5px; }
+        
+        /* Styles pour le Drag and Drop */
+        .drag-over-folder { box-shadow: inset 0 0 0 2px var(--primary); background: #e3f2fd !important; }
+        .drag-over-layer { border-top: 3px solid var(--primary) !important; }
         
         #bottom-panel { flex-shrink: 0; border-top: 1px solid var(--border); background: var(--panel); padding: 10px 20px 20px 20px; z-index: 10; display:flex; flex-direction: column; position: relative;}
     </style>
@@ -180,11 +183,13 @@
                     <button class="btn" style="flex:1" onclick="app.ungroupSelected()">📂 Sortir</button>
                 </div>
 
+                <div style="font-size: 11px; color: #666; margin-bottom: 5px; text-align: center;">Maintien long pour glisser-déposer (Drag&Drop)</div>
                 <ul id="layer-list"></ul>
                 
                 <div style="display:flex; gap:5px; margin-top:10px;">
                     <button class="btn" id="btn-lock" style="flex:1" onclick="app.toggleLock()">🔒 Verrouiller</button>
-                    <button class="btn" id="btn-delete" style="flex:1; background:#ffebee; color:#c62828;" onclick="app.deleteSelected()">🗑️ Supprimer</button>
+                    <button class="btn" id="btn-merge" style="flex:1; background:#e8f5e9; color:#2e7d32;" onclick="app.mergeSelected()">🔗 Fusionner</button>
+                    <button class="btn" id="btn-delete" style="flex:1; background:#ffebee; color:#c62828;" onclick="app.deleteSelected()">🗑️ Suppr.</button>
                 </div>
             </div>
         </div>
@@ -201,7 +206,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.1</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.3</span>
     </div>
 
 <script>
@@ -210,11 +215,12 @@ const app = {
     ctx: document.getElementById('canvas').getContext('2d'),
     TABLE_RADIUS: 300,
     
-    layers: [], // Structure en arbre (peut contenir des dossiers)
+    layers: [], 
     undoStack: [], redoStack: [],
     layerCount: 1, imgCount: 1, wallCount: 1, folderCount: 1,
     selectedIds: [], 
     currentFileName: null,
+    draggedId: null, // Gestion du Drag & Drop
     
     ui: {
         tool: 'pen', penWidth: 2.0, ropeLength: 5.0, tremor: 0.0, color: '#000000',
@@ -256,21 +262,25 @@ const app = {
         let activePointers = new Map();
         let initialPinchDistance = null;
         let initialPinchZoom = 1.0;
+        let initialPinchCenter = null;
 
         wrapper.addEventListener('pointerdown', (e) => {
             e.preventDefault(); 
             activePointers.set(e.pointerId, e);
 
+            // GESTION 2 DOIGTS (PAN & ZOOM UNIVERSEL)
             if (activePointers.size === 2) {
                 this.ui.isDrawing = false;
                 this.ui.isPanning = false;
                 this.ui.isDraggingImage = false;
                 this.pos.currentPath = [];
+                
                 let pts = Array.from(activePointers.values());
                 let dx = pts[0].clientX - pts[1].clientX;
                 let dy = pts[0].clientY - pts[1].clientY;
                 initialPinchDistance = Math.hypot(dx, dy);
                 initialPinchZoom = this.ui.zoom;
+                initialPinchCenter = { x: (pts[0].clientX + pts[1].clientX) / 2, y: (pts[0].clientY + pts[1].clientY) / 2 };
                 return;
             }
 
@@ -306,17 +316,27 @@ const app = {
             e.preventDefault();
             if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, e);
 
+            // GESTION 2 DOIGTS CONTINU (PAN & ZOOM)
             if (activePointers.size === 2) {
-                if (initialPinchDistance) {
+                if (initialPinchDistance && initialPinchCenter) {
                     let pts = Array.from(activePointers.values());
+                    let cx = (pts[0].clientX + pts[1].clientX) / 2;
+                    let cy = (pts[0].clientY + pts[1].clientY) / 2;
                     let dx = pts[0].clientX - pts[1].clientX;
                     let dy = pts[0].clientY - pts[1].clientY;
                     let dist = Math.hypot(dx, dy);
-                    let scale = dist / initialPinchDistance;
                     
+                    let scale = dist / initialPinchDistance;
                     this.ui.zoom = Math.max(0.1, Math.min(10.0, initialPinchZoom * scale));
                     document.getElementById('zoom-workspace').value = this.ui.zoom * 100;
                     document.getElementById('val-zoom').innerText = Math.round(this.ui.zoom * 100) + "%";
+                    
+                    let panDx = cx - initialPinchCenter.x;
+                    let panDy = cy - initialPinchCenter.y;
+                    this.ui.panX += panDx;
+                    this.ui.panY += panDy;
+                    initialPinchCenter = {x: cx, y: cy}; 
+
                     this.draw();
                 }
                 return;
@@ -386,7 +406,10 @@ const app = {
 
         const endAction = (e) => {
             activePointers.delete(e.pointerId);
-            if (activePointers.size < 2) initialPinchDistance = null;
+            if (activePointers.size < 2) {
+                initialPinchDistance = null;
+                initialPinchCenter = null;
+            }
 
             if (this.ui.isDraggingImage) {
                 this.ui.isDraggingImage = false;
@@ -431,7 +454,6 @@ const app = {
         return inside;
     },
 
-    // --- HIERARCHIE DES CALQUES ---
     getFlatLayers(arr = this.layers, parentVisible = true, parentLocked = false) {
         let res = [];
         for (let l of arr) {
@@ -643,14 +665,68 @@ const app = {
         this.draw();
     },
 
-    // --- GESTION CALQUES & DOSSIERS ---
-    addLayer(data) {
+    // --- GESTION CALQUES, DOSSIERS ET DRAG & DROP ---
+    onDragStart(e, id) {
+        this.draggedId = id;
+        e.dataTransfer.effectAllowed = 'move';
+        setTimeout(() => e.target.style.opacity = '0.4', 0);
+    },
+
+    onDragOver(e, type) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        let li = e.currentTarget;
+        if (type === 'folder') {
+            li.classList.add('drag-over-folder');
+            li.classList.remove('drag-over-layer');
+        } else {
+            li.classList.add('drag-over-layer');
+            li.classList.remove('drag-over-folder');
+        }
+    },
+
+    onDragLeave(e) {
+        e.currentTarget.classList.remove('drag-over-folder');
+        e.currentTarget.classList.remove('drag-over-layer');
+    },
+
+    onDrop(e, targetId) {
+        e.preventDefault();
+        e.currentTarget.classList.remove('drag-over-folder');
+        e.currentTarget.classList.remove('drag-over-layer');
+        e.currentTarget.style.opacity = '1';
+
+        if (!this.draggedId || this.draggedId == targetId) return;
+
+        let draggedInfo = this.findLayer(this.draggedId);
+        let targetInfo = this.findLayer(targetId);
+        
+        if (!draggedInfo || !targetInfo) return;
+
+        if (draggedInfo.layer.type === 'folder') {
+            let isChild = this.findLayer(targetId, draggedInfo.layer.layers);
+            if (isChild) return alert("Impossible de déplacer un dossier dans lui-même.");
+        }
+
         this.saveState();
-        let name = data.type === 'image' ? `🖼️ Image ${this.imgCount++}` : data.type === 'wall' ? `🧱 Mur ${this.wallCount++}` : `✏️ Tracé ${this.layerCount++}`;
-        let newL = { id: Date.now()+Math.random(), type: data.type, name: name, visible: true, locked: false, ...data };
-        this.layers.unshift(newL);
-        this.selectedIds = [newL.id];
+        let draggedLayer = draggedInfo.parentArr.splice(draggedInfo.idx, 1)[0];
+        targetInfo = this.findLayer(targetId); // Re-find in case indices shifted
+
+        if (targetInfo.layer.type === 'folder') {
+            targetInfo.layer.layers.unshift(draggedLayer);
+            targetInfo.layer.isOpen = true;
+        } else {
+            targetInfo.parentArr.splice(targetInfo.idx, 0, draggedLayer);
+        }
+
+        this.draggedId = null;
+        this.selectedIds = [draggedLayer.id];
         this.refreshLayerList();
+    },
+
+    onDragEnd(e) {
+        e.target.style.opacity = '1';
+        this.draggedId = null;
     },
 
     renderTree(arr, depth) {
@@ -665,7 +741,14 @@ const app = {
                 icon = `<span onclick="app.toggleFolder(${l.id}, event)" style="cursor:pointer; margin-right:5px; width:12px; display:inline-block; font-size:10px;">${l.isOpen ? '▼' : '▶'}</span>`;
             }
 
-            html += `<li class="layer-item ${isSel ? 'selected' : ''} ${l.locked ? 'locked' : ''}" style="padding-left: ${pad}px">
+            html += `<li class="layer-item ${isSel ? 'selected' : ''} ${l.locked ? 'locked' : ''}" style="padding-left: ${pad}px" 
+                draggable="true" 
+                ondragstart="app.onDragStart(event, ${l.id})" 
+                ondragover="app.onDragOver(event, '${l.type}')" 
+                ondragleave="app.onDragLeave(event)" 
+                ondrop="app.onDrop(event, ${l.id})" 
+                ondragend="app.onDragEnd(event)">
+                
                 <input type="checkbox" style="margin-right:8px;" ${l.visible ? 'checked' : ''} onchange="app.toggleVis('${l.id}')">
                 ${icon}
                 <span class="layer-icon" style="background-color: ${col}"></span>
@@ -688,6 +771,7 @@ const app = {
 
         document.getElementById('btn-lock').disabled = this.selectedIds.length === 0;
         document.getElementById('btn-delete').disabled = this.selectedIds.length === 0;
+        document.getElementById('btn-merge').disabled = this.selectedIds.length < 2;
         if(sel) document.getElementById('btn-lock').innerText = sel.locked ? "🔓 Déverrouiller" : "🔒 Verrouiller";
 
         const fsImg = document.getElementById('fs-image');
@@ -722,6 +806,7 @@ const app = {
         });
         this.refreshLayerList(); 
     },
+    
     deleteSelected() {
         if(this.selectedIds.length === 0) return;
         this.saveState(); 
@@ -812,49 +897,47 @@ const app = {
             this.selectedIds = [];
             this.refreshLayerList();
         } else if (info && info.parentArr !== this.layers) {
-            // Sortir un calque de son dossier parent
             this.saveState();
             let l = info.parentArr.splice(info.idx, 1)[0];
-            this.layers.unshift(l); // Le met tout en haut
+            this.layers.unshift(l); 
             this.refreshLayerList();
         }
     },
 
-    // --- IMAGES ---
-    importImage(e) {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const img = new Image();
-                img.onload = () => this.addLayer({ type: 'image', img: img, src: event.target.result, x: 0, y: 0, scale: 1.0, opacity: 0.5, rot: 0, flipH: false, flipV: false });
-                img.src = event.target.result;
-            };
-            reader.readAsDataURL(file);
+    mergeSelected() {
+        let toMerge = [];
+        const extractAndRemove = (arr) => {
+            for(let i = arr.length - 1; i >= 0; i--) {
+                if (arr[i].type === 'folder') {
+                    extractAndRemove(arr[i].layers);
+                } else if (this.selectedIds.includes(arr[i].id) && (arr[i].type === 'path' || arr[i].type === 'pen')) {
+                    toMerge.push(arr.splice(i, 1)[0]);
+                }
+            }
+        };
+
+        this.saveState();
+        extractAndRemove(this.layers);
+        
+        if (toMerge.length < 2) {
+            this.undoStack.pop(); 
+            return alert("Veuillez sélectionner au moins 2 tracés (Crayon) pour fusionner.");
         }
-        e.target.value = '';
-    },
-    updateImageTransform() {
-        let sel = this.findLayer(this.selectedIds[0]);
-        if(sel && sel.layer.type === 'image') {
-            this.saveState();
-            sel.layer.opacity = document.getElementById('img-opacity').value / 100.0;
-            sel.layer.scale = document.getElementById('img-scale').value / 100.0;
-            sel.layer.rot = parseInt(document.getElementById('img-rot').value);
-            document.getElementById('val-rot').innerText = sel.layer.rot + "°";
-            this.draw();
-        }
-    },
-    toggleFlip(axis) {
-        let sel = this.findLayer(this.selectedIds[0]);
-        if(sel && sel.layer.type === 'image') {
-            this.saveState();
-            if(axis === 'H') sel.layer.flipH = !sel.layer.flipH; else sel.layer.flipV = !sel.layer.flipV;
-            this.draw();
-        }
+
+        let mergedPoints = [];
+        toMerge.forEach(l => mergedPoints.push(...l.points));
+        
+        let baseLayer = toMerge[0];
+        let name = `🔗 Fusion ${this.layerCount++}`;
+        let newL = { id: Date.now()+Math.random(), type: 'path', name: name, visible: true, locked: false, color: baseLayer.color, width: baseLayer.width, points: mergedPoints };
+        
+        this.layers.unshift(newL);
+        this.selectedIds = [newL.id];
+        document.getElementById('multi-select-mode').checked = false;
+        this.refreshLayerList();
     },
 
-    // --- SAUVEGARDE & UNDO ---
+    // --- SAUVEGARDE ET EXPORT ---
     saveState() {
         const cleanLayers = (arr) => arr.map(l => {
             let cl = {...l, img:null};
@@ -886,7 +969,6 @@ const app = {
     },
     restoreLayers(jsonStr) {
         let parsed = JSON.parse(jsonStr);
-        
         const rebuildImgs = (arr) => {
             arr.forEach(l => {
                 if (l.type === 'image') {
@@ -921,15 +1003,13 @@ const app = {
 
         const proj = {
             settings: { 
-                zoom: this.ui.zoom*100, 
-                showPoints: document.getElementById('chk-sim-points').checked,
+                zoom: this.ui.zoom*100, showPoints: document.getElementById('chk-sim-points').checked,
                 tool: this.ui.tool, width: this.ui.penWidth*10, tremor: this.ui.tremor, rope: this.ui.ropeLength*2, color: this.ui.color 
             },
             layers: cleanLayers(this.layers)
         };
         
         const blob = new Blob([JSON.stringify(proj)], {type: "application/json"});
-        
         if (navigator.canShare && navigator.userAgent.match(/iPad|iPhone|iPod|Mac/i)) {
             const file = new File([blob], this.currentFileName, {type: "application/json"});
             if (navigator.canShare({ files: [file] })) {
@@ -938,10 +1018,8 @@ const app = {
             }
         }
 
-        const a = document.createElement("a"); 
-        a.href = URL.createObjectURL(blob); 
-        a.download = this.currentFileName; 
-        a.click();
+        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); 
+        a.download = this.currentFileName; a.click();
     },
 
     loadProject(e) {
@@ -978,9 +1056,7 @@ const app = {
                 l.points.forEach(pt => {
                     let rho = Math.hypot(pt.x, pt.y) / this.TABLE_RADIUS;
                     rho = Math.max(0.0, Math.min(1.0, rho));
-                    
                     let theta = Math.atan2(pt.y, pt.x) + (Math.PI / 2);
-                    
                     while (theta - currentTheta > Math.PI) theta -= 2 * Math.PI;
                     while (theta - currentTheta < -Math.PI) theta += 2 * Math.PI;
                     currentTheta = theta;
@@ -995,7 +1071,6 @@ const app = {
         if (!filename.toLowerCase().endsWith('.thr')) filename += '.thr';
 
         const blob = new Blob([thrLines.join('\n')], { type: "text/plain" });
-        
         if (navigator.canShare && navigator.userAgent.match(/iPad|iPhone|iPod|Mac/i)) {
             const file = new File([blob], filename, {type: "text/plain"});
             if (navigator.canShare({ files: [file] })) {
@@ -1005,8 +1080,7 @@ const app = {
         }
 
         const a = document.createElement("a"); a.href = URL.createObjectURL(blob); 
-        a.download = filename; 
-        a.click();
+        a.download = filename; a.click();
     }
 };
 
@@ -1014,4 +1088,5 @@ window.onload = () => app.init();
 </script>
 </body>
 </html>
+
 
