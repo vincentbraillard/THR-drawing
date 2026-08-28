@@ -84,14 +84,13 @@
                 <button class="tab-btn" onclick="app.openTab(event, 'tab-layers')">📑 Calques</button>
             </div>
 
-            <!-- ONGLET FICHIER -->
             <div id="tab-file" class="tab-content active">
                 <fieldset>
                     <legend>💾 Projet (.sunae)</legend>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
                         <input type="file" id="file-open" accept=".sunae" style="display: none;" onchange="app.loadProject(event)">
                         <button class="btn" style="flex:1" onclick="document.getElementById('file-open').click()">📂 Ouvrir</button>
-                        <button class="btn" style="flex:1" onclick="app.clearCacheAndProject()" style="color:red;">🗑️ Nouveau</button>
+                        <button class="btn" style="flex:1; color:red;" onclick="app.clearCacheAndProject()">🗑️ Nouveau</button>
                     </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
                         <button class="btn" style="flex:1" onclick="app.saveProject(false)">💾 Enregistrer</button>
@@ -114,7 +113,6 @@
                 <button class="btn-export" onclick="app.exportTHR()">📤 Exporter en .thr</button>
             </div>
 
-            <!-- ONGLET OUTILS -->
             <div id="tab-tools" class="tab-content">
                 <fieldset>
                     <legend>🛠️ Outils Actifs</legend>
@@ -150,7 +148,6 @@
                 </fieldset>
             </div>
 
-            <!-- ONGLET IMAGE -->
             <div id="tab-image" class="tab-content">
                 <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;" onchange="app.importImage(event)">
                 <button class="btn" style="width:100%; padding:10px; margin-bottom:15px; font-weight:bold;" onclick="document.getElementById('file-image').click()">📂 Importer Image</button>
@@ -181,7 +178,6 @@
                 </fieldset>
             </div>
 
-            <!-- ONGLET CALQUES -->
             <div id="tab-layers" class="tab-content">
                 <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <label>Organisation :</label>
@@ -220,11 +216,10 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.5</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.6</span>
     </div>
 
 <script>
-// Polyfill pour le Drag and Drop iPad
 MobileDragDrop.polyfill({ holdToDrag: 300 });
 window.addEventListener('touchmove', function() {}, {passive: false});
 
@@ -254,7 +249,6 @@ const app = {
         window.addEventListener('resize', () => this.resize());
         this.setupEvents();
         
-        // Chargement depuis le cache (Auto-save)
         let saved = localStorage.getItem('sunae_autosave');
         if (saved) {
             this.loadFromJSON(saved, true);
@@ -280,7 +274,7 @@ const app = {
             };
             localStorage.setItem('sunae_autosave', JSON.stringify(proj));
         } catch(e) {
-            console.warn("Autosave échoué (image peut-être trop lourde)", e);
+            console.warn("Autosave échoué", e);
         }
     },
 
@@ -527,7 +521,7 @@ const app = {
 
     findLayer(id, arr = this.layers) {
         for (let i = 0; i < arr.length; i++) {
-            if (arr[i].id === id) return { layer: arr[i], parentArr: arr, idx: i };
+            if (arr[i].id == id) return { layer: arr[i], parentArr: arr, idx: i };
             if (arr[i].type === 'folder') {
                 let res = this.findLayer(id, arr[i].layers);
                 if (res) return res;
@@ -725,16 +719,15 @@ const app = {
         this.draw();
     },
 
-    // --- DRAG AND DROP DES CALQUES ---
     onDragStart(e, id) {
-        this.draggedId = id;
+        this.draggedId = String(id);
         e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', id); // Sécurité
+        e.dataTransfer.setData('text/plain', this.draggedId); 
         setTimeout(() => e.target.style.opacity = '0.4', 0);
     },
 
     onDragOver(e, type) {
-        e.preventDefault(); // OBLIGATOIRE pour autoriser le Drop
+        e.preventDefault(); 
         e.dataTransfer.dropEffect = 'move';
         let li = e.currentTarget;
         if (type === 'folder') {
@@ -759,6 +752,7 @@ const app = {
         e.currentTarget.classList.remove('drag-over-layer');
         e.currentTarget.style.opacity = '1';
 
+        targetId = String(targetId);
         let dragId = e.dataTransfer.getData('text/plain') || this.draggedId;
         if (!dragId || dragId === targetId) return;
 
@@ -880,6 +874,7 @@ const app = {
     },
 
     selectLayer(id) {
+        id = String(id);
         let multi = document.getElementById('multi-select-mode').checked;
         if (multi) {
             if (this.selectedIds.includes(id)) this.selectedIds = this.selectedIds.filter(x => x !== id);
@@ -1080,7 +1075,7 @@ const app = {
         if (this.undoStack.length > 0) {
             const cleanLayers = (arr) => arr.map(l => { let cl={...l, img:null}; if(cl.type==='folder') cl.layers=cleanLayers(cl.layers); return cl; });
             this.redoStack.push(JSON.stringify(cleanLayers(this.layers)));
-            this.restoreLayers(this.undoStack.pop());
+            this.restoreLayers(JSON.parse(this.undoStack.pop()));
             document.getElementById('btn-undo').disabled = this.undoStack.length === 0;
             document.getElementById('btn-redo').disabled = false;
             this.autoSave();
@@ -1091,28 +1086,50 @@ const app = {
         if (this.redoStack.length > 0) {
             const cleanLayers = (arr) => arr.map(l => { let cl={...l, img:null}; if(cl.type==='folder') cl.layers=cleanLayers(cl.layers); return cl; });
             this.undoStack.push(JSON.stringify(cleanLayers(this.layers)));
-            this.restoreLayers(this.redoStack.pop());
+            this.restoreLayers(JSON.parse(this.redoStack.pop()));
             document.getElementById('btn-undo').disabled = false;
             document.getElementById('btn-redo').disabled = this.redoStack.length === 0;
             this.autoSave();
         }
     },
     
-    restoreLayers(jsonStr) {
-        let parsed = JSON.parse(jsonStr);
+    restoreLayers(parsedArray) {
+        // AUTO-UPGRADE SYSTEM (Convertit les anciens fichiers instantanément)
+        const upgradeLayer = (l) => {
+            if (!l.id) l.id = this.genId();
+            else l.id = String(l.id); // Convertir les vieux IDs (nombres) en Texte
+
+            if (l.type === 'image') {
+                if (l.srcBase64 && !l.src) l.src = l.srcBase64;
+                if (l.image_b64 && !l.src) l.src = "data:image/png;base64," + l.image_b64;
+            }
+            if ((l.type === 'path' || l.type === 'pen') && !l.color) l.color = "#000000";
+            if ((l.type === 'path' || l.type === 'pen') && !l.width) l.width = 2.0;
+
+            if (l.type === 'folder' && l.layers) {
+                l.layers.forEach(upgradeLayer);
+            }
+        };
+
+        if (Array.isArray(parsedArray)) {
+            parsedArray.forEach(upgradeLayer);
+        } else {
+            parsedArray = [];
+        }
+
         const rebuildImgs = (arr) => {
             arr.forEach(l => {
                 if (l.type === 'image') {
                     const img = new Image();
                     img.onload = () => { l.img = img; this.draw(); };
-                    img.src = l.src;
+                    if (l.src) img.src = l.src;
                 } else if (l.type === 'folder') {
                     rebuildImgs(l.layers);
                 }
             });
         };
-        rebuildImgs(parsed);
-        this.layers = parsed;
+        rebuildImgs(parsedArray);
+        this.layers = parsedArray;
         this.selectedIds = [];
         this.refreshLayerList();
     },
@@ -1123,12 +1140,14 @@ const app = {
             if(proj.settings) {
                 document.getElementById('zoom-workspace').value = proj.settings.zoom; this.updateZoomFromSlider();
                 if (proj.settings.showPoints !== undefined) document.getElementById('chk-sim-points').checked = proj.settings.showPoints;
-                document.getElementById('slider-width').value = proj.settings.width;
-                document.getElementById('slider-tremor').value = proj.settings.tremor;
-                document.getElementById('slider-rope').value = proj.settings.rope;
+                if (proj.settings.width !== undefined) document.getElementById('slider-width').value = proj.settings.width;
+                if (proj.settings.tremor !== undefined) document.getElementById('slider-tremor').value = proj.settings.tremor;
+                if (proj.settings.rope !== undefined) document.getElementById('slider-rope').value = proj.settings.rope;
                 this.updateSliders();
-                document.getElementById('color-picker').value = proj.settings.color; this.changeColor();
-                
+                if (proj.settings.color) {
+                    document.getElementById('color-picker').value = proj.settings.color; 
+                    this.changeColor();
+                }
                 if (proj.settings.tool) {
                     let toolRadio = document.querySelector(`input[name="tool"][value="${proj.settings.tool}"]`);
                     if(toolRadio) { toolRadio.checked = true; this.changeTool(); }
@@ -1137,7 +1156,7 @@ const app = {
             if(!isAutoLoad) {
                 this.undoStack = []; this.redoStack = [];
             }
-            this.restoreLayers(JSON.stringify(proj.layers));
+            this.restoreLayers(proj.layers);
         } catch(e) {
             console.error("Erreur de chargement du JSON", e);
             if(isAutoLoad) localStorage.removeItem('sunae_autosave');
@@ -1237,6 +1256,7 @@ window.onload = () => app.init();
 </script>
 </body>
 </html>
+
 
 
 
