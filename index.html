@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Éditeur de Tracés Sunae</title>
     
-    <!-- Polyfill pour forcer le Drag & Drop tactile sur iPadOS -->
+    <!-- Polyfill pour le Drag & Drop tactile -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/default.min.css">
     <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js"></script>
 
@@ -46,9 +46,8 @@
         button.btn-export { background: #2e7d32; color: white; font-weight: bold; padding: 12px; border-radius: 6px; width: 100%; font-size: 14px; border:none; margin-top: 10px;}
         button.btn-icon { padding: 4px 8px; font-size: 12px; }
         
-        #layer-list { list-style: none; padding: 0; margin: 0; border: 1px solid var(--border); border-radius: 4px; max-height: 250px; overflow-y: auto; background: white; }
+        #layer-list { list-style: none; padding: 0; margin: 0; border: 1px solid var(--border); border-radius: 4px; max-height: 250px; overflow-y: auto; background: white; touch-action: pan-y; }
         
-        /* CORRECTION iOS : Désactivation sélection de texte et loupe */
         .layer-item { 
             padding: 6px 8px; border-bottom: 1px solid #eee; display: flex; align-items: center; font-size: 13px; transition: background 0.2s; 
             -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
@@ -58,7 +57,6 @@
         .layer-icon { width: 14px; height: 14px; display: inline-block; margin-right: 8px; border: 1px solid #999; border-radius: 3px; flex-shrink: 0;}
         .rename-btn { cursor: pointer; color: #666; font-size: 11px; padding: 2px 5px; background: #eee; border-radius: 4px; margin-left: 5px; }
         
-        /* Styles pour le Drag and Drop */
         .drag-over-folder { box-shadow: inset 0 0 0 2px var(--primary); background: #e3f2fd !important; }
         .drag-over-layer { border-top: 3px solid var(--primary) !important; }
         
@@ -86,17 +84,20 @@
                 <button class="tab-btn" onclick="app.openTab(event, 'tab-layers')">📑 Calques</button>
             </div>
 
+            <!-- ONGLET FICHIER -->
             <div id="tab-file" class="tab-content active">
                 <fieldset>
                     <legend>💾 Projet (.sunae)</legend>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
                         <input type="file" id="file-open" accept=".sunae" style="display: none;" onchange="app.loadProject(event)">
                         <button class="btn" style="flex:1" onclick="document.getElementById('file-open').click()">📂 Ouvrir</button>
+                        <button class="btn" style="flex:1" onclick="app.clearCacheAndProject()" style="color:red;">🗑️ Nouveau</button>
                     </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
                         <button class="btn" style="flex:1" onclick="app.saveProject(false)">💾 Enregistrer</button>
                         <button class="btn" style="flex:1" onclick="app.saveProject(true)">📝 Sous...</button>
                     </div>
+                    <div style="font-size:11px; color:green; text-align:center;">✓ Auto-sauvegarde activée</div>
                 </fieldset>
                 <fieldset>
                     <legend>🖥️ Espace de travail</legend>
@@ -107,12 +108,13 @@
                         <button class="btn btn-icon" onclick="app.stepSlider('zoom-workspace', 10)">➕</button>
                     </div>
                     <label style="display: flex; align-items: center; gap: 8px; font-weight: normal;">
-                        <input type="checkbox" id="chk-sim-points" checked onchange="app.draw()"> 🟢/🔴 Points début/fin
+                        <input type="checkbox" id="chk-sim-points" checked onchange="app.draw(); app.autoSave();"> 🟢/🔴 Points début/fin
                     </label>
                 </fieldset>
                 <button class="btn-export" onclick="app.exportTHR()">📤 Exporter en .thr</button>
             </div>
 
+            <!-- ONGLET OUTILS -->
             <div id="tab-tools" class="tab-content">
                 <fieldset>
                     <legend>🛠️ Outils Actifs</legend>
@@ -148,6 +150,7 @@
                 </fieldset>
             </div>
 
+            <!-- ONGLET IMAGE -->
             <div id="tab-image" class="tab-content">
                 <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;" onchange="app.importImage(event)">
                 <button class="btn" style="width:100%; padding:10px; margin-bottom:15px; font-weight:bold;" onclick="document.getElementById('file-image').click()">📂 Importer Image</button>
@@ -178,6 +181,7 @@
                 </fieldset>
             </div>
 
+            <!-- ONGLET CALQUES -->
             <div id="tab-layers" class="tab-content">
                 <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <label>Organisation :</label>
@@ -216,14 +220,12 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.4</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.5</span>
     </div>
 
 <script>
-// Initialisation du Polyfill pour forcer iOS Safari à accepter le Drag and Drop
-MobileDragDrop.polyfill({
-    holdToDrag: 300 // Délai de 0.3s pour déclencher le glisser-déposer
-});
+// Polyfill pour le Drag and Drop iPad
+MobileDragDrop.polyfill({ holdToDrag: 300 });
 window.addEventListener('touchmove', function() {}, {passive: false});
 
 const app = {
@@ -245,11 +247,53 @@ const app = {
     
     pos: { startPan: {x:0, y:0}, startImgDrag: {x:0, y:0, initX:0, initY:0}, anchor: {x:0, y:0}, lastSmoothed: {x:0, y:0}, currentPath: [] },
 
+    genId() { return 'L' + Date.now() + Math.floor(Math.random() * 1000); },
+
     init() {
         this.resize();
         window.addEventListener('resize', () => this.resize());
         this.setupEvents();
-        this.draw();
+        
+        // Chargement depuis le cache (Auto-save)
+        let saved = localStorage.getItem('sunae_autosave');
+        if (saved) {
+            this.loadFromJSON(saved, true);
+        } else {
+            this.draw();
+        }
+    },
+
+    autoSave() {
+        try {
+            const cleanLayers = (arr) => arr.map(l => {
+                let cl = {...l, img:null};
+                if(cl.type === 'folder') cl.layers = cleanLayers(cl.layers);
+                return cl;
+            });
+            const proj = {
+                settings: { 
+                    zoom: this.ui.zoom*100, 
+                    showPoints: document.getElementById('chk-sim-points').checked,
+                    tool: this.ui.tool, width: this.ui.penWidth*10, tremor: this.ui.tremor, rope: this.ui.ropeLength*2, color: this.ui.color 
+                },
+                layers: cleanLayers(this.layers)
+            };
+            localStorage.setItem('sunae_autosave', JSON.stringify(proj));
+        } catch(e) {
+            console.warn("Autosave échoué (image peut-être trop lourde)", e);
+        }
+    },
+
+    clearCacheAndProject() {
+        if(confirm("Créer un nouveau projet ? (Tout ce qui n'est pas sauvegardé sera perdu)")){
+            localStorage.removeItem('sunae_autosave');
+            this.layers = [];
+            this.undoStack = [];
+            this.redoStack = [];
+            this.selectedIds = [];
+            this.currentFileName = null;
+            this.refreshLayerList();
+        }
     },
 
     resize() {
@@ -289,7 +333,6 @@ const app = {
                 this.ui.isPanning = false;
                 this.ui.isDraggingImage = false;
                 this.pos.currentPath = [];
-                
                 let pts = Array.from(activePointers.values());
                 let dx = pts[0].clientX - pts[1].clientX;
                 let dy = pts[0].clientY - pts[1].clientY;
@@ -484,7 +527,7 @@ const app = {
 
     findLayer(id, arr = this.layers) {
         for (let i = 0; i < arr.length; i++) {
-            if (arr[i].id == id) return { layer: arr[i], parentArr: arr, idx: i };
+            if (arr[i].id === id) return { layer: arr[i], parentArr: arr, idx: i };
             if (arr[i].type === 'folder') {
                 let res = this.findLayer(id, arr[i].layers);
                 if (res) return res;
@@ -647,11 +690,13 @@ const app = {
         document.getElementById('val-zoom').innerText = val + "%";
         this.ui.zoom = val / 100.0;
         this.draw();
+        this.autoSave();
     },
 
     changeTool() {
         this.ui.tool = document.querySelector('input[name="tool"]:checked').value;
         document.getElementById('canvas-wrapper').style.cursor = this.ui.tool === 'select' ? 'pointer' : 'crosshair';
+        this.autoSave();
     },
 
     changeColor() {
@@ -661,6 +706,7 @@ const app = {
         const hex = this.ui.color.replace('#', '');
         const r = parseInt(hex.substr(0,2),16), g = parseInt(hex.substr(2,2),16), b = parseInt(hex.substr(4,2),16);
         btn.style.color = ((r*299 + g*587 + b*114) / 1000) > 128 ? 'black' : 'white';
+        this.autoSave();
     },
 
     updateSliders() {
@@ -670,6 +716,7 @@ const app = {
         document.getElementById('val-tremor').innerText = this.ui.tremor;
         this.ui.ropeLength = document.getElementById('slider-rope').value / 2.0;
         document.getElementById('val-rope').innerText = this.ui.ropeLength.toFixed(1);
+        this.autoSave();
     },
 
     updateSim() {
@@ -678,15 +725,16 @@ const app = {
         this.draw();
     },
 
-    // --- GESTION CALQUES & DRAG & DROP ---
+    // --- DRAG AND DROP DES CALQUES ---
     onDragStart(e, id) {
         this.draggedId = id;
         e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', id); // Sécurité
         setTimeout(() => e.target.style.opacity = '0.4', 0);
     },
 
     onDragOver(e, type) {
-        e.preventDefault();
+        e.preventDefault(); // OBLIGATOIRE pour autoriser le Drop
         e.dataTransfer.dropEffect = 'move';
         let li = e.currentTarget;
         if (type === 'folder') {
@@ -705,15 +753,17 @@ const app = {
 
     onDrop(e, targetId) {
         e.preventDefault();
+        e.stopPropagation();
+        
         e.currentTarget.classList.remove('drag-over-folder');
         e.currentTarget.classList.remove('drag-over-layer');
         e.currentTarget.style.opacity = '1';
 
-        if (!this.draggedId || this.draggedId == targetId) return;
+        let dragId = e.dataTransfer.getData('text/plain') || this.draggedId;
+        if (!dragId || dragId === targetId) return;
 
-        let draggedInfo = this.findLayer(this.draggedId);
+        let draggedInfo = this.findLayer(dragId);
         let targetInfo = this.findLayer(targetId);
-        
         if (!draggedInfo || !targetInfo) return;
 
         if (draggedInfo.layer.type === 'folder') {
@@ -723,7 +773,7 @@ const app = {
 
         this.saveState();
         let draggedLayer = draggedInfo.parentArr.splice(draggedInfo.idx, 1)[0];
-        targetInfo = this.findLayer(targetId);
+        targetInfo = this.findLayer(targetId); 
 
         if (targetInfo.layer.type === 'folder') {
             targetInfo.layer.layers.unshift(draggedLayer);
@@ -745,7 +795,7 @@ const app = {
     addLayer(data) {
         this.saveState();
         let name = data.type === 'image' ? `🖼️ Image ${this.imgCount++}` : data.type === 'wall' ? `🧱 Mur ${this.wallCount++}` : `✏️ Tracé ${this.layerCount++}`;
-        let newL = { id: Date.now()+Math.random(), type: data.type, name: name, visible: true, locked: false, ...data };
+        let newL = { id: this.genId(), type: data.type, name: name, visible: true, locked: false, ...data };
         
         let targetArr = this.layers;
         let insertIndex = 0; 
@@ -778,22 +828,23 @@ const app = {
             
             let icon = '';
             if (l.type === 'folder') {
-                icon = `<span onclick="app.toggleFolder(${l.id}, event)" style="cursor:pointer; margin-right:5px; width:12px; display:inline-block; font-size:10px;">${l.isOpen ? '▼' : '▶'}</span>`;
+                icon = `<span onclick="app.toggleFolder('${l.id}', event)" style="cursor:pointer; margin-right:5px; width:12px; display:inline-block; font-size:10px;">${l.isOpen ? '▼' : '▶'}</span>`;
             }
 
             html += `<li class="layer-item ${isSel ? 'selected' : ''} ${l.locked ? 'locked' : ''}" style="padding-left: ${pad}px" 
                 draggable="true" 
-                ondragstart="app.onDragStart(event, ${l.id})" 
+                ondragstart="app.onDragStart(event, '${l.id}')" 
+                ondragenter="event.preventDefault()" 
                 ondragover="app.onDragOver(event, '${l.type}')" 
                 ondragleave="app.onDragLeave(event)" 
-                ondrop="app.onDrop(event, ${l.id})" 
+                ondrop="app.onDrop(event, '${l.id}')" 
                 ondragend="app.onDragEnd(event)">
                 
-                <input type="checkbox" style="margin-right:8px;" ${l.visible ? 'checked' : ''} onchange="app.toggleVis('${l.id}')">
+                <input type="checkbox" style="margin-right:8px; pointer-events:auto;" ${l.visible ? 'checked' : ''} onchange="app.toggleVis('${l.id}')">
                 ${icon}
                 <span class="layer-icon" style="background-color: ${col}"></span>
                 <span style="flex:1; cursor:pointer;" onclick="app.selectLayer('${l.id}')">${l.name} ${l.locked ? '🔒' : '🔓'}</span>
-                <span class="rename-btn" onclick="app.renameLayer('${l.id}', event)">✏️</span>
+                <span class="rename-btn" style="pointer-events:auto;" onclick="app.renameLayer('${l.id}', event)">✏️</span>
             </li>`;
             
             if (l.type === 'folder' && l.isOpen) {
@@ -825,10 +876,10 @@ const app = {
             fsImg.disabled = true;
         }
         this.draw();
+        this.autoSave();
     },
 
     selectLayer(id) {
-        id = Number(id);
         let multi = document.getElementById('multi-select-mode').checked;
         if (multi) {
             if (this.selectedIds.includes(id)) this.selectedIds = this.selectedIds.filter(x => x !== id);
@@ -883,7 +934,7 @@ const app = {
     },
 
     moveLayer(dir) {
-        if(this.selectedIds.length !== 1) { alert("Veuillez sélectionner exactement 1 calque pour le déplacer."); return; }
+        if(this.selectedIds.length !== 1) { alert("Veuillez sélectionner 1 seul calque pour le déplacer."); return; }
         this.saveState();
         let info = this.findLayer(this.selectedIds[0]);
         let arr = info.parentArr;
@@ -901,7 +952,7 @@ const app = {
         if(this.selectedIds.length === 0) return;
         this.saveState();
         
-        let newFolder = { id: Date.now()+Math.random(), type: 'folder', name: '📁 Dossier ' + this.folderCount++, visible: true, locked: false, isOpen: true, layers: [] };
+        let newFolder = { id: this.genId(), type: 'folder', name: '📁 Dossier ' + this.folderCount++, visible: true, locked: false, isOpen: true, layers: [] };
         let extracted = [];
         let firstParent = null; let firstIdx = -1;
 
@@ -969,7 +1020,7 @@ const app = {
         
         let baseLayer = toMerge[0];
         let name = `🔗 Fusion ${this.layerCount++}`;
-        let newL = { id: Date.now()+Math.random(), type: 'path', name: name, visible: true, locked: false, color: baseLayer.color, width: baseLayer.width, points: mergedPoints };
+        let newL = { id: this.genId(), type: 'path', name: name, visible: true, locked: false, color: baseLayer.color, width: baseLayer.width, points: mergedPoints };
         
         this.layers.unshift(newL);
         this.selectedIds = [newL.id];
@@ -983,13 +1034,16 @@ const app = {
             const reader = new FileReader();
             reader.onload = (event) => {
                 const img = new Image();
-                img.onload = () => this.addLayer({ type: 'image', img: img, src: event.target.result, x: 0, y: 0, scale: 1.0, opacity: 0.5, rot: 0, flipH: false, flipV: false });
+                img.onload = () => {
+                    this.addLayer({ type: 'image', img: img, src: event.target.result, x: 0, y: 0, scale: 1.0, opacity: 0.5, rot: 0, flipH: false, flipV: false });
+                }
                 img.src = event.target.result;
             };
             reader.readAsDataURL(file);
         }
         e.target.value = '';
     },
+    
     updateImageTransform() {
         let sel = this.findLayer(this.selectedIds[0]);
         if(sel && sel.layer.type === 'image') {
@@ -1021,6 +1075,7 @@ const app = {
         document.getElementById('btn-undo').disabled = false;
         document.getElementById('btn-redo').disabled = true;
     },
+    
     undo() {
         if (this.undoStack.length > 0) {
             const cleanLayers = (arr) => arr.map(l => { let cl={...l, img:null}; if(cl.type==='folder') cl.layers=cleanLayers(cl.layers); return cl; });
@@ -1028,8 +1083,10 @@ const app = {
             this.restoreLayers(this.undoStack.pop());
             document.getElementById('btn-undo').disabled = this.undoStack.length === 0;
             document.getElementById('btn-redo').disabled = false;
+            this.autoSave();
         }
     },
+    
     redo() {
         if (this.redoStack.length > 0) {
             const cleanLayers = (arr) => arr.map(l => { let cl={...l, img:null}; if(cl.type==='folder') cl.layers=cleanLayers(cl.layers); return cl; });
@@ -1037,8 +1094,10 @@ const app = {
             this.restoreLayers(this.redoStack.pop());
             document.getElementById('btn-undo').disabled = false;
             document.getElementById('btn-redo').disabled = this.redoStack.length === 0;
+            this.autoSave();
         }
     },
+    
     restoreLayers(jsonStr) {
         let parsed = JSON.parse(jsonStr);
         const rebuildImgs = (arr) => {
@@ -1056,6 +1115,33 @@ const app = {
         this.layers = parsed;
         this.selectedIds = [];
         this.refreshLayerList();
+    },
+
+    loadFromJSON(jsonStr, isAutoLoad = false) {
+        try {
+            const proj = JSON.parse(jsonStr);
+            if(proj.settings) {
+                document.getElementById('zoom-workspace').value = proj.settings.zoom; this.updateZoomFromSlider();
+                if (proj.settings.showPoints !== undefined) document.getElementById('chk-sim-points').checked = proj.settings.showPoints;
+                document.getElementById('slider-width').value = proj.settings.width;
+                document.getElementById('slider-tremor').value = proj.settings.tremor;
+                document.getElementById('slider-rope').value = proj.settings.rope;
+                this.updateSliders();
+                document.getElementById('color-picker').value = proj.settings.color; this.changeColor();
+                
+                if (proj.settings.tool) {
+                    let toolRadio = document.querySelector(`input[name="tool"][value="${proj.settings.tool}"]`);
+                    if(toolRadio) { toolRadio.checked = true; this.changeTool(); }
+                }
+            }
+            if(!isAutoLoad) {
+                this.undoStack = []; this.redoStack = [];
+            }
+            this.restoreLayers(JSON.stringify(proj.layers));
+        } catch(e) {
+            console.error("Erreur de chargement du JSON", e);
+            if(isAutoLoad) localStorage.removeItem('sunae_autosave');
+        }
     },
 
     saveProject(isSaveAs = false) {
@@ -1102,18 +1188,7 @@ const app = {
         this.currentFileName = file.name;
         const reader = new FileReader();
         reader.onload = (evt) => {
-            const proj = JSON.parse(evt.target.result);
-            if(proj.settings) {
-                document.getElementById('zoom-workspace').value = proj.settings.zoom; this.updateZoomFromSlider();
-                if (proj.settings.showPoints !== undefined) document.getElementById('chk-sim-points').checked = proj.settings.showPoints;
-                document.getElementById('slider-width').value = proj.settings.width;
-                document.getElementById('slider-tremor').value = proj.settings.tremor;
-                document.getElementById('slider-rope').value = proj.settings.rope;
-                this.updateSliders();
-                document.getElementById('color-picker').value = proj.settings.color; this.changeColor();
-            }
-            this.undoStack = []; this.redoStack = [];
-            this.restoreLayers(JSON.stringify(proj.layers));
+            this.loadFromJSON(evt.target.result, false);
         };
         reader.readAsText(file);
         e.target.value = '';
