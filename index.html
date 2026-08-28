@@ -41,6 +41,8 @@
         .val-badge { font-weight: bold; font-size: 13px; color: var(--primary); }
         
         input[type="range"] { flex: 1; }
+        input[type="text"] { flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+        
         button.btn { background: #f0f0f0; border: 1px solid #ccc; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;}
         button.btn-primary { background: var(--primary); color: white; border: none; }
         button.btn-export { background: #2e7d32; color: white; font-weight: bold; padding: 12px; border-radius: 6px; width: 100%; font-size: 14px; border:none; margin-top: 10px;}
@@ -54,6 +56,10 @@
         }
         .layer-item.selected { background: #e3f2fd; }
         .layer-item.locked { color: #888; }
+        
+        /* SURBRILLANCE SIMULATION */
+        .layer-item.sim-active { background-color: #fff9c4 !important; border-left: 4px solid #ff9800 !important; font-weight: bold; }
+        
         .layer-icon { width: 14px; height: 14px; display: inline-block; margin-right: 8px; border: 1px solid #999; border-radius: 3px; flex-shrink: 0;}
         .rename-btn { cursor: pointer; color: #666; font-size: 11px; padding: 2px 5px; background: #eee; border-radius: 4px; margin-left: 5px; }
         
@@ -86,15 +92,18 @@
 
             <div id="tab-file" class="tab-content active">
                 <fieldset>
-                    <legend>💾 Projet (.sunae)</legend>
+                    <legend>💾 Fichier & Projet</legend>
+                    <div class="row" style="margin-bottom: 12px;">
+                        <label>Nom du fichier :</label>
+                        <input type="text" id="project-filename" value="mon_projet" oninput="app.autoSave()">
+                    </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
                         <input type="file" id="file-open" accept=".sunae" style="display: none;" onchange="app.loadProject(event)">
                         <button class="btn" style="flex:1" onclick="document.getElementById('file-open').click()">📂 Ouvrir</button>
                         <button class="btn" style="flex:1; color:red;" onclick="app.clearCacheAndProject()">🗑️ Nouveau</button>
                     </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-                        <button class="btn" style="flex:1" onclick="app.saveProject(false)">💾 Enregistrer</button>
-                        <button class="btn" style="flex:1" onclick="app.saveProject(true)">📝 Sous...</button>
+                        <button class="btn" style="flex:1" onclick="app.saveProject()">💾 Enregistrer (.sunae)</button>
                     </div>
                     <div style="font-size:11px; color:green; text-align:center;">✓ Auto-sauvegarde activée</div>
                 </fieldset>
@@ -110,7 +119,7 @@
                         <input type="checkbox" id="chk-sim-points" checked onchange="app.draw(); app.autoSave();"> 🟢/🔴 Points début/fin
                     </label>
                 </fieldset>
-                <button class="btn-export" onclick="app.exportTHR()">📤 Exporter en .thr</button>
+                <button class="btn-export" onclick="app.exportTHR()">📤 Exporter vers Machine (.thr)</button>
             </div>
 
             <div id="tab-tools" class="tab-content">
@@ -216,7 +225,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.6</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.7</span>
     </div>
 
 <script>
@@ -232,12 +241,12 @@ const app = {
     undoStack: [], redoStack: [],
     layerCount: 1, imgCount: 1, wallCount: 1, folderCount: 1,
     selectedIds: [], 
-    currentFileName: null,
     draggedId: null,
     
     ui: {
         tool: 'pen', penWidth: 2.0, ropeLength: 5.0, tremor: 0.0, color: '#000000',
-        zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isDraggingImage: false
+        zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isDraggingImage: false,
+        lastActiveSimId: null
     },
     
     pos: { startPan: {x:0, y:0}, startImgDrag: {x:0, y:0, initX:0, initY:0}, anchor: {x:0, y:0}, lastSmoothed: {x:0, y:0}, currentPath: [] },
@@ -265,6 +274,7 @@ const app = {
                 return cl;
             });
             const proj = {
+                filename: document.getElementById('project-filename').value,
                 settings: { 
                     zoom: this.ui.zoom*100, 
                     showPoints: document.getElementById('chk-sim-points').checked,
@@ -285,7 +295,7 @@ const app = {
             this.undoStack = [];
             this.redoStack = [];
             this.selectedIds = [];
-            this.currentFileName = null;
+            document.getElementById('project-filename').value = "nouveau_projet";
             this.refreshLayerList();
         }
     },
@@ -600,10 +610,15 @@ const app = {
         for (let i = flatLayers.length - 1; i >= 0; i--) {
             let l = flatLayers[i];
             if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen') && l.points) {
-                for(let j = 0; j < l.points.length; j++) pts.push(l.points[j]);
+                for(let j = 0; j < l.points.length; j++) {
+                    pts.push({ x: l.points[j].x, y: l.points[j].y, layerId: l.id });
+                }
             }
         }
         
+        // Reset la surbrillance dans la liste de calques
+        document.querySelectorAll('.layer-item').forEach(el => el.classList.remove('sim-active'));
+
         if (pts.length === 0) return;
 
         let dists = [0], totalDist = 0;
@@ -614,6 +629,7 @@ const app = {
 
         let targetDist = (this.ui.simPercent / 1000.0) * totalDist;
         let ballPos = pts[0];
+        let activeSimLayerId = null;
         
         if (this.ui.simPercent > 0 && totalDist > 0) {
             this.ctx.beginPath(); 
@@ -622,6 +638,7 @@ const app = {
                 if (dists[i] <= targetDist) {
                     this.ctx.lineTo(pts[i].x, pts[i].y);
                     ballPos = pts[i];
+                    activeSimLayerId = pts[i].layerId;
                 } else {
                     let segLen = dists[i] - dists[i-1];
                     let ratio = segLen > 0 ? (targetDist - dists[i-1]) / segLen : 0;
@@ -629,10 +646,17 @@ const app = {
                     let ny = pts[i-1].y + (pts[i].y - pts[i-1].y) * ratio;
                     this.ctx.lineTo(nx, ny);
                     ballPos = { x: nx, y: ny };
+                    activeSimLayerId = pts[i].layerId;
                     break;
                 }
             }
             this.ctx.strokeStyle = "rgba(0, 120, 215, 0.8)"; this.ctx.lineWidth = 3 / this.ui.zoom; this.ctx.stroke();
+
+            // Active la surbrillance sur l'élément HTML
+            if (activeSimLayerId) {
+                let li = document.getElementById('li-' + activeSimLayerId);
+                if (li) li.classList.add('sim-active');
+            }
         }
 
         let pointRadius = 6 / this.ui.zoom;
@@ -646,8 +670,10 @@ const app = {
             this.ctx.fillStyle = "red"; this.ctx.fill(); 
         }
 
-        this.ctx.beginPath(); this.ctx.arc(ballPos.x, ballPos.y, ballRadius, 0, Math.PI*2);
-        this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.strokeStyle="#000"; this.ctx.lineWidth=1/this.ui.zoom; this.ctx.stroke();
+        if (this.ui.simPercent > 0) {
+            this.ctx.beginPath(); this.ctx.arc(ballPos.x, ballPos.y, ballRadius, 0, Math.PI*2);
+            this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.strokeStyle="#000"; this.ctx.lineWidth=1/this.ui.zoom; this.ctx.stroke();
+        }
     },
 
     openTab(evt, tabName) {
@@ -825,7 +851,7 @@ const app = {
                 icon = `<span onclick="app.toggleFolder('${l.id}', event)" style="cursor:pointer; margin-right:5px; width:12px; display:inline-block; font-size:10px;">${l.isOpen ? '▼' : '▶'}</span>`;
             }
 
-            html += `<li class="layer-item ${isSel ? 'selected' : ''} ${l.locked ? 'locked' : ''}" style="padding-left: ${pad}px" 
+            html += `<li id="li-${l.id}" class="layer-item ${isSel ? 'selected' : ''} ${l.locked ? 'locked' : ''}" style="padding-left: ${pad}px" 
                 draggable="true" 
                 ondragstart="app.onDragStart(event, '${l.id}')" 
                 ondragenter="event.preventDefault()" 
@@ -1094,10 +1120,9 @@ const app = {
     },
     
     restoreLayers(parsedArray) {
-        // AUTO-UPGRADE SYSTEM (Convertit les anciens fichiers instantanément)
         const upgradeLayer = (l) => {
             if (!l.id) l.id = this.genId();
-            else l.id = String(l.id); // Convertir les vieux IDs (nombres) en Texte
+            else l.id = String(l.id); 
 
             if (l.type === 'image') {
                 if (l.srcBase64 && !l.src) l.src = l.srcBase64;
@@ -1137,6 +1162,9 @@ const app = {
     loadFromJSON(jsonStr, isAutoLoad = false) {
         try {
             const proj = JSON.parse(jsonStr);
+            if (proj.filename) {
+                document.getElementById('project-filename').value = proj.filename.replace('.sunae', '');
+            }
             if(proj.settings) {
                 document.getElementById('zoom-workspace').value = proj.settings.zoom; this.updateZoomFromSlider();
                 if (proj.settings.showPoints !== undefined) document.getElementById('chk-sim-points').checked = proj.settings.showPoints;
@@ -1163,14 +1191,9 @@ const app = {
         }
     },
 
-    saveProject(isSaveAs = false) {
-        if (isSaveAs || !this.currentFileName) {
-            let defaultName = this.currentFileName ? this.currentFileName.replace('.sunae', '') : "mon_projet";
-            let filename = prompt("Nom du fichier à sauvegarder :", defaultName);
-            if (!filename) return; 
-            if (!filename.toLowerCase().endsWith('.sunae')) filename += '.sunae';
-            this.currentFileName = filename;
-        }
+    saveProject() {
+        let baseName = document.getElementById('project-filename').value.trim() || "mon_projet";
+        let filename = baseName.endsWith('.sunae') ? baseName : baseName + '.sunae';
 
         const cleanLayers = (arr) => arr.map(l => {
             let cl = {...l, img:null};
@@ -1179,6 +1202,7 @@ const app = {
         });
 
         const proj = {
+            filename: filename,
             settings: { 
                 zoom: this.ui.zoom*100, 
                 showPoints: document.getElementById('chk-sim-points').checked,
@@ -1188,23 +1212,22 @@ const app = {
         };
         
         const blob = new Blob([JSON.stringify(proj)], {type: "application/json"});
-        if (navigator.canShare && navigator.userAgent.match(/iPad|iPhone|iPod|Mac/i)) {
-            const file = new File([blob], this.currentFileName, {type: "application/json"});
-            if (navigator.canShare({ files: [file] })) {
-                navigator.share({ files: [file], title: this.currentFileName }).catch(e=>{});
-                return;
-            }
-        }
-
+        
+        // Utilisation directe du lien de téléchargement (bypasse la sécurité de safari)
+        const url = URL.createObjectURL(blob);
         const a = document.createElement("a"); 
-        a.href = URL.createObjectURL(blob); 
-        a.download = this.currentFileName; a.click();
+        a.href = url; 
+        a.download = filename; 
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     },
 
     loadProject(e) {
         const file = e.target.files[0];
         if (!file) return;
-        this.currentFileName = file.name;
+        document.getElementById('project-filename').value = file.name.replace('.sunae', '');
         const reader = new FileReader();
         reader.onload = (evt) => {
             this.loadFromJSON(evt.target.result, false);
@@ -1234,21 +1257,20 @@ const app = {
         }
         if (thrLines.length === 0) return alert("Aucun tracé à exporter !");
         
-        let filename = prompt("Nom du fichier à exporter :", "export_table");
-        if (!filename) return; 
-        if (!filename.toLowerCase().endsWith('.thr')) filename += '.thr';
+        let baseName = document.getElementById('project-filename').value.trim() || "export_table";
+        let filename = baseName.endsWith('.thr') ? baseName : baseName + '.thr';
 
         const blob = new Blob([thrLines.join('\n')], { type: "text/plain" });
-        if (navigator.canShare && navigator.userAgent.match(/iPad|iPhone|iPod|Mac/i)) {
-            const file = new File([blob], filename, {type: "text/plain"});
-            if (navigator.canShare({ files: [file] })) {
-                navigator.share({ files: [file], title: filename }).catch(e=>{});
-                return;
-            }
-        }
-
-        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); 
-        a.download = filename; a.click();
+        
+        // Utilisation directe du lien de téléchargement
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a"); 
+        a.href = url; 
+        a.download = filename; 
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     }
 };
 
@@ -1256,6 +1278,7 @@ window.onload = () => app.init();
 </script>
 </body>
 </html>
+
 
 
 
