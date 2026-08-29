@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -57,7 +58,6 @@
         .layer-item.selected { background: #e3f2fd; }
         .layer-item.locked { color: #888; }
         
-        /* SURBRILLANCE SIMULATION */
         .layer-item.sim-active { background-color: #fff9c4 !important; border-left: 4px solid #ff9800 !important; font-weight: bold; }
         
         .layer-icon { width: 14px; height: 14px; display: inline-block; margin-right: 8px; border: 1px solid #999; border-radius: 3px; flex-shrink: 0;}
@@ -98,7 +98,8 @@
                         <input type="text" id="project-filename" value="mon_projet" oninput="app.autoSave()">
                     </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-                        <input type="file" id="file-open" accept=".sunae,.json" style="display: none;" onchange="app.loadProject(event)">
+                        <!-- Suppression du 'accept' strict pour autoriser la sélection sur iPadOS -->
+                        <input type="file" id="file-open" style="display: none;" onchange="app.loadProject(event)">
                         <button class="btn" style="flex:1" onclick="document.getElementById('file-open').click()">📂 Ouvrir</button>
                         <button class="btn" style="flex:1; color:red;" onclick="app.clearCacheAndProject()">🗑️ Nouveau</button>
                     </div>
@@ -226,7 +227,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.9</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.10</span>
     </div>
 
 <script>
@@ -619,7 +620,6 @@ const app = {
             }
         }
         
-        // Reset la surbrillance
         document.querySelectorAll('.layer-item').forEach(el => el.classList.remove('sim-active'));
 
         if (pts.length === 0) return;
@@ -655,7 +655,6 @@ const app = {
             }
             this.ctx.strokeStyle = "rgba(0, 120, 215, 0.8)"; this.ctx.lineWidth = 3 / this.ui.zoom; this.ctx.stroke();
 
-            // Active la surbrillance (Calque ET Dossier Parent si fermé)
             if (activeSimId) {
                 let li = document.getElementById('li-' + activeSimId);
                 if (li) li.classList.add('sim-active');
@@ -1142,13 +1141,13 @@ const app = {
     },
     
     restoreLayers(parsedArray) {
-        // SYSTEME AUTO-UPGRADE (Convertit et nettoie les anciens fichiers)
         const upgradeLayer = (l) => {
             if (l.id === undefined || l.id === null) {
                 l.id = this.genId();
             } else {
+                // S'assure que l'ID est une string et commence par une lettre pour le DOM (iPad)
                 let sId = String(l.id).replace(/[^a-zA-Z0-9]/g, '_');
-                if (!sId.startsWith('L')) sId = 'L' + sId;
+                if (!sId.match(/^[a-zA-Z]/)) sId = 'L' + sId;
                 l.id = sId;
             }
 
@@ -1216,7 +1215,6 @@ const app = {
             this.restoreLayers(proj.layers);
         } catch(e) {
             console.error("Erreur de chargement du JSON", e);
-            alert("Impossible d'ouvrir ce fichier. Il est peut-être corrompu.");
             if(isAutoLoad) localStorage.removeItem('sunae_autosave');
         }
     },
@@ -1313,7 +1311,7 @@ const app = {
     loadProject(e) {
         const file = e.target.files[0];
         if (!file) return;
-        document.getElementById('project-filename').value = file.name.replace('.sunae', '');
+        document.getElementById('project-filename').value = file.name.replace('.sunae', '').replace('.json', '');
         const reader = new FileReader();
         reader.onload = (evt) => {
             this.loadFromJSON(evt.target.result, false);
