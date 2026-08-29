@@ -42,6 +42,7 @@
         
         input[type="range"] { flex: 1; }
         input[type="text"] { flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; font-weight: bold; color: #333;}
+        select { padding: 4px; border-radius: 4px; border: 1px solid #ccc; font-size: 13px; }
         
         button.btn { background: #f0f0f0; border: 1px solid #ccc; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;}
         button.btn-primary { background: var(--primary); color: white; border: none; }
@@ -84,7 +85,7 @@
             <div class="tabs">
                 <button class="tab-btn active" onclick="app.openTab(event, 'tab-file')">📁 Fichier</button>
                 <button class="tab-btn" onclick="app.openTab(event, 'tab-tools')">🖌️ Outils</button>
-                <button class="tab-btn" onclick="app.openTab(event, 'tab-image')">🖼️ Image</button>
+                <button class="tab-btn" onclick="app.openTab(event, 'tab-import')">📥 Import</button>
                 <button class="tab-btn" onclick="app.openTab(event, 'tab-layers')">📑 Calques</button>
             </div>
 
@@ -96,10 +97,9 @@
                         <input type="text" id="project-filename" value="mon_projet" oninput="app.autoSave()">
                     </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-                        <!-- Retrait de l'accept strict pour compatibilité iPadOS -->
-                        <input type="file" id="file-open" style="display: none;" onchange="app.loadProject(event)">
+                        <input type="file" id="file-open" accept=".sunae,.json" style="display: none;" onchange="app.loadProject(event)">
                         <button class="btn" style="flex:1" onclick="document.getElementById('file-open').click()">📂 Ouvrir</button>
-                        <button class="btn" style="flex:1; color:red;" onclick="app.clearCacheAndProject()">🗑️ Nouveau</button>
+                        <button class="btn" style="flex:1; color:red;" onclick="app.newProject()">🗑️ Nouveau</button>
                     </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
                         <button class="btn" style="flex:1" onclick="app.handleSave('.sunae', false)">💾 Enregistrer</button>
@@ -109,6 +109,13 @@
                 </fieldset>
                 <fieldset>
                     <legend>🖥️ Espace de travail</legend>
+                    <div class="row" style="margin-bottom: 12px;">
+                        <label>Forme :</label>
+                        <select id="table-shape" onchange="app.changeShape()">
+                            <option value="round">Table Ronde</option>
+                            <option value="rect">Rectangle 1200x500</option>
+                        </select>
+                    </div>
                     <div class="row"><label>🔍 Zoom du Canevas :</label> <span class="val-badge" id="val-zoom">100%</span></div>
                     <div class="row-slider">
                         <button class="btn btn-icon" onclick="app.stepSlider('zoom-workspace', -10)">➖</button>
@@ -157,27 +164,35 @@
                 </fieldset>
             </div>
 
-            <div id="tab-image" class="tab-content">
+            <div id="tab-import" class="tab-content">
                 <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;" onchange="app.importImage(event)">
-                <button class="btn" style="width:100%; padding:10px; margin-bottom:15px; font-weight:bold;" onclick="document.getElementById('file-image').click()">📂 Importer Image</button>
-                <fieldset id="fs-image" disabled>
-                    <legend>🖼️ Calque Image Sélectionné</legend>
-                    <div class="row"><label>🌗 Opacité :</label></div>
-                    <div class="row-slider">
-                        <button class="btn btn-icon" onclick="app.stepSlider('img-opacity', -5)">➖</button>
-                        <input type="range" id="img-opacity" min="0" max="100" value="50" oninput="app.updateImageTransform()">
-                        <button class="btn btn-icon" onclick="app.stepSlider('img-opacity', 5)">➕</button>
+                <input type="file" id="file-thr" accept=".thr" style="display:none;" onchange="app.importTHR(event)">
+                
+                <div style="display:flex; gap:5px; margin-bottom:15px;">
+                    <button class="btn" style="flex:1; font-weight:bold;" onclick="document.getElementById('file-image').click()">📂 Image</button>
+                    <button class="btn" style="flex:1; font-weight:bold;" onclick="document.getElementById('file-thr').click()">📂 Tracé (.thr)</button>
+                </div>
+                
+                <fieldset id="fs-transform" disabled>
+                    <legend>🖼️ / 〰️ Calque Sélectionné</legend>
+                    <div id="div-opacity">
+                        <div class="row"><label>🌗 Opacité :</label></div>
+                        <div class="row-slider">
+                            <button class="btn btn-icon" onclick="app.stepSlider('img-opacity', -5)">➖</button>
+                            <input type="range" id="img-opacity" min="0" max="100" value="100" oninput="app.updateTransform()">
+                            <button class="btn btn-icon" onclick="app.stepSlider('img-opacity', 5)">➕</button>
+                        </div>
                     </div>
                     <div class="row"><label>📐 Échelle :</label></div>
                     <div class="row-slider">
                         <button class="btn btn-icon" onclick="app.stepSlider('img-scale', -5)">➖</button>
-                        <input type="range" id="img-scale" min="10" max="1000" value="100" oninput="app.updateImageTransform()">
+                        <input type="range" id="img-scale" min="10" max="1000" value="100" oninput="app.updateTransform()">
                         <button class="btn btn-icon" onclick="app.stepSlider('img-scale', 5)">➕</button>
                     </div>
                     <div class="row"><label>🔄 Rotation :</label> <span class="val-badge" id="val-rot">0°</span></div>
                     <div class="row-slider">
                         <button class="btn btn-icon" onclick="app.stepSlider('img-rot', -1)">➖</button>
-                        <input type="range" id="img-rot" min="-180" max="180" value="0" oninput="app.updateImageTransform()">
+                        <input type="range" id="img-rot" min="-180" max="180" value="0" oninput="app.updateTransform()">
                         <button class="btn btn-icon" onclick="app.stepSlider('img-rot', 1)">➕</button>
                     </div>
                     <div style="display:flex; gap:5px; margin-top:10px;">
@@ -225,7 +240,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.12</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.14</span>
     </div>
 
 <script>
@@ -235,11 +250,11 @@ window.addEventListener('touchmove', function() {}, {passive: false});
 const app = {
     canvas: document.getElementById('canvas'),
     ctx: document.getElementById('canvas').getContext('2d'),
-    TABLE_RADIUS: 300,
     
+    settings: { shape: 'round' }, // round ou rect
     layers: [], 
     undoStack: [], redoStack: [],
-    layerCount: 1, imgCount: 1, wallCount: 1, folderCount: 1,
+    layerCount: 1, imgCount: 1, wallCount: 1, folderCount: 1, importedCount: 1,
     selectedIds: [], 
     draggedId: null,
     
@@ -275,6 +290,7 @@ const app = {
             const proj = {
                 filename: document.getElementById('project-filename').value,
                 settings: { 
+                    shape: this.settings.shape,
                     zoom: this.ui.zoom*100, 
                     showPoints: document.getElementById('chk-sim-points').checked,
                     tool: this.ui.tool, width: this.ui.penWidth*10, tremor: this.ui.tremor, rope: this.ui.ropeLength*2, color: this.ui.color 
@@ -287,18 +303,44 @@ const app = {
         }
     },
 
-    clearCacheAndProject() {
-        if(confirm("Créer un nouveau projet ? (Tout ce qui n'est pas sauvegardé sera perdu)")){
-            localStorage.removeItem('sunae_autosave');
-            this.layers = [];
-            this.undoStack = [];
-            this.redoStack = [];
-            this.selectedIds = [];
-            document.getElementById('project-filename').value = "mon_projet";
-            document.getElementById('slider-sim').value = 0;
-            this.ui.simPercent = 0;
-            this.refreshLayerList();
+    newProject() {
+        let choice = prompt("Forme de la nouvelle table :\nTapez 1 pour Table Ronde\nTapez 2 pour Table Rectangulaire (1200x500)", "1");
+        if (choice !== "1" && choice !== "2") return;
+
+        localStorage.removeItem('sunae_autosave');
+        this.layers = [];
+        this.undoStack = [];
+        this.redoStack = [];
+        this.selectedIds = [];
+        document.getElementById('project-filename').value = "mon_projet";
+        document.getElementById('slider-sim').value = 0;
+        this.ui.simPercent = 0;
+        
+        this.settings.shape = (choice === "2") ? 'rect' : 'round';
+        document.getElementById('table-shape').value = this.settings.shape;
+        
+        this.refreshLayerList();
+    },
+
+    changeShape() {
+        this.settings.shape = document.getElementById('table-shape').value;
+        this.draw();
+        this.autoSave();
+    },
+
+    isPointInBounds(pt) {
+        if (this.settings.shape === 'rect') {
+            return Math.abs(pt.x) <= 600 && Math.abs(pt.y) <= 250;
+        } else {
+            return Math.hypot(pt.x, pt.y) <= 300;
         }
+    },
+
+    getExportRadius() {
+        if (this.settings.shape === 'rect') {
+            return Math.hypot(600, 250);
+        }
+        return 300;
     },
 
     resize() {
@@ -351,7 +393,7 @@ const app = {
                 let selInfo = this.selectedIds.length === 1 ? this.findLayer(this.selectedIds[0]) : null;
                 let sel = selInfo ? selInfo.layer : null;
                 
-                if (e.button !== 2 && this.ui.tool === 'select' && sel && sel.type === 'image' && !sel.effectiveLocked) {
+                if (e.button !== 2 && this.ui.tool === 'select' && sel && (sel.type === 'image' || sel.type === 'imported_path') && !sel.effectiveLocked) {
                     this.ui.isDraggingImage = true;
                     this.pos.startImgDrag = { x: e.clientX, y: e.clientY, initX: sel.x, initY: sel.y };
                     wrapper.style.cursor = 'move';
@@ -365,7 +407,7 @@ const app = {
 
             if (activePointers.size === 1 && (this.ui.tool === 'pen' || this.ui.tool === 'wall')) {
                 const pt = this.getScenePos(e.clientX, e.clientY);
-                if (Math.hypot(pt.x, pt.y) <= this.TABLE_RADIUS) {
+                if (this.isPointInBounds(pt)) {
                     this.ui.isDrawing = true;
                     this.pos.anchor = {x: pt.x, y: pt.y};
                     this.pos.lastSmoothed = {x: pt.x, y: pt.y};
@@ -411,6 +453,9 @@ const app = {
                     let dy = (e.clientY - this.pos.startImgDrag.y) / this.ui.zoom;
                     sel.x = this.pos.startImgDrag.initX + dx;
                     sel.y = this.pos.startImgDrag.initY + dy;
+                    if (sel.type === 'imported_path') {
+                        this.recalcImportedPath(sel);
+                    }
                     this.draw();
                 }
                 return;
@@ -440,13 +485,20 @@ const app = {
                         let nx = sx - Math.cos(angle) * this.ui.ropeLength;
                         let ny = sy - Math.sin(angle) * this.ui.ropeLength;
                         
-                        let r = Math.hypot(nx, ny);
-                        if (r > this.TABLE_RADIUS) {
-                            nx = (nx / r) * this.TABLE_RADIUS;
-                            ny = (ny / r) * this.TABLE_RADIUS;
+                        let testPos = {x: nx, y: ny};
+                        
+                        if (!this.isPointInBounds(testPos)) {
+                            if (this.settings.shape === 'rect') {
+                                nx = Math.max(-600, Math.min(600, nx));
+                                ny = Math.max(-250, Math.min(250, ny));
+                            } else {
+                                let r2 = Math.hypot(nx, ny);
+                                nx = (nx / r2) * 300;
+                                ny = (ny / r2) * 300;
+                            }
+                            testPos = {x: nx, y: ny};
                         }
                         
-                        let testPos = {x: nx, y: ny};
                         let inWall = false;
                         let flat = this.getFlatLayers();
                         for (let l of flat) {
@@ -552,7 +604,11 @@ const app = {
         this.ctx.scale(this.ui.zoom * pr, this.ui.zoom * pr);
 
         this.ctx.beginPath();
-        this.ctx.arc(0, 0, this.TABLE_RADIUS, 0, Math.PI*2);
+        if (this.settings && this.settings.shape === 'rect') {
+            this.ctx.rect(-600, -250, 1200, 500); 
+        } else {
+            this.ctx.arc(0, 0, 300, 0, Math.PI*2); 
+        }
         this.ctx.fillStyle = "#ffffff"; this.ctx.fill();
         this.ctx.lineWidth = 2; this.ctx.strokeStyle = "#000000"; this.ctx.stroke();
 
@@ -567,10 +623,12 @@ const app = {
                 this.ctx.translate(l.x, l.y);
                 this.ctx.rotate(l.rot * Math.PI / 180);
                 this.ctx.scale(l.scale * (l.flipH ? -1 : 1), l.scale * (l.flipV ? -1 : 1));
-                this.ctx.globalAlpha = l.opacity;
+                this.ctx.globalAlpha = l.opacity !== undefined ? l.opacity : 1.0;
                 this.ctx.drawImage(l.img, -l.img.width/2, -l.img.height/2);
                 this.ctx.restore();
             } else if (l.points && l.points.length > 1) {
+                this.ctx.save();
+                
                 this.ctx.beginPath();
                 this.ctx.moveTo(l.points[0].x, l.points[0].y);
                 for(let j=1; j<l.points.length; j++) this.ctx.lineTo(l.points[j].x, l.points[j].y);
@@ -583,6 +641,7 @@ const app = {
                     this.ctx.strokeStyle = l.color; this.ctx.lineWidth = l.width;
                     this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round'; this.ctx.stroke();
                 }
+                this.ctx.restore();
             }
         }
 
@@ -611,7 +670,7 @@ const app = {
         let pts = [];
         for (let i = flatLayers.length - 1; i >= 0; i--) {
             let l = flatLayers[i];
-            if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen') && l.points) {
+            if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path') && l.points) {
                 for(let j = 0; j < l.points.length; j++) {
                     pts.push({ x: l.points[j].x, y: l.points[j].y, layerId: l.id });
                 }
@@ -741,6 +800,15 @@ const app = {
         const hex = this.ui.color.replace('#', '');
         const r = parseInt(hex.substr(0,2),16), g = parseInt(hex.substr(2,2),16), b = parseInt(hex.substr(4,2),16);
         btn.style.color = ((r*299 + g*587 + b*114) / 1000) > 128 ? 'black' : 'white';
+        
+        if (this.selectedIds.length === 1) {
+            let sel = this.findLayer(this.selectedIds[0]);
+            if (sel && (sel.layer.type === 'path' || sel.layer.type === 'imported_path' || sel.layer.type === 'pen')) {
+                this.saveState();
+                sel.layer.color = this.ui.color;
+                this.draw();
+            }
+        }
         this.autoSave();
     },
 
@@ -829,7 +897,7 @@ const app = {
 
     addLayer(data) {
         this.saveState();
-        let name = data.type === 'image' ? `🖼️ Image ${this.imgCount++}` : data.type === 'wall' ? `🧱 Mur ${this.wallCount++}` : `✏️ Tracé ${this.layerCount++}`;
+        let name = data.name || (data.type === 'image' ? `🖼️ Image ${this.imgCount++}` : data.type === 'wall' ? `🧱 Mur ${this.wallCount++}` : `✏️ Tracé ${this.layerCount++}`);
         let newL = { id: this.genId(), type: data.type, name: name, visible: true, locked: false, ...data };
         
         let targetArr = this.layers;
@@ -861,7 +929,8 @@ const app = {
             let isSel = this.selectedIds.includes(l.id);
             let pad = depth * 20 + 8;
             let col = l.type === 'wall' ? 'red' : l.type === 'image' ? '#ccc' : (l.type === 'folder' ? '#ffd700' : l.color);
-            
+            if (l.type === 'imported_path') col = '#8e44ad';
+
             let icon = '';
             if (l.type === 'folder') {
                 icon = `<span onclick="app.toggleFolder('${l.id}', event)" style="cursor:pointer; margin-right:5px; width:12px; display:inline-block; font-size:10px;">${l.isOpen ? '▼' : '▶'}</span>`;
@@ -901,16 +970,35 @@ const app = {
         document.getElementById('btn-merge').disabled = this.selectedIds.length < 2;
         if(sel) document.getElementById('btn-lock').innerText = sel.locked ? "🔓 Déverrouiller" : "🔒 Verrouiller";
 
-        const fsImg = document.getElementById('fs-image');
-        if (sel && sel.type === 'image' && !sel.effectiveLocked) {
-            fsImg.disabled = false;
-            document.getElementById('img-opacity').value = sel.opacity * 100;
+        const fsTransform = document.getElementById('fs-transform');
+        if (sel && (sel.type === 'image' || sel.type === 'imported_path') && !sel.effectiveLocked) {
+            fsTransform.disabled = false;
             document.getElementById('img-scale').value = sel.scale * 100;
             document.getElementById('img-rot').value = sel.rot;
             document.getElementById('val-rot').innerText = sel.rot + "°";
+            
+            if (sel.type === 'image') {
+                document.getElementById('img-opacity').value = (sel.opacity !== undefined ? sel.opacity : 1.0) * 100;
+                document.getElementById('div-opacity').style.display = 'block';
+            } else {
+                document.getElementById('div-opacity').style.display = 'none';
+            }
         } else {
-            fsImg.disabled = true;
+            fsTransform.disabled = true;
         }
+
+        // Met à jour la couleur du bouton color-picker si on clique sur un tracé
+        if (sel && (sel.type === 'path' || sel.type === 'pen' || sel.type === 'imported_path')) {
+            let savedColor = sel.color || '#000000';
+            document.getElementById('color-picker').value = savedColor;
+            this.ui.color = savedColor;
+            const btn = document.getElementById('btn-color');
+            btn.style.backgroundColor = savedColor;
+            const hex = savedColor.replace('#', '');
+            const r = parseInt(hex.substr(0,2),16), g = parseInt(hex.substr(2,2),16), b = parseInt(hex.substr(4,2),16);
+            btn.style.color = ((r*299 + g*587 + b*114) / 1000) > 128 ? 'black' : 'white';
+        }
+
         this.draw();
         this.autoSave();
     },
@@ -1041,7 +1129,7 @@ const app = {
             for(let i = arr.length - 1; i >= 0; i--) {
                 if (arr[i].type === 'folder') {
                     extractAndRemove(arr[i].layers);
-                } else if (this.selectedIds.includes(arr[i].id) && (arr[i].type === 'path' || arr[i].type === 'pen')) {
+                } else if (this.selectedIds.includes(arr[i].id) && (arr[i].type === 'path' || arr[i].type === 'pen' || arr[i].type === 'imported_path')) {
                     toMerge.push(arr.splice(i, 1)[0]);
                 }
             }
@@ -1052,7 +1140,7 @@ const app = {
         
         if (toMerge.length < 2) {
             this.undoStack.pop(); 
-            return alert("Veuillez sélectionner au moins 2 tracés (Crayon) pour fusionner.");
+            return alert("Veuillez sélectionner au moins 2 tracés pour fusionner.");
         }
 
         let mergedPoints = [];
@@ -1083,23 +1171,96 @@ const app = {
         }
         e.target.value = '';
     },
+
+    importTHR(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const text = event.target.result;
+                const lines = text.split('\n');
+                let originalPoints = [];
+                let R = this.getExportRadius();
+                
+                lines.forEach(line => {
+                    let parts = line.trim().split(/\s+/);
+                    if (parts.length >= 2) {
+                        let theta = parseFloat(parts[0]);
+                        let rho = parseFloat(parts[1]);
+                        if (!isNaN(theta) && !isNaN(rho)) {
+                            let r = rho * R;
+                            let angle = theta - Math.PI / 2;
+                            let x = r * Math.cos(angle);
+                            let y = r * Math.sin(angle);
+                            originalPoints.push({x, y});
+                        }
+                    }
+                });
+
+                if (originalPoints.length > 0) {
+                    this.addLayer({ 
+                        type: 'imported_path', 
+                        name: `🗺️ Tracé ${this.importedCount++}`,
+                        originalPoints: originalPoints,
+                        points: [...originalPoints], 
+                        x: 0, y: 0, scale: 1.0, opacity: 1.0, rot: 0, flipH: false, flipV: false,
+                        color: this.ui.color, width: this.ui.penWidth 
+                    });
+                } else {
+                    alert("Ce fichier .thr semble vide ou invalide.");
+                }
+            };
+            reader.readAsText(file);
+        }
+        e.target.value = '';
+    },
     
-    updateImageTransform() {
+    recalcImportedPath(layer) {
+        if (!layer.originalPoints) return;
+        let rad = layer.rot * Math.PI / 180;
+        let cosA = Math.cos(rad);
+        let sinA = Math.sin(rad);
+        
+        layer.points = layer.originalPoints.map(pt => {
+            let x = pt.x;
+            let y = pt.y;
+            if (layer.flipH) x = -x;
+            if (layer.flipV) y = -y;
+            x *= layer.scale;
+            y *= layer.scale;
+            
+            return {
+                x: x * cosA - y * sinA + layer.x,
+                y: x * sinA + y * cosA + layer.y
+            };
+        });
+    },
+
+    updateTransform() {
         let sel = this.findLayer(this.selectedIds[0]);
-        if(sel && sel.layer.type === 'image') {
+        if(sel && (sel.layer.type === 'image' || sel.layer.type === 'imported_path')) {
             this.saveState();
             sel.layer.opacity = document.getElementById('img-opacity').value / 100.0;
             sel.layer.scale = document.getElementById('img-scale').value / 100.0;
             sel.layer.rot = parseInt(document.getElementById('img-rot').value);
             document.getElementById('val-rot').innerText = sel.layer.rot + "°";
+            
+            if (sel.layer.type === 'imported_path') {
+                this.recalcImportedPath(sel.layer);
+            }
             this.draw();
         }
     },
+
     toggleFlip(axis) {
         let sel = this.findLayer(this.selectedIds[0]);
-        if(sel && sel.layer.type === 'image') {
+        if(sel && (sel.layer.type === 'image' || sel.layer.type === 'imported_path')) {
             this.saveState();
             if(axis === 'H') sel.layer.flipH = !sel.layer.flipH; else sel.layer.flipV = !sel.layer.flipV;
+            
+            if (sel.layer.type === 'imported_path') {
+                this.recalcImportedPath(sel.layer);
+            }
             this.draw();
         }
     },
@@ -1152,8 +1313,8 @@ const app = {
                 if (l.srcBase64 && !l.src) l.src = l.srcBase64;
                 if (l.image_b64 && !l.src) l.src = "data:image/png;base64," + l.image_b64;
             }
-            if ((l.type === 'path' || l.type === 'pen') && !l.color) l.color = "#000000";
-            if ((l.type === 'path' || l.type === 'pen') && !l.width) l.width = 2.0;
+            if ((l.type === 'path' || l.type === 'pen' || l.type === 'imported_path') && !l.color) l.color = "#000000";
+            if ((l.type === 'path' || l.type === 'pen' || l.type === 'imported_path') && !l.width) l.width = 2.0;
 
             if (l.type === 'folder') {
                 if (!l.layers) l.layers = [];
@@ -1191,6 +1352,10 @@ const app = {
                 document.getElementById('project-filename').value = proj.filename.replace('.sunae', '');
             }
             if (proj.settings) {
+                if (proj.settings.shape) {
+                    this.settings.shape = proj.settings.shape;
+                    document.getElementById('table-shape').value = this.settings.shape;
+                }
                 if (proj.settings.zoom !== undefined) { document.getElementById('zoom-workspace').value = proj.settings.zoom; this.updateZoomFromSlider(); }
                 if (proj.settings.showPoints !== undefined) document.getElementById('chk-sim-points').checked = proj.settings.showPoints;
                 if (proj.settings.width !== undefined) document.getElementById('slider-width').value = Math.min(100, proj.settings.width * 10);
@@ -1221,10 +1386,11 @@ const app = {
         let thrLines = [];
         let currentTheta = 0.0;
         let flatLayers = this.getFlatLayers();
+        let R = this.getExportRadius(); 
         
         for (let i = flatLayers.length - 1; i >= 0; i--) {
             let l = flatLayers[i];
-            if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen') && l.points && l.points.length > 0) {
+            if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path') && l.points && l.points.length > 0) {
                 
                 let optimizedPoints = [l.points[0]];
                 for(let j = 1; j < l.points.length; j++) {
@@ -1236,7 +1402,7 @@ const app = {
                 }
 
                 optimizedPoints.forEach(pt => {
-                    let rho = Math.hypot(pt.x, pt.y) / this.TABLE_RADIUS;
+                    let rho = Math.hypot(pt.x, pt.y) / R;
                     rho = Math.max(0.0, Math.min(1.0, rho));
                     let theta = Math.atan2(pt.y, pt.x) + (Math.PI / 2);
                     while (theta - currentTheta > Math.PI) theta -= 2 * Math.PI;
@@ -1296,6 +1462,7 @@ const app = {
             const proj = {
                 filename: filename,
                 settings: { 
+                    shape: this.settings.shape,
                     zoom: this.ui.zoom*100, showPoints: document.getElementById('chk-sim-points').checked,
                     tool: this.ui.tool, width: this.ui.penWidth*10, tremor: this.ui.tremor, rope: this.ui.ropeLength*2, color: this.ui.color 
                 },
