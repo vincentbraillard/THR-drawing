@@ -41,7 +41,7 @@
         .val-badge { font-weight: bold; font-size: 13px; color: var(--primary); }
         
         input[type="range"] { flex: 1; }
-        input[type="text"] { flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+        input[type="text"] { flex: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; font-weight: bold; color: #333;}
         
         button.btn { background: #f0f0f0; border: 1px solid #ccc; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;}
         button.btn-primary { background: var(--primary); color: white; border: none; }
@@ -94,18 +94,19 @@
                 <fieldset>
                     <legend>💾 Fichier & Projet</legend>
                     <div class="row" style="margin-bottom: 12px;">
-                        <label>Nom du fichier :</label>
+                        <label>Nom :</label>
                         <input type="text" id="project-filename" value="mon_projet" oninput="app.autoSave()">
                     </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-                        <input type="file" id="file-open" accept=".sunae" style="display: none;" onchange="app.loadProject(event)">
+                        <input type="file" id="file-open" accept=".sunae,.json" style="display: none;" onchange="app.loadProject(event)">
                         <button class="btn" style="flex:1" onclick="document.getElementById('file-open').click()">📂 Ouvrir</button>
                         <button class="btn" style="flex:1; color:red;" onclick="app.clearCacheAndProject()">🗑️ Nouveau</button>
                     </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-                        <button class="btn" style="flex:1" onclick="app.saveProject()">💾 Enregistrer (.sunae)</button>
+                        <button class="btn" style="flex:1" onclick="app.handleSave('.sunae', false)">💾 Enregistrer</button>
+                        <button class="btn" style="flex:1" onclick="app.handleSave('.sunae', true)">📝 Sous...</button>
                     </div>
-                    <div style="font-size:11px; color:green; text-align:center;">✓ Auto-sauvegarde activée</div>
+                    <div style="font-size:11px; color:green; text-align:center;">✓ Auto-sauvegarde active</div>
                 </fieldset>
                 <fieldset>
                     <legend>🖥️ Espace de travail</legend>
@@ -119,7 +120,7 @@
                         <input type="checkbox" id="chk-sim-points" checked onchange="app.draw(); app.autoSave();"> 🟢/🔴 Points début/fin
                     </label>
                 </fieldset>
-                <button class="btn-export" onclick="app.exportTHR()">📤 Exporter vers Machine (.thr)</button>
+                <button class="btn-export" onclick="app.handleSave('.thr', false)">📤 Exporter vers Machine (.thr)</button>
             </div>
 
             <div id="tab-tools" class="tab-content">
@@ -225,7 +226,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.7</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.9</span>
     </div>
 
 <script>
@@ -245,8 +246,7 @@ const app = {
     
     ui: {
         tool: 'pen', penWidth: 2.0, ropeLength: 5.0, tremor: 0.0, color: '#000000',
-        zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isDraggingImage: false,
-        lastActiveSimId: null
+        zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isDraggingImage: false
     },
     
     pos: { startPan: {x:0, y:0}, startImgDrag: {x:0, y:0, initX:0, initY:0}, anchor: {x:0, y:0}, lastSmoothed: {x:0, y:0}, currentPath: [] },
@@ -270,7 +270,7 @@ const app = {
         try {
             const cleanLayers = (arr) => arr.map(l => {
                 let cl = {...l, img:null};
-                if(cl.type === 'folder') cl.layers = cleanLayers(cl.layers);
+                if(cl.type === 'folder' && cl.layers) cl.layers = cleanLayers(cl.layers);
                 return cl;
             });
             const proj = {
@@ -295,7 +295,9 @@ const app = {
             this.undoStack = [];
             this.redoStack = [];
             this.selectedIds = [];
-            document.getElementById('project-filename').value = "nouveau_projet";
+            document.getElementById('project-filename').value = "mon_projet";
+            document.getElementById('slider-sim').value = 0;
+            this.ui.simPercent = 0;
             this.refreshLayerList();
         }
     },
@@ -520,7 +522,7 @@ const app = {
         for (let l of arr) {
             l.effectiveVisible = parentVisible && l.visible;
             l.effectiveLocked = parentLocked || l.locked;
-            if (l.type === 'folder') {
+            if (l.type === 'folder' && Array.isArray(l.layers)) {
                 res.push(...this.getFlatLayers(l.layers, l.effectiveVisible, l.effectiveLocked));
             } else {
                 res.push(l);
@@ -530,8 +532,9 @@ const app = {
     },
 
     findLayer(id, arr = this.layers) {
+        if(!arr || !Array.isArray(arr)) return null;
         for (let i = 0; i < arr.length; i++) {
-            if (arr[i].id == id) return { layer: arr[i], parentArr: arr, idx: i };
+            if (arr[i].id === id) return { layer: arr[i], parentArr: arr, idx: i };
             if (arr[i].type === 'folder') {
                 let res = this.findLayer(id, arr[i].layers);
                 if (res) return res;
@@ -616,7 +619,7 @@ const app = {
             }
         }
         
-        // Reset la surbrillance dans la liste de calques
+        // Reset la surbrillance
         document.querySelectorAll('.layer-item').forEach(el => el.classList.remove('sim-active'));
 
         if (pts.length === 0) return;
@@ -629,7 +632,7 @@ const app = {
 
         let targetDist = (this.ui.simPercent / 1000.0) * totalDist;
         let ballPos = pts[0];
-        let activeSimLayerId = null;
+        let activeSimId = null;
         
         if (this.ui.simPercent > 0 && totalDist > 0) {
             this.ctx.beginPath(); 
@@ -638,7 +641,7 @@ const app = {
                 if (dists[i] <= targetDist) {
                     this.ctx.lineTo(pts[i].x, pts[i].y);
                     ballPos = pts[i];
-                    activeSimLayerId = pts[i].layerId;
+                    activeSimId = pts[i].layerId;
                 } else {
                     let segLen = dists[i] - dists[i-1];
                     let ratio = segLen > 0 ? (targetDist - dists[i-1]) / segLen : 0;
@@ -646,16 +649,31 @@ const app = {
                     let ny = pts[i-1].y + (pts[i].y - pts[i-1].y) * ratio;
                     this.ctx.lineTo(nx, ny);
                     ballPos = { x: nx, y: ny };
-                    activeSimLayerId = pts[i].layerId;
+                    activeSimId = pts[i].layerId;
                     break;
                 }
             }
             this.ctx.strokeStyle = "rgba(0, 120, 215, 0.8)"; this.ctx.lineWidth = 3 / this.ui.zoom; this.ctx.stroke();
 
-            // Active la surbrillance sur l'élément HTML
-            if (activeSimLayerId) {
-                let li = document.getElementById('li-' + activeSimLayerId);
+            // Active la surbrillance (Calque ET Dossier Parent si fermé)
+            if (activeSimId) {
+                let li = document.getElementById('li-' + activeSimId);
                 if (li) li.classList.add('sim-active');
+                
+                const highlightChain = (arr, targetId) => {
+                    for (let l of arr) {
+                        if (l.id === targetId) return true;
+                        if (l.type === 'folder' && l.layers) {
+                            if (highlightChain(l.layers, targetId)) {
+                                let fEl = document.getElementById('li-' + l.id);
+                                if (fEl) fEl.classList.add('sim-active');
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                };
+                highlightChain(this.layers, activeSimId);
             }
         }
 
@@ -670,7 +688,7 @@ const app = {
             this.ctx.fillStyle = "red"; this.ctx.fill(); 
         }
 
-        if (this.ui.simPercent > 0) {
+        if (this.ui.simPercent > 0 || totalDist === 0) {
             this.ctx.beginPath(); this.ctx.arc(ballPos.x, ballPos.y, ballRadius, 0, Math.PI*2);
             this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.strokeStyle="#000"; this.ctx.lineWidth=1/this.ui.zoom; this.ctx.stroke();
         }
@@ -824,6 +842,7 @@ const app = {
             let info = this.findLayer(this.selectedIds[0]);
             if (info) {
                 if (info.layer.type === 'folder') {
+                    if (!info.layer.layers) info.layer.layers = [];
                     targetArr = info.layer.layers;
                     insertIndex = 0; 
                     info.layer.isOpen = true; 
@@ -867,7 +886,7 @@ const app = {
                 <span class="rename-btn" style="pointer-events:auto;" onclick="app.renameLayer('${l.id}', event)">✏️</span>
             </li>`;
             
-            if (l.type === 'folder' && l.isOpen) {
+            if (l.type === 'folder' && l.isOpen && Array.isArray(l.layers)) {
                 html += this.renderTree(l.layers, depth + 1);
             }
         });
@@ -925,6 +944,7 @@ const app = {
         
         let toDelete = [...this.selectedIds];
         const removeRecursive = (arr) => {
+            if(!arr || !Array.isArray(arr)) return;
             for(let i=0; i<arr.length; i++) {
                 if (toDelete.includes(arr[i].id)) {
                     arr.splice(i, 1); i--;
@@ -978,6 +998,7 @@ const app = {
         let firstParent = null; let firstIdx = -1;
 
         const extract = (arr) => {
+            if(!arr || !Array.isArray(arr)) return;
             for(let i=0; i<arr.length; i++) {
                 if (this.selectedIds.includes(arr[i].id)) {
                     if(!firstParent) { firstParent = arr; firstIdx = i; }
@@ -1004,7 +1025,7 @@ const app = {
         let info = this.findLayer(this.selectedIds[0]);
         if(info && info.layer.type === 'folder') {
             this.saveState();
-            let children = info.layer.layers;
+            let children = info.layer.layers || [];
             info.parentArr.splice(info.idx, 1, ...children);
             this.selectedIds = [];
             this.refreshLayerList();
@@ -1019,6 +1040,7 @@ const app = {
     mergeSelected() {
         let toMerge = [];
         const extractAndRemove = (arr) => {
+            if(!arr || !Array.isArray(arr)) return;
             for(let i = arr.length - 1; i >= 0; i--) {
                 if (arr[i].type === 'folder') {
                     extractAndRemove(arr[i].layers);
@@ -1037,7 +1059,7 @@ const app = {
         }
 
         let mergedPoints = [];
-        toMerge.forEach(l => mergedPoints.push(...l.points));
+        toMerge.forEach(l => { if(l.points) mergedPoints.push(...l.points) });
         
         let baseLayer = toMerge[0];
         let name = `🔗 Fusion ${this.layerCount++}`;
@@ -1088,7 +1110,7 @@ const app = {
     saveState() {
         const cleanLayers = (arr) => arr.map(l => {
             let cl = {...l, img:null};
-            if(cl.type === 'folder') cl.layers = cleanLayers(cl.layers);
+            if(cl.type === 'folder' && cl.layers) cl.layers = cleanLayers(cl.layers);
             return cl;
         });
         this.undoStack.push(JSON.stringify(cleanLayers(this.layers)));
@@ -1099,7 +1121,7 @@ const app = {
     
     undo() {
         if (this.undoStack.length > 0) {
-            const cleanLayers = (arr) => arr.map(l => { let cl={...l, img:null}; if(cl.type==='folder') cl.layers=cleanLayers(cl.layers); return cl; });
+            const cleanLayers = (arr) => arr.map(l => { let cl={...l, img:null}; if(cl.type==='folder' && cl.layers) cl.layers=cleanLayers(cl.layers); return cl; });
             this.redoStack.push(JSON.stringify(cleanLayers(this.layers)));
             this.restoreLayers(JSON.parse(this.undoStack.pop()));
             document.getElementById('btn-undo').disabled = this.undoStack.length === 0;
@@ -1110,7 +1132,7 @@ const app = {
     
     redo() {
         if (this.redoStack.length > 0) {
-            const cleanLayers = (arr) => arr.map(l => { let cl={...l, img:null}; if(cl.type==='folder') cl.layers=cleanLayers(cl.layers); return cl; });
+            const cleanLayers = (arr) => arr.map(l => { let cl={...l, img:null}; if(cl.type==='folder' && cl.layers) cl.layers=cleanLayers(cl.layers); return cl; });
             this.undoStack.push(JSON.stringify(cleanLayers(this.layers)));
             this.restoreLayers(JSON.parse(this.redoStack.pop()));
             document.getElementById('btn-undo').disabled = false;
@@ -1120,9 +1142,15 @@ const app = {
     },
     
     restoreLayers(parsedArray) {
+        // SYSTEME AUTO-UPGRADE (Convertit et nettoie les anciens fichiers)
         const upgradeLayer = (l) => {
-            if (!l.id) l.id = this.genId();
-            else l.id = String(l.id); 
+            if (l.id === undefined || l.id === null) {
+                l.id = this.genId();
+            } else {
+                let sId = String(l.id).replace(/[^a-zA-Z0-9]/g, '_');
+                if (!sId.startsWith('L')) sId = 'L' + sId;
+                l.id = sId;
+            }
 
             if (l.type === 'image') {
                 if (l.srcBase64 && !l.src) l.src = l.srcBase64;
@@ -1131,7 +1159,8 @@ const app = {
             if ((l.type === 'path' || l.type === 'pen') && !l.color) l.color = "#000000";
             if ((l.type === 'path' || l.type === 'pen') && !l.width) l.width = 2.0;
 
-            if (l.type === 'folder' && l.layers) {
+            if (l.type === 'folder') {
+                if (!l.layers) l.layers = [];
                 l.layers.forEach(upgradeLayer);
             }
         };
@@ -1147,8 +1176,8 @@ const app = {
                 if (l.type === 'image') {
                     const img = new Image();
                     img.onload = () => { l.img = img; this.draw(); };
-                    if (l.src) img.src = l.src;
-                } else if (l.type === 'folder') {
+                    if(l.src) img.src = l.src;
+                } else if (l.type === 'folder' && Array.isArray(l.layers)) {
                     rebuildImgs(l.layers);
                 }
             });
@@ -1165,10 +1194,10 @@ const app = {
             if (proj.filename) {
                 document.getElementById('project-filename').value = proj.filename.replace('.sunae', '');
             }
-            if(proj.settings) {
-                document.getElementById('zoom-workspace').value = proj.settings.zoom; this.updateZoomFromSlider();
+            if (proj.settings) {
+                if (proj.settings.zoom !== undefined) { document.getElementById('zoom-workspace').value = proj.settings.zoom; this.updateZoomFromSlider(); }
                 if (proj.settings.showPoints !== undefined) document.getElementById('chk-sim-points').checked = proj.settings.showPoints;
-                if (proj.settings.width !== undefined) document.getElementById('slider-width').value = proj.settings.width;
+                if (proj.settings.width !== undefined) document.getElementById('slider-width').value = Math.min(100, proj.settings.width * 10);
                 if (proj.settings.tremor !== undefined) document.getElementById('slider-tremor').value = proj.settings.tremor;
                 if (proj.settings.rope !== undefined) document.getElementById('slider-rope').value = proj.settings.rope;
                 this.updateSliders();
@@ -1187,33 +1216,90 @@ const app = {
             this.restoreLayers(proj.layers);
         } catch(e) {
             console.error("Erreur de chargement du JSON", e);
+            alert("Impossible d'ouvrir ce fichier. Il est peut-être corrompu.");
             if(isAutoLoad) localStorage.removeItem('sunae_autosave');
         }
     },
 
-    saveProject() {
+    async handleSave(extension, isSaveAs) {
         let baseName = document.getElementById('project-filename').value.trim() || "mon_projet";
-        let filename = baseName.endsWith('.sunae') ? baseName : baseName + '.sunae';
+        let isApple = /Mac|iPod|iPhone|iPad/i.test(navigator.userAgent);
 
-        const cleanLayers = (arr) => arr.map(l => {
-            let cl = {...l, img:null};
-            if(cl.type === 'folder') cl.layers = cleanLayers(cl.layers);
-            return cl;
-        });
+        if (isSaveAs && !window.showSaveFilePicker && !isApple) {
+            let userStr = prompt("Entrez le nom du fichier :", baseName.replace(extension, ''));
+            if (!userStr) return; 
+            baseName = userStr;
+            document.getElementById('project-filename').value = baseName;
+        }
 
-        const proj = {
-            filename: filename,
-            settings: { 
-                zoom: this.ui.zoom*100, 
-                showPoints: document.getElementById('chk-sim-points').checked,
-                tool: this.ui.tool, width: this.ui.penWidth*10, tremor: this.ui.tremor, rope: this.ui.ropeLength*2, color: this.ui.color 
-            },
-            layers: cleanLayers(this.layers)
-        };
-        
-        const blob = new Blob([JSON.stringify(proj)], {type: "application/json"});
-        
-        // Utilisation directe du lien de téléchargement (bypasse la sécurité de safari)
+        let filename = baseName.endsWith(extension) ? baseName : baseName + extension;
+        let contentStr = "";
+
+        if (extension === '.sunae') {
+            const cleanLayers = (arr) => arr.map(l => {
+                let cl = {...l, img:null};
+                if(cl.type === 'folder' && cl.layers) cl.layers = cleanLayers(cl.layers);
+                return cl;
+            });
+            const proj = {
+                filename: filename,
+                settings: { 
+                    zoom: this.ui.zoom*100, showPoints: document.getElementById('chk-sim-points').checked,
+                    tool: this.ui.tool, width: this.ui.penWidth*10, tremor: this.ui.tremor, rope: this.ui.ropeLength*2, color: this.ui.color 
+                },
+                layers: cleanLayers(this.layers)
+            };
+            contentStr = JSON.stringify(proj);
+        } else {
+            let thrLines = [];
+            let currentTheta = 0.0;
+            let flatLayers = this.getFlatLayers();
+            for (let i = flatLayers.length - 1; i >= 0; i--) {
+                let l = flatLayers[i];
+                if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen') && l.points) {
+                    l.points.forEach(pt => {
+                        let rho = Math.hypot(pt.x, pt.y) / this.TABLE_RADIUS;
+                        rho = Math.max(0.0, Math.min(1.0, rho));
+                        let theta = Math.atan2(pt.y, pt.x) + (Math.PI / 2);
+                        while (theta - currentTheta > Math.PI) theta -= 2 * Math.PI;
+                        while (theta - currentTheta < -Math.PI) theta += 2 * Math.PI;
+                        currentTheta = theta;
+                        thrLines.push(`${theta.toFixed(5)} ${rho.toFixed(5)}`);
+                    });
+                }
+            }
+            if (thrLines.length === 0) return alert("Aucun tracé à exporter !");
+            contentStr = thrLines.join('\n');
+        }
+
+        const blob = new Blob([contentStr], { type: "text/plain" });
+
+        if (navigator.canShare && isApple) {
+            const file = new File([blob], filename, { type: "text/plain" });
+            if (navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({ files: [file], title: filename });
+                    return;
+                } catch(e) { console.log(e); return; }
+            }
+        }
+
+        if (isSaveAs && window.showSaveFilePicker) {
+            try {
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: filename,
+                    types: [{ description: 'Fichiers', accept: {'text/plain': [extension]} }]
+                });
+                const writable = await handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                return;
+            } catch (e) {
+                if (e.name !== 'AbortError') console.error(e);
+                return;
+            }
+        }
+
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a"); 
         a.href = url; 
@@ -1234,43 +1320,6 @@ const app = {
         };
         reader.readAsText(file);
         e.target.value = '';
-    },
-
-    exportTHR() {
-        let thrLines = [];
-        let currentTheta = 0.0;
-        let flatLayers = this.getFlatLayers();
-        
-        for (let i = flatLayers.length - 1; i >= 0; i--) {
-            let l = flatLayers[i];
-            if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen')) {
-                l.points.forEach(pt => {
-                    let rho = Math.hypot(pt.x, pt.y) / this.TABLE_RADIUS;
-                    rho = Math.max(0.0, Math.min(1.0, rho));
-                    let theta = Math.atan2(pt.y, pt.x) + (Math.PI / 2);
-                    while (theta - currentTheta > Math.PI) theta -= 2 * Math.PI;
-                    while (theta - currentTheta < -Math.PI) theta += 2 * Math.PI;
-                    currentTheta = theta;
-                    thrLines.push(`${theta.toFixed(5)} ${rho.toFixed(5)}`);
-                });
-            }
-        }
-        if (thrLines.length === 0) return alert("Aucun tracé à exporter !");
-        
-        let baseName = document.getElementById('project-filename').value.trim() || "export_table";
-        let filename = baseName.endsWith('.thr') ? baseName : baseName + '.thr';
-
-        const blob = new Blob([thrLines.join('\n')], { type: "text/plain" });
-        
-        // Utilisation directe du lien de téléchargement
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a"); 
-        a.href = url; 
-        a.download = filename; 
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
     }
 };
 
@@ -1278,8 +1327,3 @@ window.onload = () => app.init();
 </script>
 </body>
 </html>
-
-
-
-
-
