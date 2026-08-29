@@ -96,7 +96,8 @@
                         <input type="text" id="project-filename" value="mon_projet" oninput="app.autoSave()">
                     </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-                        <input type="file" id="file-open" accept=".sunae,.json" style="display: none;" onchange="app.loadProject(event)">
+                        <!-- Retrait de l'accept strict pour compatibilité iPadOS -->
+                        <input type="file" id="file-open" style="display: none;" onchange="app.loadProject(event)">
                         <button class="btn" style="flex:1" onclick="document.getElementById('file-open').click()">📂 Ouvrir</button>
                         <button class="btn" style="flex:1; color:red;" onclick="app.clearCacheAndProject()">🗑️ Nouveau</button>
                     </div>
@@ -224,7 +225,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.11</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.12</span>
     </div>
 
 <script>
@@ -1225,12 +1226,10 @@ const app = {
             let l = flatLayers[i];
             if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen') && l.points && l.points.length > 0) {
                 
-                // AUTO-OPTIMISATION (v1.11) - Supprime les points inutiles pour alléger le fichier
                 let optimizedPoints = [l.points[0]];
                 for(let j = 1; j < l.points.length; j++) {
                     let prev = optimizedPoints[optimizedPoints.length - 1];
                     let curr = l.points[j];
-                    // On conserve le point s'il est à plus de 2.5 pixels du précédent, OU si c'est le tout dernier point
                     if (Math.hypot(curr.x - prev.x, curr.y - prev.y) > 2.5 || j === l.points.length - 1) {
                         optimizedPoints.push(curr);
                     }
@@ -1363,4 +1362,3 @@ window.onload = () => app.init();
 </script>
 </body>
 </html>
-
