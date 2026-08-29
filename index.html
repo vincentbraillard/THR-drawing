@@ -89,6 +89,7 @@
                 <button class="tab-btn" onclick="app.openTab(event, 'tab-layers')">📑 Calques</button>
             </div>
 
+            <!-- FICHIER -->
             <div id="tab-file" class="tab-content active">
                 <fieldset>
                     <legend>💾 Fichier & Projet</legend>
@@ -97,7 +98,7 @@
                         <input type="text" id="project-filename" value="mon_projet" oninput="app.autoSave()">
                     </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-                        <input type="file" id="file-open" accept=".sunae,.json" style="display: none;" onchange="app.loadProject(event)">
+                        <input type="file" id="file-open" style="display: none;" onchange="app.loadProject(event)">
                         <button class="btn" style="flex:1" onclick="document.getElementById('file-open').click()">📂 Ouvrir</button>
                         <button class="btn" style="flex:1; color:red;" onclick="app.newProject()">🗑️ Nouveau</button>
                     </div>
@@ -129,6 +130,7 @@
                 <button class="btn-export" onclick="app.handleSave('.thr', false)">📤 Exporter vers Machine (.thr)</button>
             </div>
 
+            <!-- OUTILS -->
             <div id="tab-tools" class="tab-content">
                 <fieldset>
                     <legend>🛠️ Outils Actifs</legend>
@@ -143,10 +145,10 @@
                 </fieldset>
                 <fieldset>
                     <legend>🖌️ Paramètres du pinceau</legend>
-                    <div class="row"><label>📏 Épaisseur du trait :</label> <span class="val-badge" id="val-width">2.0</span></div>
+                    <div class="row"><label>📏 Épaisseur du trait :</label> <span class="val-badge" id="val-width">1.5</span></div>
                     <div class="row-slider">
                         <button class="btn btn-icon" onclick="app.stepSlider('slider-width', -1)">➖</button>
-                        <input type="range" id="slider-width" min="10" max="100" value="20" oninput="app.updateSliders()">
+                        <input type="range" id="slider-width" min="5" max="100" value="15" oninput="app.updateSliders()">
                         <button class="btn btn-icon" onclick="app.stepSlider('slider-width', 1)">➕</button>
                     </div>
                     <div class="row"><label>🫨 Lissage Anti-tremblement :</label> <span class="val-badge" id="val-tremor">0</span></div>
@@ -164,6 +166,7 @@
                 </fieldset>
             </div>
 
+            <!-- IMPORT (Image + THR) -->
             <div id="tab-import" class="tab-content">
                 <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;" onchange="app.importImage(event)">
                 <input type="file" id="file-thr" accept=".thr" style="display:none;" onchange="app.importTHR(event)">
@@ -175,6 +178,7 @@
                 
                 <fieldset id="fs-transform" disabled>
                     <legend>🖼️ / 〰️ Calque Sélectionné</legend>
+                    
                     <div id="div-opacity">
                         <div class="row"><label>🌗 Opacité :</label></div>
                         <div class="row-slider">
@@ -183,6 +187,16 @@
                             <button class="btn btn-icon" onclick="app.stepSlider('img-opacity', 5)">➕</button>
                         </div>
                     </div>
+                    
+                    <div id="div-thr-width" style="display:none;">
+                        <div class="row"><label>📏 Épaisseur :</label> <span class="val-badge" id="val-thr-width">1.0</span></div>
+                        <div class="row-slider">
+                            <button class="btn btn-icon" onclick="app.stepSlider('thr-width', -1)">➖</button>
+                            <input type="range" id="thr-width" min="5" max="100" value="10" oninput="app.updateTransform()">
+                            <button class="btn btn-icon" onclick="app.stepSlider('thr-width', 1)">➕</button>
+                        </div>
+                    </div>
+
                     <div class="row"><label>📐 Échelle :</label></div>
                     <div class="row-slider">
                         <button class="btn btn-icon" onclick="app.stepSlider('img-scale', -5)">➖</button>
@@ -202,6 +216,7 @@
                 </fieldset>
             </div>
 
+            <!-- CALQUES -->
             <div id="tab-layers" class="tab-content">
                 <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <label>Organisation :</label>
@@ -240,7 +255,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.14</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.15</span>
     </div>
 
 <script>
@@ -251,7 +266,7 @@ const app = {
     canvas: document.getElementById('canvas'),
     ctx: document.getElementById('canvas').getContext('2d'),
     
-    settings: { shape: 'round' }, // round ou rect
+    settings: { shape: 'round' },
     layers: [], 
     undoStack: [], redoStack: [],
     layerCount: 1, imgCount: 1, wallCount: 1, folderCount: 1, importedCount: 1,
@@ -259,7 +274,7 @@ const app = {
     draggedId: null,
     
     ui: {
-        tool: 'pen', penWidth: 2.0, ropeLength: 5.0, tremor: 0.0, color: '#000000',
+        tool: 'pen', penWidth: 1.5, ropeLength: 5.0, tremor: 0.0, color: '#000000',
         zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isDraggingImage: false
     },
     
@@ -638,7 +653,7 @@ const app = {
                     this.ctx.strokeStyle = "red"; this.ctx.lineWidth = 2;
                     this.ctx.setLineDash([5, 5]); this.ctx.stroke(); this.ctx.setLineDash([]);
                 } else {
-                    this.ctx.strokeStyle = l.color; this.ctx.lineWidth = l.width;
+                    this.ctx.strokeStyle = l.color; this.ctx.lineWidth = l.width !== undefined ? l.width : 1.5;
                     this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round'; this.ctx.stroke();
                 }
                 this.ctx.restore();
@@ -980,14 +995,17 @@ const app = {
             if (sel.type === 'image') {
                 document.getElementById('img-opacity').value = (sel.opacity !== undefined ? sel.opacity : 1.0) * 100;
                 document.getElementById('div-opacity').style.display = 'block';
+                document.getElementById('div-thr-width').style.display = 'none';
             } else {
                 document.getElementById('div-opacity').style.display = 'none';
+                document.getElementById('div-thr-width').style.display = 'block';
+                document.getElementById('thr-width').value = (sel.width !== undefined ? sel.width : 1.0) * 10;
+                document.getElementById('val-thr-width').innerText = (sel.width !== undefined ? sel.width : 1.0).toFixed(1);
             }
         } else {
             fsTransform.disabled = true;
         }
 
-        // Met à jour la couleur du bouton color-picker si on clique sur un tracé
         if (sel && (sel.type === 'path' || sel.type === 'pen' || sel.type === 'imported_path')) {
             let savedColor = sel.color || '#000000';
             document.getElementById('color-picker').value = savedColor;
@@ -1204,7 +1222,7 @@ const app = {
                         originalPoints: originalPoints,
                         points: [...originalPoints], 
                         x: 0, y: 0, scale: 1.0, opacity: 1.0, rot: 0, flipH: false, flipV: false,
-                        color: this.ui.color, width: this.ui.penWidth 
+                        color: this.ui.color, width: 1.0 
                     });
                 } else {
                     alert("Ce fichier .thr semble vide ou invalide.");
@@ -1240,7 +1258,14 @@ const app = {
         let sel = this.findLayer(this.selectedIds[0]);
         if(sel && (sel.layer.type === 'image' || sel.layer.type === 'imported_path')) {
             this.saveState();
-            sel.layer.opacity = document.getElementById('img-opacity').value / 100.0;
+            
+            if (sel.layer.type === 'image') {
+                sel.layer.opacity = document.getElementById('img-opacity').value / 100.0;
+            } else {
+                sel.layer.width = document.getElementById('thr-width').value / 10.0;
+                document.getElementById('val-thr-width').innerText = sel.layer.width.toFixed(1);
+            }
+            
             sel.layer.scale = document.getElementById('img-scale').value / 100.0;
             sel.layer.rot = parseInt(document.getElementById('img-rot').value);
             document.getElementById('val-rot').innerText = sel.layer.rot + "°";
@@ -1313,8 +1338,9 @@ const app = {
                 if (l.srcBase64 && !l.src) l.src = l.srcBase64;
                 if (l.image_b64 && !l.src) l.src = "data:image/png;base64," + l.image_b64;
             }
-            if ((l.type === 'path' || l.type === 'pen' || l.type === 'imported_path') && !l.color) l.color = "#000000";
-            if ((l.type === 'path' || l.type === 'pen' || l.type === 'imported_path') && !l.width) l.width = 2.0;
+            if ((l.type === 'path' || l.type === 'pen') && !l.color) l.color = "#000000";
+            if ((l.type === 'path' || l.type === 'pen') && l.width === undefined) l.width = 1.5;
+            if (l.type === 'imported_path' && l.width === undefined) l.width = 1.0;
 
             if (l.type === 'folder') {
                 if (!l.layers) l.layers = [];
