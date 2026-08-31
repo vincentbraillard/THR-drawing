@@ -192,12 +192,11 @@
                         <div style="font-size:10px; margin-top:5px; color:#666;">(Sélectionnez un zigzag, cliquez ici, et tracez la courbe dans la zone)</div>
                     </div>
 
-                    <div class="row"><label>📏 Espacement :</label> <span class="val-badge" id="val-zigzag-spacing">2.0</span></div>
+                    <div class="row"><label>📏 Espacement :</label> <span class="val-badge" id="val-zigzag-spacing">2.00</span></div>
                     <div class="row-slider">
-                        <button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', -1)">➖</button>
-                        <!-- Ajustement du range : 5 à 150 divisé par 10 = 0.5 à 15.0 -->
-                        <input type="range" id="zigzag-spacing" min="5" max="150" value="20" oninput="app.updateZigzagLive()">
-                        <button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', 1)">➕</button>
+                        <button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', -10)">➖</button>
+                        <input type="range" id="zigzag-spacing" min="1" max="5000" value="200" oninput="app.updateZigzagLive()">
+                        <button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', 10)">➕</button>
                     </div>
                 </fieldset>
 
@@ -306,7 +305,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.18</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.19</span>
     </div>
 
 <script>
@@ -544,11 +543,10 @@ const app = {
                 sel.points.forEach(pt => {
                     let dist = Math.hypot(pt.x - current.x, pt.y - current.y);
                     if (dist < radius) {
-                        let force = Math.pow(1 - dist / radius, 2) * strength;
+                        let force = Math.pow(1 - dist / radius, 2) * strength; 
                         let nx = pt.x + dx * force;
                         let ny = pt.y + dy * force;
                         
-                        // Sécurité: Les zigzags ne sortent pas de leur contour
                         if (sel.type === 'zigzag' && sel.boundary) {
                             if (this.pointInPolygon({x: nx, y: ny}, sel.boundary)) {
                                 pt.x = nx; pt.y = ny;
@@ -598,7 +596,7 @@ const app = {
                 }
 
                 let d = Math.hypot(sx - this.pos.anchor.x, sy - this.pos.anchor.y);
-                let rope = (this.ui.tool === 'zigzag') ? 1.0 : this.ui.ropeLength;
+                let rope = (this.ui.tool === 'zigzag') ? 1.0 : this.ui.ropeLength; 
 
                 if (d > rope || this.ui.tool === 'wall') {
                     let nx = sx, ny = sy;
@@ -636,7 +634,7 @@ const app = {
                 }
                 this.draw();
             } else if (this.ui.tool === 'liquify') {
-                this.draw();
+                this.draw(); 
             }
         });
 
@@ -787,38 +785,35 @@ const app = {
         
         if (layer.zigzagType === 'guide' && layer.guideCurve && layer.guideCurve.length > 1) {
             
-            // Lissage fort de la courbe de base pour éviter les croisements chaotiques
             let guide = this.resamplePath(layer.guideCurve, spacing);
-            guide = this.smoothPath(guide, 2);
-            guide = this.resamplePath(guide, spacing); // Rééchantillonnage strict final
+            guide = this.smoothPath(guide, 15); // Lissage extrême
             
             let lines = [];
+            let windowSize = Math.max(2, Math.floor(20.0 / spacing)); 
             
             for (let i = 0; i < guide.length; i++) {
                 let P = guide[i];
-                let T;
-                if (i === 0) {
-                    T = { x: guide[1].x - P.x, y: guide[1].y - P.y };
-                } else if (i === guide.length - 1) {
-                    T = { x: P.x - guide[i-1].x, y: P.y - guide[i-1].y };
-                } else {
-                    T = { x: guide[i+1].x - guide[i-1].x, y: guide[i+1].y - guide[i-1].y };
-                }
+                let iPrev = Math.max(0, i - windowSize);
+                let iNext = Math.min(guide.length - 1, i + windowSize);
                 
+                let T = { x: guide[iNext].x - guide[iPrev].x, y: guide[iNext].y - guide[iPrev].y };
                 let len = Math.hypot(T.x, T.y);
-                if (len < 1e-4) continue;
-                let N = { x: -T.y / len, y: T.x / len }; // Normale à 90°
+                if (len < 1e-5) continue;
+                
+                let N = { x: -T.y / len, y: T.x / len };
                 
                 let intersections = [];
                 for (let j = 0; j < layer.boundary.length; j++) {
                     let A = layer.boundary[j];
                     let B = layer.boundary[(j + 1) % layer.boundary.length];
                     
-                    let denom = N.x * (B.y - A.y) - N.y * (B.x - A.x);
+                    let V = {x: B.x - A.x, y: B.y - A.y};
+                    let denom = N.x * V.y - N.y * V.x;
                     if (Math.abs(denom) < 1e-6) continue;
                     
-                    let t = ((P.x - A.x) * (B.y - A.y) - (P.y - A.y) * (B.x - A.x)) / denom;
-                    let u = ((P.x - A.x) * N.y - (P.y - A.y) * N.x) / denom;
+                    let AP = {x: A.x - P.x, y: A.y - P.y};
+                    let t = (AP.x * V.y - AP.y * V.x) / denom;
+                    let u = (AP.x * N.y - AP.y * N.x) / denom;
                     
                     if (u >= 0 && u <= 1) {
                         intersections.push(t);
@@ -827,37 +822,22 @@ const app = {
                 
                 intersections.sort((a, b) => a - b);
                 
-                let left_t = null, right_t = null;
+                let validPair = null;
                 for (let k = 0; k < intersections.length; k += 2) {
                     let t1 = intersections[k];
                     let t2 = intersections[k+1];
                     if (t2 === undefined) break;
                     
-                    // On cherche le segment de la normale qui traverse le point P (t=0)
-                    if (t1 <= 0.1 && t2 >= -0.1) { 
-                        left_t = t1; right_t = t2; break;
+                    // Sécurité anti-parasite absolue : on vérifie que P est encapsulé
+                    // On tolère 15px d'erreur max dû au lissage extrême du guide
+                    if (t1 <= 15.0 && t2 >= -15.0) {
+                        validPair = { L: {x: P.x + t1*N.x, y: P.y + t1*N.y}, R: {x: P.x + t2*N.x, y: P.y + t2*N.y} };
+                        break;
                     }
                 }
                 
-                // Backup si la ligne guide est légèrement sortie du contour
-                if (left_t === null && intersections.length >= 2) {
-                    let best_dist = Infinity;
-                    for (let k = 0; k < intersections.length; k += 2) {
-                        let t1 = intersections[k];
-                        let t2 = intersections[k+1];
-                        if (t2 === undefined) break;
-                        let dist = Math.min(Math.abs(t1), Math.abs(t2));
-                        if (t1 <= 0 && t2 >= 0) dist = 0;
-                        if (dist < best_dist) {
-                            best_dist = dist; left_t = t1; right_t = t2;
-                        }
-                    }
-                }
-                
-                if (left_t !== null && right_t !== null) {
-                    let L = { x: P.x + left_t * N.x, y: P.y + left_t * N.y };
-                    let R = { x: P.x + right_t * N.x, y: P.y + right_t * N.y };
-                    lines.push({ L, R });
+                if (validPair) {
+                    lines.push(validPair);
                 }
             }
             
@@ -865,7 +845,7 @@ const app = {
             let leftToRight = true;
             for (let line of lines) {
                 let segLen = Math.hypot(line.R.x - line.L.x, line.R.y - line.L.y);
-                let steps = Math.max(1, Math.ceil(segLen / 2)); // Résolution pour le Liquify
+                let steps = Math.max(1, Math.ceil(segLen / 2)); 
                 
                 if (leftToRight) {
                     for(let s=0; s<=steps; s++) path.push({
@@ -960,8 +940,8 @@ const app = {
 
         this.ui.zigzagAngle = parseInt(document.getElementById('zigzag-angle').value);
         document.getElementById('val-zigzag-angle').innerText = this.ui.zigzagAngle + "°";
-        this.ui.zigzagSpacing = parseInt(document.getElementById('zigzag-spacing').value) / 10.0;
-        document.getElementById('val-zigzag-spacing').innerText = this.ui.zigzagSpacing.toFixed(1);
+        this.ui.zigzagSpacing = parseInt(document.getElementById('zigzag-spacing').value) / 100.0;
+        document.getElementById('val-zigzag-spacing').innerText = this.ui.zigzagSpacing.toFixed(2);
         
         if (this.selectedIds.length === 1) {
             let sel = this.findLayer(this.selectedIds[0]);
@@ -1471,8 +1451,9 @@ const app = {
             }
             document.getElementById('zigzag-angle').value = sel.angle || 0;
             document.getElementById('val-zigzag-angle').innerText = (sel.angle || 0) + "°";
-            document.getElementById('zigzag-spacing').value = (sel.spacing || 2.0) * 10;
-            document.getElementById('val-zigzag-spacing').innerText = (sel.spacing || 2.0).toFixed(1);
+            
+            document.getElementById('zigzag-spacing').value = (sel.spacing || 2.0) * 100;
+            document.getElementById('val-zigzag-spacing').innerText = (sel.spacing || 2.0).toFixed(2);
         } else {
             document.getElementById('btn-draw-guide').disabled = true;
         }
@@ -2027,5 +2008,6 @@ window.onload = () => app.init();
 </script>
 </body>
 </html>
+
 
 
