@@ -33,7 +33,7 @@
         .tab-content { display: none; padding: 15px; flex: 1; overflow-y: auto; }
         .tab-content.active { display: block; }
         
-        fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 15px; }
+        fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 15px; background: #fff;}
         legend { font-weight: bold; color: #333; padding: 0 5px; }
         .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
         .row-slider { display: flex; align-items: center; gap: 5px; margin-bottom: 15px; }
@@ -89,7 +89,6 @@
                 <button class="tab-btn" onclick="app.openTab(event, 'tab-layers')">📑 Calques</button>
             </div>
 
-            <!-- FICHIER -->
             <div id="tab-file" class="tab-content active">
                 <fieldset>
                     <legend>💾 Fichier & Projet</legend>
@@ -98,7 +97,7 @@
                         <input type="text" id="project-filename" value="mon_projet" oninput="app.autoSave()">
                     </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-                        <input type="file" id="file-open" style="display: none;" onchange="app.loadProject(event)">
+                        <input type="file" id="file-open" accept=".sunae,.json" style="display: none;" onchange="app.loadProject(event)">
                         <button class="btn" style="flex:1" onclick="document.getElementById('file-open').click()">📂 Ouvrir</button>
                         <button class="btn" style="flex:1; color:red;" onclick="app.newProject()">🗑️ Nouveau</button>
                     </div>
@@ -130,43 +129,81 @@
                 <button class="btn-export" onclick="app.handleSave('.thr', false)">📤 Exporter vers Machine (.thr)</button>
             </div>
 
-            <!-- OUTILS -->
             <div id="tab-tools" class="tab-content">
                 <fieldset>
                     <legend>🛠️ Outils Actifs</legend>
-                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="pen" checked onchange="app.changeTool()"> ✏️ Crayon (Dessin)</label>
-                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="wall" onchange="app.changeTool()"> 🧱 Mur (Exclusion)</label>
-                    <label style="display:flex; margin-bottom:15px;"><input type="radio" name="tool" value="select" onchange="app.changeTool()"> 🖐️ Sélection/Déplacement</label>
+                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="select" checked onchange="app.changeTool()"> 🖐️ Sélection/Déplacement</label>
+                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="pen" onchange="app.changeTool()"> ✏️ Crayon (Dessin continu)</label>
+                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="zigzag" onchange="app.changeTool()"> 〰️ Remplissage (Zigzag)</label>
+                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="liquify" onchange="app.changeTool()"> 💧 Déformation (Relief)</label>
+                    <label style="display:flex; margin-bottom:15px;"><input type="radio" name="tool" value="wall" onchange="app.changeTool()"> 🧱 Mur (Exclusion)</label>
                     
                     <div style="position: relative; width: 100%;">
                         <input type="color" id="color-picker" value="#000000" style="position: absolute; top:0; left:0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 2;" onchange="app.changeColor()" oninput="app.changeColor()">
                         <button class="btn btn-primary" id="btn-color" style="width:100%; background:black; pointer-events: none; z-index: 1; position: relative;">🎨 Couleur du trait</button>
                     </div>
                 </fieldset>
-                <fieldset>
-                    <legend>🖌️ Paramètres du pinceau</legend>
+
+                <!-- Paramètres Lissage (Crayon) -->
+                <fieldset id="opts-pen">
+                    <legend>🖌️ Paramètres Crayon</legend>
                     <div class="row"><label>📏 Épaisseur du trait :</label> <span class="val-badge" id="val-width">1.5</span></div>
                     <div class="row-slider">
                         <button class="btn btn-icon" onclick="app.stepSlider('slider-width', -1)">➖</button>
                         <input type="range" id="slider-width" min="5" max="100" value="15" oninput="app.updateSliders()">
                         <button class="btn btn-icon" onclick="app.stepSlider('slider-width', 1)">➕</button>
                     </div>
-                    <div class="row"><label>🫨 Lissage Anti-tremblement :</label> <span class="val-badge" id="val-tremor">0</span></div>
+                    <div class="row"><label>🫨 Anti-tremblement :</label> <span class="val-badge" id="val-tremor">0</span></div>
                     <div class="row-slider">
                         <button class="btn btn-icon" onclick="app.stepSlider('slider-tremor', -1)">➖</button>
                         <input type="range" id="slider-tremor" min="0" max="100" value="0" oninput="app.updateSliders()">
                         <button class="btn btn-icon" onclick="app.stepSlider('slider-tremor', 1)">➕</button>
                     </div>
-                    <div class="row"><label>〰️ Lissage (Corde) :</label> <span class="val-badge" id="val-rope">5.0</span></div>
+                    <div class="row"><label>〰️ Corde :</label> <span class="val-badge" id="val-rope">5.0</span></div>
                     <div class="row-slider">
                         <button class="btn btn-icon" onclick="app.stepSlider('slider-rope', -1)">➖</button>
                         <input type="range" id="slider-rope" min="0" max="100" value="10" oninput="app.updateSliders()">
                         <button class="btn btn-icon" onclick="app.stepSlider('slider-rope', 1)">➕</button>
                     </div>
                 </fieldset>
+
+                <!-- Paramètres Zigzag -->
+                <fieldset id="opts-zigzag" style="display:none; background:#fff3e0;">
+                    <legend>〰️ Paramètres Zigzag</legend>
+                    <div style="font-size:11px; margin-bottom:10px; color:#555;">Dessinez le contour pour le remplir. Modifiez ici pour recalculer (efface les déformations manuelles).</div>
+                    <div class="row"><label>🔄 Angle :</label> <span class="val-badge" id="val-zigzag-angle">0°</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="app.stepSlider('zigzag-angle', -5)">➖</button>
+                        <input type="range" id="zigzag-angle" min="0" max="360" value="0" oninput="app.updateZigzagLive()">
+                        <button class="btn btn-icon" onclick="app.stepSlider('zigzag-angle', 5)">➕</button>
+                    </div>
+                    <div class="row"><label>📏 Espacement :</label> <span class="val-badge" id="val-zigzag-spacing">10</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', -1)">➖</button>
+                        <input type="range" id="zigzag-spacing" min="2" max="50" value="10" oninput="app.updateZigzagLive()">
+                        <button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', 1)">➕</button>
+                    </div>
+                </fieldset>
+
+                <!-- Paramètres Déformation (Liquify) -->
+                <fieldset id="opts-liquify" style="display:none; background:#e1f5fe;">
+                    <legend>💧 Pinceau Déformation</legend>
+                    <div style="font-size:11px; margin-bottom:10px; color:#555;">Glissez sur la table pour tordre le tracé sélectionné. Le contour initial est protégé.</div>
+                    <div class="row"><label>🔴 Rayon (Taille) :</label> <span class="val-badge" id="val-liq-radius">30</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="app.stepSlider('liq-radius', -5)">➖</button>
+                        <input type="range" id="liq-radius" min="5" max="200" value="30" oninput="app.updateSliders()">
+                        <button class="btn btn-icon" onclick="app.stepSlider('liq-radius', 5)">➕</button>
+                    </div>
+                    <div class="row"><label>💪 Force :</label> <span class="val-badge" id="val-liq-str">50%</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="app.stepSlider('liq-str', -5)">➖</button>
+                        <input type="range" id="liq-str" min="1" max="100" value="50" oninput="app.updateSliders()">
+                        <button class="btn btn-icon" onclick="app.stepSlider('liq-str', 5)">➕</button>
+                    </div>
+                </fieldset>
             </div>
 
-            <!-- IMPORT (Image + THR) -->
             <div id="tab-import" class="tab-content">
                 <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;" onchange="app.importImage(event)">
                 <input type="file" id="file-thr" accept=".thr" style="display:none;" onchange="app.importTHR(event)">
@@ -216,7 +253,6 @@
                 </fieldset>
             </div>
 
-            <!-- CALQUES -->
             <div id="tab-layers" class="tab-content">
                 <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <label>Organisation :</label>
@@ -255,12 +291,17 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.15</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.16</span>
     </div>
 
 <script>
 MobileDragDrop.polyfill({ holdToDrag: 300 });
-window.addEventListener('touchmove', function() {}, {passive: false});
+window.addEventListener('touchmove', function(e) { 
+    // Empêche le rebond d'iOS uniquement si on ne scrolle pas la liste des calques
+    if (!e.target.closest('#layer-list') && !e.target.closest('.tab-content')) {
+        e.preventDefault(); 
+    }
+}, {passive: false});
 
 const app = {
     canvas: document.getElementById('canvas'),
@@ -269,16 +310,17 @@ const app = {
     settings: { shape: 'round' },
     layers: [], 
     undoStack: [], redoStack: [],
-    layerCount: 1, imgCount: 1, wallCount: 1, folderCount: 1, importedCount: 1,
+    layerCount: 1, imgCount: 1, wallCount: 1, folderCount: 1, importedCount: 1, zigzagCount: 1,
     selectedIds: [], 
     draggedId: null,
     
     ui: {
-        tool: 'pen', penWidth: 1.5, ropeLength: 5.0, tremor: 0.0, color: '#000000',
-        zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isDraggingImage: false
+        tool: 'select', penWidth: 1.5, ropeLength: 5.0, tremor: 0.0, color: '#000000',
+        zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isDraggingImage: false, isLiquifying: false,
+        zigzagAngle: 0, zigzagSpacing: 10, liquifyRadius: 30, liquifyStrength: 50, pointerHover: null
     },
     
-    pos: { startPan: {x:0, y:0}, startImgDrag: {x:0, y:0, initX:0, initY:0}, anchor: {x:0, y:0}, lastSmoothed: {x:0, y:0}, currentPath: [] },
+    pos: { startPan: {x:0, y:0}, startImgDrag: {x:0, y:0, initX:0, initY:0}, anchor: {x:0, y:0}, lastSmoothed: {x:0, y:0}, currentPath: [], lastLiquify: {x:0, y:0} },
 
     genId() { return 'L' + Date.now() + Math.floor(Math.random() * 1000); },
 
@@ -293,6 +335,7 @@ const app = {
         } else {
             this.draw();
         }
+        this.changeTool();
     },
 
     autoSave() {
@@ -352,9 +395,7 @@ const app = {
     },
 
     getExportRadius() {
-        if (this.settings.shape === 'rect') {
-            return Math.hypot(600, 250);
-        }
+        if (this.settings.shape === 'rect') return Math.hypot(600, 250);
         return 300;
     },
 
@@ -390,10 +431,12 @@ const app = {
             e.preventDefault(); 
             activePointers.set(e.pointerId, e);
 
+            // GESTION PINCH TO ZOOM UNIVERSEL
             if (activePointers.size === 2) {
                 this.ui.isDrawing = false;
                 this.ui.isPanning = false;
                 this.ui.isDraggingImage = false;
+                this.ui.isLiquifying = false;
                 this.pos.currentPath = [];
                 let pts = Array.from(activePointers.values());
                 let dx = pts[0].clientX - pts[1].clientX;
@@ -404,6 +447,7 @@ const app = {
                 return;
             }
 
+            // OUTIL SELECTION / PAN
             if (e.button === 2 || this.ui.tool === 'select') {
                 let selInfo = this.selectedIds.length === 1 ? this.findLayer(this.selectedIds[0]) : null;
                 let sel = selInfo ? selInfo.layer : null;
@@ -419,8 +463,23 @@ const app = {
                 }
                 return;
             }
+            
+            // OUTIL LIQUIFY
+            if (this.ui.tool === 'liquify') {
+                let selInfo = this.selectedIds.length === 1 ? this.findLayer(this.selectedIds[0]) : null;
+                let sel = selInfo ? selInfo.layer : null;
+                if (sel && (sel.type === 'zigzag' || sel.type === 'path' || sel.type === 'pen' || sel.type === 'imported_path') && !sel.effectiveLocked) {
+                    this.saveState();
+                    this.ui.isLiquifying = true;
+                    this.pos.lastLiquify = this.getScenePos(e.clientX, e.clientY);
+                } else {
+                    alert("Veuillez sélectionner un calque de tracé (Crayon, Zigzag ou Import) déverrouillé pour le déformer.");
+                }
+                return;
+            }
 
-            if (activePointers.size === 1 && (this.ui.tool === 'pen' || this.ui.tool === 'wall')) {
+            // OUTIL CRAYON, MUR ou ZIGZAG
+            if (activePointers.size === 1 && (this.ui.tool === 'pen' || this.ui.tool === 'wall' || this.ui.tool === 'zigzag')) {
                 const pt = this.getScenePos(e.clientX, e.clientY);
                 if (this.isPointInBounds(pt)) {
                     this.ui.isDrawing = true;
@@ -435,6 +494,9 @@ const app = {
         wrapper.addEventListener('pointermove', (e) => {
             e.preventDefault();
             if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, e);
+
+            let ptScene = this.getScenePos(e.clientX, e.clientY);
+            this.ui.pointerHover = ptScene; // Pour le curseur liquify
 
             if (activePointers.size === 2) {
                 if (initialPinchDistance && initialPinchCenter) {
@@ -455,9 +517,40 @@ const app = {
                     this.ui.panX += panDx;
                     this.ui.panY += panDy;
                     initialPinchCenter = {x: cx, y: cy}; 
-
                     this.draw();
                 }
+                return;
+            }
+
+            if (this.ui.isLiquifying) {
+                let current = ptScene;
+                let dx = current.x - this.pos.lastLiquify.x;
+                let dy = current.y - this.pos.lastLiquify.y;
+                let radius = this.ui.liquifyRadius;
+                let strength = this.ui.liquifyStrength / 100.0;
+
+                let sel = this.findLayer(this.selectedIds[0]).layer;
+                
+                sel.points.forEach(pt => {
+                    let dist = Math.hypot(pt.x - current.x, pt.y - current.y);
+                    if (dist < radius) {
+                        let force = Math.pow(1 - dist / radius, 2) * strength; // Courbe plus douce
+                        let nx = pt.x + dx * force;
+                        let ny = pt.y + dy * force;
+                        
+                        // Sécurité de contour : si c'est un zigzag, on reste DANS le polygone tracé
+                        if (sel.type === 'zigzag' && sel.boundary) {
+                            if (this.pointInPolygon({x: nx, y: ny}, sel.boundary)) {
+                                pt.x = nx; pt.y = ny;
+                            }
+                        } else {
+                            pt.x = nx; pt.y = ny;
+                        }
+                    }
+                });
+
+                this.pos.lastLiquify = current;
+                this.draw();
                 return;
             }
 
@@ -484,52 +577,56 @@ const app = {
             }
 
             if (this.ui.isDrawing) {
-                const pt = this.getScenePos(e.clientX, e.clientY);
-                if (this.ui.tool === 'pen') {
+                let sx = ptScene.x;
+                let sy = ptScene.y;
+                
+                if (this.ui.tool === 'pen' || this.ui.tool === 'zigzag') {
                     let alpha = this.ui.tremor > 0 ? 1.0 - (this.ui.tremor / 105.0) : 1.0;
-                    let sx = this.pos.lastSmoothed.x + alpha * (pt.x - this.pos.lastSmoothed.x);
-                    let sy = this.pos.lastSmoothed.y + alpha * (pt.y - this.pos.lastSmoothed.y);
+                    sx = this.pos.lastSmoothed.x + alpha * (ptScene.x - this.pos.lastSmoothed.x);
+                    sy = this.pos.lastSmoothed.y + alpha * (ptScene.y - this.pos.lastSmoothed.y);
                     this.pos.lastSmoothed = {x: sx, y: sy};
+                }
+
+                let d = Math.hypot(sx - this.pos.anchor.x, sy - this.pos.anchor.y);
+                let rope = (this.ui.tool === 'zigzag') ? 1.0 : this.ui.ropeLength; // Pas de corde pour le contour zigzag
+
+                if (d > rope || this.ui.tool === 'wall') {
+                    let nx = sx, ny = sy;
                     
-                    let dx = sx - this.pos.anchor.x;
-                    let dy = sy - this.pos.anchor.y;
-                    let d = Math.hypot(dx, dy);
+                    if (this.ui.tool === 'pen' || this.ui.tool === 'zigzag') {
+                        let angle = Math.atan2(sy - this.pos.anchor.y, sx - this.pos.anchor.x);
+                        nx = sx - Math.cos(angle) * rope;
+                        ny = sy - Math.sin(angle) * rope;
+                    }
+
+                    let testPos = {x: nx, y: ny};
+                    if (!this.isPointInBounds(testPos)) {
+                        if (this.settings.shape === 'rect') {
+                            nx = Math.max(-600, Math.min(600, nx));
+                            ny = Math.max(-250, Math.min(250, ny));
+                        } else {
+                            let r2 = Math.hypot(nx, ny);
+                            nx = (nx / r2) * 300;
+                            ny = (ny / r2) * 300;
+                        }
+                        testPos = {x: nx, y: ny};
+                    }
                     
-                    if (d > this.ui.ropeLength) {
-                        let angle = Math.atan2(dy, dx);
-                        let nx = sx - Math.cos(angle) * this.ui.ropeLength;
-                        let ny = sy - Math.sin(angle) * this.ui.ropeLength;
-                        
-                        let testPos = {x: nx, y: ny};
-                        
-                        if (!this.isPointInBounds(testPos)) {
-                            if (this.settings.shape === 'rect') {
-                                nx = Math.max(-600, Math.min(600, nx));
-                                ny = Math.max(-250, Math.min(250, ny));
-                            } else {
-                                let r2 = Math.hypot(nx, ny);
-                                nx = (nx / r2) * 300;
-                                ny = (ny / r2) * 300;
-                            }
-                            testPos = {x: nx, y: ny};
-                        }
-                        
-                        let inWall = false;
-                        let flat = this.getFlatLayers();
-                        for (let l of flat) {
-                            if (l.effectiveVisible && l.type === 'wall' && this.pointInPolygon(testPos, l.points)) {
-                                inWall = true; break;
-                            }
-                        }
-                        if (!inWall) {
-                            this.pos.anchor = testPos;
-                            this.pos.currentPath.push({...this.pos.anchor});
+                    let inWall = false;
+                    let flat = this.getFlatLayers();
+                    for (let l of flat) {
+                        if (l.effectiveVisible && l.type === 'wall' && this.pointInPolygon(testPos, l.points)) {
+                            inWall = true; break;
                         }
                     }
-                } else if (this.ui.tool === 'wall') {
-                    this.pos.currentPath.push(pt);
+                    if (!inWall) {
+                        this.pos.anchor = testPos;
+                        this.pos.currentPath.push({...this.pos.anchor});
+                    }
                 }
                 this.draw();
+            } else if (this.ui.tool === 'liquify') {
+                this.draw(); // Redessine juste pour le curseur
             }
         });
 
@@ -540,10 +637,15 @@ const app = {
                 initialPinchCenter = null;
             }
 
+            if (this.ui.isLiquifying) {
+                this.ui.isLiquifying = false;
+                this.autoSave();
+            }
+
             if (this.ui.isDraggingImage) {
                 this.ui.isDraggingImage = false;
                 wrapper.style.cursor = 'pointer';
-                this.saveState(); 
+                this.autoSave(); 
             }
 
             if (this.ui.isPanning) {
@@ -553,13 +655,31 @@ const app = {
             
             if (this.ui.isDrawing) {
                 this.ui.isDrawing = false;
-                if (this.pos.currentPath.length > 1) {
-                    if (this.ui.tool === 'wall') this.pos.currentPath.push({...this.pos.currentPath[0]});
-                    this.addLayer({ type: this.ui.tool, color: this.ui.color, width: this.ui.penWidth, points: [...this.pos.currentPath] });
+                if (this.pos.currentPath.length > 2) {
+                    if (this.ui.tool === 'wall' || this.ui.tool === 'zigzag') {
+                        this.pos.currentPath.push({...this.pos.currentPath[0]}); // Fermer le polygone
+                    }
+                    
+                    if (this.ui.tool === 'zigzag') {
+                        let zPoints = this.generateZigzag(this.pos.currentPath, this.ui.zigzagAngle, this.ui.zigzagSpacing);
+                        this.addLayer({ 
+                            type: 'zigzag', 
+                            name: `〰️ Zigzag ${this.zigzagCount++}`, 
+                            color: this.ui.color, 
+                            width: this.ui.penWidth, 
+                            boundary: [...this.pos.currentPath],
+                            angle: this.ui.zigzagAngle,
+                            spacing: this.ui.zigzagSpacing,
+                            points: zPoints
+                        });
+                    } else {
+                        this.addLayer({ type: this.ui.tool, color: this.ui.color, width: this.ui.penWidth, points: [...this.pos.currentPath] });
+                    }
                 }
                 this.pos.currentPath = [];
                 this.draw();
             }
+            this.ui.pointerHover = null;
         };
 
         wrapper.addEventListener('pointerup', endAction);
@@ -581,6 +701,84 @@ const app = {
             if (intersect) inside = !inside;
         }
         return inside;
+    },
+
+    // Générateur mathématique de zigzag (Raycasting)
+    generateZigzag(boundary, angleDeg, spacing) {
+        if (!boundary || boundary.length < 3) return [];
+        
+        let angleRad = angleDeg * Math.PI / 180;
+        let cosA = Math.cos(-angleRad);
+        let sinA = Math.sin(-angleRad);
+
+        // Rotation du polygone
+        let rotBounds = boundary.map(p => ({
+            x: p.x * cosA - p.y * sinA,
+            y: p.x * sinA + p.y * cosA
+        }));
+
+        let minY = Math.min(...rotBounds.map(p => p.y));
+        let maxY = Math.max(...rotBounds.map(p => p.y));
+
+        let lines = [];
+        for (let y = minY + spacing/2; y < maxY; y += spacing) {
+            let intersects = [];
+            for (let i = 0; i < rotBounds.length; i++) {
+                let p1 = rotBounds[i];
+                let p2 = rotBounds[(i + 1) % rotBounds.length];
+                if ((p1.y <= y && p2.y > y) || (p2.y <= y && p1.y > y)) {
+                    let x = p1.x + (y - p1.y) * (p2.x - p1.x) / (p2.y - p1.y);
+                    intersects.push(x);
+                }
+            }
+            intersects.sort((a, b) => a - b);
+            for (let i = 0; i < intersects.length; i += 2) {
+                if (intersects[i] !== undefined && intersects[i+1] !== undefined) {
+                    lines.push({y: y, x1: intersects[i], x2: intersects[i+1]});
+                }
+            }
+        }
+
+        let path = [];
+        let leftToRight = true;
+        for (let line of lines) {
+            let segLen = Math.abs(line.x2 - line.x1);
+            let steps = Math.max(1, Math.ceil(segLen / 3)); // Un point tous les 3 pixels pour la fluidité du liquify
+            
+            if (leftToRight) {
+                for(let s=0; s<=steps; s++) path.push({x: line.x1 + (line.x2 - line.x1)*(s/steps), y: line.y});
+            } else {
+                for(let s=0; s<=steps; s++) path.push({x: line.x2 + (line.x1 - line.x2)*(s/steps), y: line.y});
+            }
+            leftToRight = !leftToRight;
+        }
+
+        // Rotation inverse
+        cosA = Math.cos(angleRad);
+        sinA = Math.sin(angleRad);
+        return path.map(p => ({
+            x: p.x * cosA - p.y * sinA,
+            y: p.x * sinA + p.y * cosA
+        }));
+    },
+
+    updateZigzagLive() {
+        this.ui.zigzagAngle = parseInt(document.getElementById('zigzag-angle').value);
+        document.getElementById('val-zigzag-angle').innerText = this.ui.zigzagAngle + "°";
+        this.ui.zigzagSpacing = parseInt(document.getElementById('zigzag-spacing').value);
+        document.getElementById('val-zigzag-spacing').innerText = this.ui.zigzagSpacing;
+        
+        if (this.selectedIds.length === 1) {
+            let sel = this.findLayer(this.selectedIds[0]);
+            if (sel && sel.layer.type === 'zigzag' && sel.layer.boundary) {
+                this.saveState();
+                sel.layer.angle = this.ui.zigzagAngle;
+                sel.layer.spacing = this.ui.zigzagSpacing;
+                sel.layer.points = this.generateZigzag(sel.layer.boundary, sel.layer.angle, sel.layer.spacing);
+                this.draw();
+                this.autoSave();
+            }
+        }
     },
 
     getFlatLayers(arr = this.layers, parentVisible = true, parentLocked = false) {
@@ -628,7 +826,8 @@ const app = {
         this.ctx.lineWidth = 2; this.ctx.strokeStyle = "#000000"; this.ctx.stroke();
 
         let flatLayers = this.getFlatLayers();
-        
+        let activeSelId = this.selectedIds.length === 1 ? this.selectedIds[0] : null;
+
         for (let i = flatLayers.length - 1; i >= 0; i--) {
             let l = flatLayers[i];
             if (!l.effectiveVisible) continue;
@@ -644,6 +843,18 @@ const app = {
             } else if (l.points && l.points.length > 1) {
                 this.ctx.save();
                 
+                // Dessine la frontière si c'est un zigzag sélectionné
+                if (l.id === activeSelId && l.type === 'zigzag' && l.boundary && this.ui.tool !== 'liquify') {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(l.boundary[0].x, l.boundary[0].y);
+                    for(let j=1; j<l.boundary.length; j++) this.ctx.lineTo(l.boundary[j].x, l.boundary[j].y);
+                    this.ctx.strokeStyle = "rgba(0, 120, 255, 0.4)";
+                    this.ctx.lineWidth = 1.5 / this.ui.zoom;
+                    this.ctx.setLineDash([5,5]);
+                    this.ctx.stroke();
+                    this.ctx.setLineDash([]);
+                }
+
                 this.ctx.beginPath();
                 this.ctx.moveTo(l.points[0].x, l.points[0].y);
                 for(let j=1; j<l.points.length; j++) this.ctx.lineTo(l.points[j].x, l.points[j].y);
@@ -667,6 +878,8 @@ const app = {
             
             if (this.ui.tool === 'wall') {
                 this.ctx.strokeStyle = "red"; this.ctx.lineWidth = 2; this.ctx.setLineDash([5,5]); this.ctx.stroke(); this.ctx.setLineDash([]);
+            } else if (this.ui.tool === 'zigzag') {
+                this.ctx.strokeStyle = "rgba(255, 152, 0, 0.8)"; this.ctx.lineWidth = 2.0 / this.ui.zoom; this.ctx.stroke();
             } else {
                 this.ctx.strokeStyle = this.ui.color; this.ctx.lineWidth = this.ui.penWidth;
                 this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round'; this.ctx.stroke();
@@ -678,6 +891,17 @@ const app = {
             }
         }
 
+        // Dessin du curseur de Liquify
+        if (this.ui.tool === 'liquify' && this.ui.pointerHover) {
+            this.ctx.beginPath();
+            this.ctx.arc(this.ui.pointerHover.x, this.ui.pointerHover.y, this.ui.liquifyRadius, 0, Math.PI*2);
+            this.ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
+            this.ctx.fillStyle = "rgba(255, 0, 0, 0.1)";
+            this.ctx.lineWidth = 1 / this.ui.zoom;
+            this.ctx.fill();
+            this.ctx.stroke();
+        }
+
         this.drawSimulation(flatLayers);
     },
 
@@ -685,7 +909,7 @@ const app = {
         let pts = [];
         for (let i = flatLayers.length - 1; i >= 0; i--) {
             let l = flatLayers[i];
-            if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path') && l.points) {
+            if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && l.points) {
                 for(let j = 0; j < l.points.length; j++) {
                     pts.push({ x: l.points[j].x, y: l.points[j].y, layerId: l.id });
                 }
@@ -804,7 +1028,13 @@ const app = {
 
     changeTool() {
         this.ui.tool = document.querySelector('input[name="tool"]:checked').value;
-        document.getElementById('canvas-wrapper').style.cursor = this.ui.tool === 'select' ? 'pointer' : 'crosshair';
+        document.getElementById('canvas-wrapper').style.cursor = this.ui.tool === 'select' ? 'pointer' : (this.ui.tool === 'liquify' ? 'none' : 'crosshair');
+        
+        document.getElementById('opts-pen').style.display = (this.ui.tool === 'pen') ? 'block' : 'none';
+        document.getElementById('opts-zigzag').style.display = (this.ui.tool === 'zigzag') ? 'block' : 'none';
+        document.getElementById('opts-liquify').style.display = (this.ui.tool === 'liquify') ? 'block' : 'none';
+
+        this.draw(); // Update cursor visibility
         this.autoSave();
     },
 
@@ -818,7 +1048,7 @@ const app = {
         
         if (this.selectedIds.length === 1) {
             let sel = this.findLayer(this.selectedIds[0]);
-            if (sel && (sel.layer.type === 'path' || sel.layer.type === 'imported_path' || sel.layer.type === 'pen')) {
+            if (sel && (sel.layer.type === 'path' || sel.layer.type === 'imported_path' || sel.layer.type === 'pen' || sel.layer.type === 'zigzag')) {
                 this.saveState();
                 sel.layer.color = this.ui.color;
                 this.draw();
@@ -834,6 +1064,12 @@ const app = {
         document.getElementById('val-tremor').innerText = this.ui.tremor;
         this.ui.ropeLength = document.getElementById('slider-rope').value / 2.0;
         document.getElementById('val-rope').innerText = this.ui.ropeLength.toFixed(1);
+        
+        this.ui.liquifyRadius = parseInt(document.getElementById('liq-radius').value);
+        document.getElementById('val-liq-radius').innerText = this.ui.liquifyRadius;
+        this.ui.liquifyStrength = parseInt(document.getElementById('liq-str').value);
+        document.getElementById('val-liq-str').innerText = this.ui.liquifyStrength + "%";
+
         this.autoSave();
     },
 
@@ -936,6 +1172,7 @@ const app = {
         targetArr.splice(insertIndex, 0, newL);
         this.selectedIds = [newL.id];
         this.refreshLayerList();
+        this.autoSave(); // Force sauvegarde après création
     },
 
     renderTree(arr, depth) {
@@ -1006,7 +1243,15 @@ const app = {
             fsTransform.disabled = true;
         }
 
-        if (sel && (sel.type === 'path' || sel.type === 'pen' || sel.type === 'imported_path')) {
+        // Met à jour les sliders Zigzag si sélectionné
+        if (sel && sel.type === 'zigzag') {
+            document.getElementById('zigzag-angle').value = sel.angle || 0;
+            document.getElementById('val-zigzag-angle').innerText = (sel.angle || 0) + "°";
+            document.getElementById('zigzag-spacing').value = sel.spacing || 10;
+            document.getElementById('val-zigzag-spacing').innerText = sel.spacing || 10;
+        }
+
+        if (sel && (sel.type === 'path' || sel.type === 'pen' || sel.type === 'imported_path' || sel.type === 'zigzag')) {
             let savedColor = sel.color || '#000000';
             document.getElementById('color-picker').value = savedColor;
             this.ui.color = savedColor;
@@ -1147,7 +1392,7 @@ const app = {
             for(let i = arr.length - 1; i >= 0; i--) {
                 if (arr[i].type === 'folder') {
                     extractAndRemove(arr[i].layers);
-                } else if (this.selectedIds.includes(arr[i].id) && (arr[i].type === 'path' || arr[i].type === 'pen' || arr[i].type === 'imported_path')) {
+                } else if (this.selectedIds.includes(arr[i].id) && (arr[i].type === 'path' || arr[i].type === 'pen' || arr[i].type === 'imported_path' || arr[i].type === 'zigzag')) {
                     toMerge.push(arr.splice(i, 1)[0]);
                 }
             }
@@ -1338,8 +1583,8 @@ const app = {
                 if (l.srcBase64 && !l.src) l.src = l.srcBase64;
                 if (l.image_b64 && !l.src) l.src = "data:image/png;base64," + l.image_b64;
             }
-            if ((l.type === 'path' || l.type === 'pen') && !l.color) l.color = "#000000";
-            if ((l.type === 'path' || l.type === 'pen') && l.width === undefined) l.width = 1.5;
+            if ((l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && !l.color) l.color = "#000000";
+            if ((l.type === 'path' || l.type === 'pen' || l.type === 'zigzag') && l.width === undefined) l.width = 1.5;
             if (l.type === 'imported_path' && l.width === undefined) l.width = 1.0;
 
             if (l.type === 'folder') {
@@ -1416,7 +1661,7 @@ const app = {
         
         for (let i = flatLayers.length - 1; i >= 0; i--) {
             let l = flatLayers[i];
-            if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path') && l.points && l.points.length > 0) {
+            if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && l.points && l.points.length > 0) {
                 
                 let optimizedPoints = [l.points[0]];
                 for(let j = 1; j < l.points.length; j++) {
