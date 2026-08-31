@@ -89,7 +89,6 @@
                 <button class="tab-btn" onclick="app.openTab(event, 'tab-layers')">📑 Calques</button>
             </div>
 
-            <!-- FICHIER -->
             <div id="tab-file" class="tab-content active">
                 <fieldset>
                     <legend>💾 Fichier & Projet</legend>
@@ -130,7 +129,6 @@
                 <button class="btn-export" onclick="app.handleSave('.thr', false)">📤 Exporter vers Machine (.thr)</button>
             </div>
 
-            <!-- OUTILS -->
             <div id="tab-tools" class="tab-content">
                 <fieldset>
                     <legend>🛠️ Outils Actifs</legend>
@@ -223,7 +221,7 @@
                 </fieldset>
             </div>
 
-            <!-- IMPORT (Image + THR) -->
+            <!-- IMPORT -->
             <div id="tab-import" class="tab-content">
                 <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;" onchange="app.importImage(event)">
                 <input type="file" id="file-thr" accept=".thr" style="display:none;" onchange="app.importTHR(event)">
@@ -273,7 +271,6 @@
                 </fieldset>
             </div>
 
-            <!-- CALQUES -->
             <div id="tab-layers" class="tab-content">
                 <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <label>Organisation :</label>
@@ -312,7 +309,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.16</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.17</span>
     </div>
 
 <script>
@@ -481,7 +478,7 @@ const app = {
                 }
                 return;
             }
-
+            
             if (this.ui.tool === 'liquify') {
                 let selInfo = this.selectedIds.length === 1 ? this.findLayer(this.selectedIds[0]) : null;
                 let sel = selInfo ? selInfo.layer : null;
@@ -512,7 +509,7 @@ const app = {
             if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, e);
 
             let ptScene = this.getScenePos(e.clientX, e.clientY);
-            this.ui.pointerHover = ptScene;
+            this.ui.pointerHover = ptScene; 
 
             if (activePointers.size === 2) {
                 if (initialPinchDistance && initialPinchCenter) {
@@ -550,11 +547,10 @@ const app = {
                 sel.points.forEach(pt => {
                     let dist = Math.hypot(pt.x - current.x, pt.y - current.y);
                     if (dist < radius) {
-                        let force = Math.pow(1 - dist / radius, 2) * strength;
+                        let force = Math.pow(1 - dist / radius, 2) * strength; 
                         let nx = pt.x + dx * force;
                         let ny = pt.y + dy * force;
                         
-                        // Sécurité: Les zigzags ne sortent pas de leur contour
                         if (sel.type === 'zigzag' && sel.boundary) {
                             if (this.pointInPolygon({x: nx, y: ny}, sel.boundary)) {
                                 pt.x = nx; pt.y = ny;
@@ -604,7 +600,7 @@ const app = {
                 }
 
                 let d = Math.hypot(sx - this.pos.anchor.x, sy - this.pos.anchor.y);
-                let rope = (this.ui.tool === 'zigzag') ? 1.0 : this.ui.ropeLength;
+                let rope = (this.ui.tool === 'zigzag') ? 1.0 : this.ui.ropeLength; 
 
                 if (d > rope || this.ui.tool === 'wall') {
                     let nx = sx, ny = sy;
@@ -642,7 +638,7 @@ const app = {
                 }
                 this.draw();
             } else if (this.ui.tool === 'liquify') {
-                this.draw();
+                this.draw(); 
             }
         });
 
@@ -698,7 +694,7 @@ const app = {
                                 type: 'zigzag', 
                                 name: `〰️ Zigzag ${this.zigzagCount++}`, 
                                 color: this.ui.color, 
-                                width: this.ui.penWidth, 
+                                width: 1.3, 
                                 boundary: [...this.pos.currentPath],
                                 zigzagType: type,
                                 angle: this.ui.zigzagAngle,
@@ -1205,7 +1201,7 @@ const app = {
         document.getElementById('opts-zigzag').style.display = (this.ui.tool === 'zigzag') ? 'block' : 'none';
         document.getElementById('opts-liquify').style.display = (this.ui.tool === 'liquify') ? 'block' : 'none';
 
-        this.draw();
+        this.draw(); 
         this.autoSave();
     },
 
@@ -1343,7 +1339,6 @@ const app = {
         targetArr.splice(insertIndex, 0, newL);
         this.selectedIds = [newL.id];
         this.refreshLayerList();
-        this.autoSave();
     },
 
     renderTree(arr, depth) {
@@ -1765,7 +1760,8 @@ const app = {
                 if (l.image_b64 && !l.src) l.src = "data:image/png;base64," + l.image_b64;
             }
             if ((l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && !l.color) l.color = "#000000";
-            if ((l.type === 'path' || l.type === 'pen' || l.type === 'zigzag') && l.width === undefined) l.width = 1.5;
+            if ((l.type === 'path' || l.type === 'pen') && l.width === undefined) l.width = 1.5;
+            if (l.type === 'zigzag' && l.width === undefined) l.width = 1.3;
             if (l.type === 'imported_path' && l.width === undefined) l.width = 1.0;
 
             if (l.type === 'folder') {
@@ -1981,3 +1977,4 @@ window.onload = () => app.init();
 </script>
 </body>
 </html>
+
