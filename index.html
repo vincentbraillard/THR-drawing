@@ -144,7 +144,6 @@
                     </div>
                 </fieldset>
 
-                <!-- Paramètres Crayon -->
                 <fieldset id="opts-pen" style="display:none;">
                     <legend>🖌️ Paramètres Crayon</legend>
                     <div class="row"><label>📏 Épaisseur du trait :</label> <span class="val-badge" id="val-width">1.5</span></div>
@@ -167,7 +166,6 @@
                     </div>
                 </fieldset>
 
-                <!-- Paramètres Zigzag -->
                 <fieldset id="opts-zigzag" style="display:none; background:#fff3e0;">
                     <legend>〰️ Paramètres Zigzag</legend>
                     <div style="font-size:11px; margin-bottom:10px; color:#555;">1. Dessinez le contour pour le remplir.</div>
@@ -194,15 +192,15 @@
                         <div style="font-size:10px; margin-top:5px; color:#666;">(Sélectionnez un zigzag, cliquez ici, et tracez la courbe dans la zone)</div>
                     </div>
 
-                    <div class="row"><label>📏 Espacement :</label> <span class="val-badge" id="val-zigzag-spacing">10</span></div>
+                    <div class="row"><label>📏 Espacement :</label> <span class="val-badge" id="val-zigzag-spacing">2.0</span></div>
                     <div class="row-slider">
                         <button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', -1)">➖</button>
-                        <input type="range" id="zigzag-spacing" min="2" max="50" value="10" oninput="app.updateZigzagLive()">
+                        <!-- Ajustement du range : 5 à 150 divisé par 10 = 0.5 à 15.0 -->
+                        <input type="range" id="zigzag-spacing" min="5" max="150" value="20" oninput="app.updateZigzagLive()">
                         <button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', 1)">➕</button>
                     </div>
                 </fieldset>
 
-                <!-- Paramètres Liquify -->
                 <fieldset id="opts-liquify" style="display:none; background:#e1f5fe;">
                     <legend>💧 Pinceau Déformation</legend>
                     <div style="font-size:11px; margin-bottom:10px; color:#555;">Glissez sur la table pour tordre le tracé sélectionné. Le contour initial des zigzags est protégé.</div>
@@ -221,7 +219,6 @@
                 </fieldset>
             </div>
 
-            <!-- IMPORT -->
             <div id="tab-import" class="tab-content">
                 <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;" onchange="app.importImage(event)">
                 <input type="file" id="file-thr" accept=".thr" style="display:none;" onchange="app.importTHR(event)">
@@ -309,7 +306,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.17</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.18</span>
     </div>
 
 <script>
@@ -334,7 +331,7 @@ const app = {
     ui: {
         tool: 'select', penWidth: 1.5, ropeLength: 5.0, tremor: 0.0, color: '#000000',
         zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isDraggingImage: false, isLiquifying: false,
-        zigzagAngle: 0, zigzagSpacing: 10, zigzagDrawMode: 'contour', liquifyRadius: 30, liquifyStrength: 50, pointerHover: null
+        zigzagAngle: 0, zigzagSpacing: 2.0, zigzagDrawMode: 'contour', liquifyRadius: 30, liquifyStrength: 50, pointerHover: null
     },
     
     pos: { startPan: {x:0, y:0}, startImgDrag: {x:0, y:0, initX:0, initY:0}, anchor: {x:0, y:0}, lastSmoothed: {x:0, y:0}, currentPath: [], lastLiquify: {x:0, y:0} },
@@ -509,7 +506,7 @@ const app = {
             if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, e);
 
             let ptScene = this.getScenePos(e.clientX, e.clientY);
-            this.ui.pointerHover = ptScene; 
+            this.ui.pointerHover = ptScene;
 
             if (activePointers.size === 2) {
                 if (initialPinchDistance && initialPinchCenter) {
@@ -547,10 +544,11 @@ const app = {
                 sel.points.forEach(pt => {
                     let dist = Math.hypot(pt.x - current.x, pt.y - current.y);
                     if (dist < radius) {
-                        let force = Math.pow(1 - dist / radius, 2) * strength; 
+                        let force = Math.pow(1 - dist / radius, 2) * strength;
                         let nx = pt.x + dx * force;
                         let ny = pt.y + dy * force;
                         
+                        // Sécurité: Les zigzags ne sortent pas de leur contour
                         if (sel.type === 'zigzag' && sel.boundary) {
                             if (this.pointInPolygon({x: nx, y: ny}, sel.boundary)) {
                                 pt.x = nx; pt.y = ny;
@@ -600,7 +598,7 @@ const app = {
                 }
 
                 let d = Math.hypot(sx - this.pos.anchor.x, sy - this.pos.anchor.y);
-                let rope = (this.ui.tool === 'zigzag') ? 1.0 : this.ui.ropeLength; 
+                let rope = (this.ui.tool === 'zigzag') ? 1.0 : this.ui.ropeLength;
 
                 if (d > rope || this.ui.tool === 'wall') {
                     let nx = sx, ny = sy;
@@ -638,7 +636,7 @@ const app = {
                 }
                 this.draw();
             } else if (this.ui.tool === 'liquify') {
-                this.draw(); 
+                this.draw();
             }
         });
 
@@ -685,7 +683,6 @@ const app = {
                                 btn.style.backgroundColor = "var(--primary)";
                                 
                                 this.draw();
-                                this.autoSave();
                             }
                         } else {
                             this.pos.currentPath.push({...this.pos.currentPath[0]});
@@ -717,6 +714,7 @@ const app = {
                 }
                 this.pos.currentPath = [];
                 this.draw();
+                this.autoSave();
             }
             this.ui.pointerHover = null;
         };
@@ -766,45 +764,97 @@ const app = {
         return resampled;
     },
 
+    smoothPath(path, iterations=1) {
+        if (!path || path.length < 3) return path;
+        let smoothed = [...path];
+        for(let it=0; it<iterations; it++) {
+            let temp = [smoothed[0]];
+            for(let i=1; i<smoothed.length-1; i++) {
+                temp.push({
+                    x: (smoothed[i-1].x + smoothed[i].x + smoothed[i+1].x) / 3,
+                    y: (smoothed[i-1].y + smoothed[i].y + smoothed[i+1].y) / 3
+                });
+            }
+            temp.push(smoothed[smoothed.length-1]);
+            smoothed = temp;
+        }
+        return smoothed;
+    },
+
     generateZigzag(layer) {
         if (!layer.boundary || layer.boundary.length < 3) return [];
-        let spacing = layer.spacing || 10;
+        let spacing = layer.spacing || 2.0;
         
         if (layer.zigzagType === 'guide' && layer.guideCurve && layer.guideCurve.length > 1) {
+            
+            // Lissage fort de la courbe de base pour éviter les croisements chaotiques
             let guide = this.resamplePath(layer.guideCurve, spacing);
+            guide = this.smoothPath(guide, 2);
+            guide = this.resamplePath(guide, spacing); // Rééchantillonnage strict final
+            
             let lines = [];
             
             for (let i = 0; i < guide.length; i++) {
                 let P = guide[i];
                 let T;
-                if (i < guide.length - 1) {
-                    T = { x: guide[i+1].x - P.x, y: guide[i+1].y - P.y };
-                } else {
+                if (i === 0) {
+                    T = { x: guide[1].x - P.x, y: guide[1].y - P.y };
+                } else if (i === guide.length - 1) {
                     T = { x: P.x - guide[i-1].x, y: P.y - guide[i-1].y };
+                } else {
+                    T = { x: guide[i+1].x - guide[i-1].x, y: guide[i+1].y - guide[i-1].y };
                 }
+                
                 let len = Math.hypot(T.x, T.y);
-                if (len === 0) continue;
-                let N = { x: -T.y / len, y: T.x / len };
+                if (len < 1e-4) continue;
+                let N = { x: -T.y / len, y: T.x / len }; // Normale à 90°
                 
-                let left_t = -Infinity, right_t = Infinity;
-                
+                let intersections = [];
                 for (let j = 0; j < layer.boundary.length; j++) {
                     let A = layer.boundary[j];
                     let B = layer.boundary[(j + 1) % layer.boundary.length];
                     
                     let denom = N.x * (B.y - A.y) - N.y * (B.x - A.x);
-                    if (denom === 0) continue;
+                    if (Math.abs(denom) < 1e-6) continue;
                     
                     let t = ((P.x - A.x) * (B.y - A.y) - (P.y - A.y) * (B.x - A.x)) / denom;
                     let u = ((P.x - A.x) * N.y - (P.y - A.y) * N.x) / denom;
                     
                     if (u >= 0 && u <= 1) {
-                        if (t > 0 && t < right_t) right_t = t;
-                        if (t < 0 && t > left_t) left_t = t;
+                        intersections.push(t);
                     }
                 }
                 
-                if (left_t !== -Infinity && right_t !== Infinity) {
+                intersections.sort((a, b) => a - b);
+                
+                let left_t = null, right_t = null;
+                for (let k = 0; k < intersections.length; k += 2) {
+                    let t1 = intersections[k];
+                    let t2 = intersections[k+1];
+                    if (t2 === undefined) break;
+                    
+                    // On cherche le segment de la normale qui traverse le point P (t=0)
+                    if (t1 <= 0.1 && t2 >= -0.1) { 
+                        left_t = t1; right_t = t2; break;
+                    }
+                }
+                
+                // Backup si la ligne guide est légèrement sortie du contour
+                if (left_t === null && intersections.length >= 2) {
+                    let best_dist = Infinity;
+                    for (let k = 0; k < intersections.length; k += 2) {
+                        let t1 = intersections[k];
+                        let t2 = intersections[k+1];
+                        if (t2 === undefined) break;
+                        let dist = Math.min(Math.abs(t1), Math.abs(t2));
+                        if (t1 <= 0 && t2 >= 0) dist = 0;
+                        if (dist < best_dist) {
+                            best_dist = dist; left_t = t1; right_t = t2;
+                        }
+                    }
+                }
+                
+                if (left_t !== null && right_t !== null) {
                     let L = { x: P.x + left_t * N.x, y: P.y + left_t * N.y };
                     let R = { x: P.x + right_t * N.x, y: P.y + right_t * N.y };
                     lines.push({ L, R });
@@ -815,7 +865,7 @@ const app = {
             let leftToRight = true;
             for (let line of lines) {
                 let segLen = Math.hypot(line.R.x - line.L.x, line.R.y - line.L.y);
-                let steps = Math.max(1, Math.ceil(segLen / 3));
+                let steps = Math.max(1, Math.ceil(segLen / 2)); // Résolution pour le Liquify
                 
                 if (leftToRight) {
                     for(let s=0; s<=steps; s++) path.push({
@@ -868,7 +918,7 @@ const app = {
             let leftToRight = true;
             for (let line of lines) {
                 let segLen = Math.abs(line.x2 - line.x1);
-                let steps = Math.max(1, Math.ceil(segLen / 3)); 
+                let steps = Math.max(1, Math.ceil(segLen / 2)); 
                 
                 if (leftToRight) {
                     for(let s=0; s<=steps; s++) path.push({x: line.x1 + (line.x2 - line.x1)*(s/steps), y: line.y});
@@ -910,8 +960,8 @@ const app = {
 
         this.ui.zigzagAngle = parseInt(document.getElementById('zigzag-angle').value);
         document.getElementById('val-zigzag-angle').innerText = this.ui.zigzagAngle + "°";
-        this.ui.zigzagSpacing = parseInt(document.getElementById('zigzag-spacing').value);
-        document.getElementById('val-zigzag-spacing').innerText = this.ui.zigzagSpacing;
+        this.ui.zigzagSpacing = parseInt(document.getElementById('zigzag-spacing').value) / 10.0;
+        document.getElementById('val-zigzag-spacing').innerText = this.ui.zigzagSpacing.toFixed(1);
         
         if (this.selectedIds.length === 1) {
             let sel = this.findLayer(this.selectedIds[0]);
@@ -1421,8 +1471,8 @@ const app = {
             }
             document.getElementById('zigzag-angle').value = sel.angle || 0;
             document.getElementById('val-zigzag-angle').innerText = (sel.angle || 0) + "°";
-            document.getElementById('zigzag-spacing').value = sel.spacing || 10;
-            document.getElementById('val-zigzag-spacing').innerText = (sel.spacing || 10);
+            document.getElementById('zigzag-spacing').value = (sel.spacing || 2.0) * 10;
+            document.getElementById('val-zigzag-spacing').innerText = (sel.spacing || 2.0).toFixed(1);
         } else {
             document.getElementById('btn-draw-guide').disabled = true;
         }
@@ -1977,4 +2027,5 @@ window.onload = () => app.init();
 </script>
 </body>
 </html>
+
 
