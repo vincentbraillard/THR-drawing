@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -89,6 +90,7 @@
                 <button class="tab-btn" onclick="app.openTab(event, 'tab-layers')">📑 Calques</button>
             </div>
 
+            <!-- FICHIER -->
             <div id="tab-file" class="tab-content active">
                 <fieldset>
                     <legend>💾 Fichier & Projet</legend>
@@ -97,7 +99,8 @@
                         <input type="text" id="project-filename" value="mon_projet" oninput="app.autoSave()">
                     </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-                        <input type="file" id="file-open" accept=".sunae,.json" style="display: none;" onchange="app.loadProject(event)">
+                        <!-- Suppression de l'attribut accept pour l'iPad -->
+                        <input type="file" id="file-open" style="display: none;" onchange="app.loadProject(event)">
                         <button class="btn" style="flex:1" onclick="document.getElementById('file-open').click()">📂 Ouvrir</button>
                         <button class="btn" style="flex:1; color:red;" onclick="app.newProject()">🗑️ Nouveau</button>
                     </div>
@@ -129,6 +132,7 @@
                 <button class="btn-export" onclick="app.handleSave('.thr', false)">📤 Exporter vers Machine (.thr)</button>
             </div>
 
+            <!-- OUTILS -->
             <div id="tab-tools" class="tab-content">
                 <fieldset>
                     <legend>🛠️ Outils Actifs</legend>
@@ -144,6 +148,7 @@
                     </div>
                 </fieldset>
 
+                <!-- Paramètres Crayon -->
                 <fieldset id="opts-pen" style="display:none;">
                     <legend>🖌️ Paramètres Crayon</legend>
                     <div class="row"><label>📏 Épaisseur du trait :</label> <span class="val-badge" id="val-width">1.5</span></div>
@@ -166,6 +171,7 @@
                     </div>
                 </fieldset>
 
+                <!-- Paramètres Zigzag -->
                 <fieldset id="opts-zigzag" style="display:none; background:#fff3e0;">
                     <legend>〰️ Paramètres Zigzag</legend>
                     <div style="font-size:11px; margin-bottom:10px; color:#555;">1. Dessinez le contour pour le remplir.</div>
@@ -195,11 +201,13 @@
                     <div class="row"><label>📏 Espacement :</label> <span class="val-badge" id="val-zigzag-spacing">2.00</span></div>
                     <div class="row-slider">
                         <button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', -10)">➖</button>
-                        <input type="range" id="zigzag-spacing" min="1" max="5000" value="200" oninput="app.updateZigzagLive()">
+                        <!-- Le curseur va de 1 à 150 (divisé par 10) => 0.1 à 15.0 mm -->
+                        <input type="range" id="zigzag-spacing" min="1" max="150" value="20" oninput="app.updateZigzagLive()">
                         <button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', 10)">➕</button>
                     </div>
                 </fieldset>
 
+                <!-- Paramètres Liquify -->
                 <fieldset id="opts-liquify" style="display:none; background:#e1f5fe;">
                     <legend>💧 Pinceau Déformation</legend>
                     <div style="font-size:11px; margin-bottom:10px; color:#555;">Glissez sur la table pour tordre le tracé sélectionné. Le contour initial des zigzags est protégé.</div>
@@ -218,6 +226,7 @@
                 </fieldset>
             </div>
 
+            <!-- IMPORT (Image + THR) -->
             <div id="tab-import" class="tab-content">
                 <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;" onchange="app.importImage(event)">
                 <input type="file" id="file-thr" accept=".thr" style="display:none;" onchange="app.importTHR(event)">
@@ -267,6 +276,7 @@
                 </fieldset>
             </div>
 
+            <!-- CALQUES -->
             <div id="tab-layers" class="tab-content">
                 <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <label>Organisation :</label>
@@ -305,7 +315,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.19</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.20</span>
     </div>
 
 <script>
@@ -681,6 +691,7 @@ const app = {
                                 btn.style.backgroundColor = "var(--primary)";
                                 
                                 this.draw();
+                                this.autoSave();
                             }
                         } else {
                             this.pos.currentPath.push({...this.pos.currentPath[0]});
@@ -785,6 +796,7 @@ const app = {
         
         if (layer.zigzagType === 'guide' && layer.guideCurve && layer.guideCurve.length > 1) {
             
+            // Lissage fort de la courbe de base pour éviter les croisements chaotiques
             let guide = this.resamplePath(layer.guideCurve, spacing);
             guide = this.smoothPath(guide, 15); // Lissage extrême
             
@@ -940,7 +952,7 @@ const app = {
 
         this.ui.zigzagAngle = parseInt(document.getElementById('zigzag-angle').value);
         document.getElementById('val-zigzag-angle').innerText = this.ui.zigzagAngle + "°";
-        this.ui.zigzagSpacing = parseInt(document.getElementById('zigzag-spacing').value) / 100.0;
+        this.ui.zigzagSpacing = parseInt(document.getElementById('zigzag-spacing').value) / 10.0;
         document.getElementById('val-zigzag-spacing').innerText = this.ui.zigzagSpacing.toFixed(2);
         
         if (this.selectedIds.length === 1) {
@@ -1451,9 +1463,8 @@ const app = {
             }
             document.getElementById('zigzag-angle').value = sel.angle || 0;
             document.getElementById('val-zigzag-angle').innerText = (sel.angle || 0) + "°";
-            
-            document.getElementById('zigzag-spacing').value = (sel.spacing || 2.0) * 100;
-            document.getElementById('val-zigzag-spacing').innerText = (sel.spacing || 2.0).toFixed(2);
+            document.getElementById('zigzag-spacing').value = (sel.spacing || 2.0) * 10;
+            document.getElementById('val-zigzag-spacing').innerText = (sel.spacing || 2.0).toFixed(1);
         } else {
             document.getElementById('btn-draw-guide').disabled = true;
         }
@@ -2008,6 +2019,5 @@ window.onload = () => app.init();
 </script>
 </body>
 </html>
-
 
 
