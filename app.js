@@ -1822,4 +1822,5 @@ const app = {
     }
 };
 
+window.app = app; // FIX SCOPE ISSUE
 window.onload = () => app.init();
