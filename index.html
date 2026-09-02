@@ -89,7 +89,6 @@
                 <button class="tab-btn" onclick="app.openTab(event, 'tab-layers')">📑 Calques</button>
             </div>
 
-            <!-- FICHIER -->
             <div id="tab-file" class="tab-content active">
                 <fieldset>
                     <legend>💾 Fichier & Projet</legend>
@@ -100,4 +99,2083 @@
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
                         <input type="file" id="file-open" style="display: none;" onchange="app.loadProject(event)">
                         <button class="btn" style="flex:1" onclick="document.getElementById('file-open').click()">📂 Ouvrir</button>
-                        <button class="btn" style="flex:1; color:red;" onclick="app.newProject()">🗑️ NouveauJe ne peux pas vous aider à ce sujet, car je ne suis qu'un modèle de langage.
+                        <button class="btn" style="flex:1; color:red;" onclick="app.newProject()">🗑️ Nouveau</button>
+                    </div>
+                    <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                        <button class="btn" style="flex:1" onclick="app.handleSave('.sunae', false)">💾 Enregistrer</button>
+                        <button class="btn" style="flex:1" onclick="app.handleSave('.sunae', true)">📝 Sous...</button>
+                    </div>
+                    <div style="font-size:11px; color:green; text-align:center;">✓ Auto-sauvegarde active</div>
+                </fieldset>
+                <fieldset>
+                    <legend>🖥️ Espace de travail</legend>
+                    <div class="row" style="margin-bottom: 12px;">
+                        <label>Forme :</label>
+                        <select id="table-shape" onchange="app.changeShape()">
+                            <option value="round">Table Ronde</option>
+                            <option value="rect">Rectangle 1200x500</option>
+                        </select>
+                    </div>
+                    <div class="row"><label>🔍 Zoom du Canevas :</label> <span class="val-badge" id="val-zoom">100%</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="app.stepSlider('zoom-workspace', -10)">➖</button>
+                        <input type="range" id="zoom-workspace" min="10" max="1000" value="100" oninput="app.updateZoomFromSlider()">
+                        <button class="btn btn-icon" onclick="app.stepSlider('zoom-workspace', 10)">➕</button>
+                    </div>
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal;">
+                        <input type="checkbox" id="chk-sim-points" checked onchange="app.draw(); app.autoSave();"> 🟢/🔴 Points (Début/Fin Calque)
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; margin-top: 5px;">
+                        <input type="checkbox" id="chk-show-links" checked onchange="app.draw(); app.autoSave();"> 🔗 Lignes de liaison inter-calques
+                    </label>
+                </fieldset>
+                <button class="btn-export" onclick="app.handleSave('.thr', false)">📤 Exporter vers Machine (.thr)</button>
+            </div>
+
+            <div id="tab-tools" class="tab-content">
+                <fieldset>
+                    <legend>🛠️ Outils Actifs</legend>
+                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="select" checked onchange="app.changeTool()"> 🖐️ Sélection/Déplacement</label>
+                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="pen" onchange="app.changeTool()"> ✏️ Crayon (Dessin continu)</label>
+                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="zigzag" onchange="app.changeTool()"> 〰️ Remplissage (Zones)</label>
+                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="liquify" onchange="app.changeTool()"> 💧 Déformation (Relief)</label>
+                    <label style="display:flex; margin-bottom:15px;"><input type="radio" name="tool" value="wall" onchange="app.changeTool()"> 🧱 Mur (Exclusion)</label>
+                    
+                    <div style="position: relative; width: 100%;">
+                        <input type="color" id="color-picker" value="#000000" style="position: absolute; top:0; left:0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 2;" onchange="app.changeColor()" oninput="app.changeColor()">
+                        <button class="btn btn-primary" id="btn-color" style="width:100%; background:black; pointer-events: none; z-index: 1; position: relative;">🎨 Couleur du trait</button>
+                    </div>
+                </fieldset>
+
+                <fieldset id="opts-pen" style="display:none;">
+                    <legend>🖌️ Paramètres Crayon</legend>
+                    <div class="row"><label>📏 Épaisseur du trait :</label> <span class="val-badge" id="val-width">1.5</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="app.stepSlider('slider-width', -1)">➖</button>
+                        <input type="range" id="slider-width" min="5" max="100" value="15" oninput="app.updateSliders()">
+                        <button class="btn btn-icon" onclick="app.stepSlider('slider-width', 1)">➕</button>
+                    </div>
+                    <div class="row"><label>🫨 Lissage Anti-tremblement :</label> <span class="val-badge" id="val-tremor">0</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="app.stepSlider('slider-tremor', -1)">➖</button>
+                        <input type="range" id="slider-tremor" min="0" max="100" value="0" oninput="app.updateSliders()">
+                        <button class="btn btn-icon" onclick="app.stepSlider('slider-tremor', 1)">➕</button>
+                    </div>
+                    <div class="row"><label>〰️ Lissage (Corde) :</label> <span class="val-badge" id="val-rope">5.0</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="app.stepSlider('slider-rope', -1)">➖</button>
+                        <input type="range" id="slider-rope" min="0" max="100" value="10" oninput="app.updateSliders()">
+                        <button class="btn btn-icon" onclick="app.stepSlider('slider-rope', 1)">➕</button>
+                    </div>
+                </fieldset>
+
+                <fieldset id="opts-zigzag" style="display:none; background:#fff3e0;">
+                    <legend>〰️ Paramètres Remplissage</legend>
+                    <div style="font-size:11px; margin-bottom:10px; color:#555; font-weight:bold;" id="zigzag-help-text">Dessinez une forme fermée ou utilisez la baguette magique sur une image.</div>
+                    
+                    <div id="wand-container" style="display:none; background:#e8eaf6; padding: 10px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #c5cae9;">
+                        <button id="btn-wand-mode" class="btn" style="width:100%; font-weight:bold; margin-bottom:5px;" onclick="app.toggleWandMode()">🪄 Utiliser la Détection Auto</button>
+                        <div id="wand-options" style="display:none;">
+                            <div class="row"><label>🎚️ Sensibilité :</label> <span class="val-badge" id="val-wand-tol">30</span></div>
+                            <div class="row-slider" style="margin-bottom:0;">
+                                <button class="btn btn-icon" onclick="app.stepSlider('wand-tol', -5)">➖</button>
+                                <input type="range" id="wand-tol" min="0" max="100" value="30" oninput="app.updateSliders()">
+                                <button class="btn btn-icon" onclick="app.stepSlider('wand-tol', 5)">➕</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row" style="gap: 5px; margin-bottom: 15px;">
+                        <button id="btn-zig-straight" class="btn btn-primary" style="flex:1;" onclick="app.setZigzagLineStyle('straight')">〰️ Droites</button>
+                        <button id="btn-zig-wave" class="btn" style="flex:1;" onclick="app.setZigzagLineStyle('wave')">🌊 Vagues</button>
+                    </div>
+
+                    <div class="row">
+                        <label>Orientation :</label>
+                        <select id="zigzag-type" onchange="app.updateZigzagLive(true)">
+                            <option value="angle">Angle Fixe</option>
+                            <option value="guide">Suivre une Courbe</option>
+                        </select>
+                    </div>
+
+                    <div id="zig-angle-div">
+                        <div class="row"><label>🔄 Angle :</label> <span class="val-badge" id="val-zigzag-angle">0°</span></div>
+                        <div class="row-slider">
+                            <button class="btn btn-icon" onclick="app.stepSlider('zigzag-angle', -5)">➖</button>
+                            <input type="range" id="zigzag-angle" min="0" max="360" value="0" oninput="app.updateZigzagLive()">
+                            <button class="btn btn-icon" onclick="app.stepSlider('zigzag-angle', 5)">➕</button>
+                        </div>
+                    </div>
+
+                    <div id="zig-guide-div" style="display:none; text-align:center; padding: 10px 0;">
+                        <button id="btn-draw-guide" class="btn btn-primary" style="width:100%;" onclick="app.startDrawingGuide()" disabled>✏️ Dessiner la courbe guide</button>
+                    </div>
+
+                    <div class="row"><label>📏 Espacement :</label> <span class="val-badge" id="val-zigzag-spacing">2.00</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', -10)">➖</button>
+                        <input type="range" id="zigzag-spacing" min="1" max="1500" value="200" oninput="app.updateZigzagLive()">
+                        <button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', 10)">➕</button>
+                    </div>
+
+                    <div id="wave-opts-div" style="display:none; border-top: 1px solid #ccc; padding-top: 10px; margin-top: 10px;">
+                        <div class="row"><label>↕️ Hauteur Vague :</label> <span class="val-badge" id="val-wave-amp">2.0</span></div>
+                        <div class="row-slider">
+                            <button class="btn btn-icon" onclick="app.stepSlider('wave-amp', -5)">➖</button>
+                            <input type="range" id="wave-amp" min="1" max="100" value="20" oninput="app.updateZigzagLive()">
+                            <button class="btn btn-icon" onclick="app.stepSlider('wave-amp', 5)">➕</button>
+                        </div>
+                        <div class="row"><label>↔️ Longueur Vague :</label> <span class="val-badge" id="val-wave-len">15.0</span></div>
+                        <div class="row-slider">
+                            <button class="btn btn-icon" onclick="app.stepSlider('wave-len', -5)">➖</button>
+                            <input type="range" id="wave-len" min="10" max="500" value="150" oninput="app.updateZigzagLive()">
+                            <button class="btn btn-icon" onclick="app.stepSlider('wave-len', 5)">➕</button>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset id="opts-liquify" style="display:none; background:#e1f5fe;">
+                    <legend>💧 Pinceau Déformation</legend>
+                    <div style="font-size:11px; margin-bottom:10px; color:#555;">Glissez sur la table pour tordre le tracé sélectionné. Le contour initial des zigzags est protégé.</div>
+                    <div class="row"><label>🔴 Taille du pinceau :</label> <span class="val-badge" id="val-liq-radius">30</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="app.stepSlider('liq-radius', -5)">➖</button>
+                        <input type="range" id="liq-radius" min="5" max="200" value="30" oninput="app.updateSliders()">
+                        <button class="btn btn-icon" onclick="app.stepSlider('liq-radius', 5)">➕</button>
+                    </div>
+                    <div class="row"><label>💪 Force :</label> <span class="val-badge" id="val-liq-str">50%</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="app.stepSlider('liq-str', -5)">➖</button>
+                        <input type="range" id="liq-str" min="1" max="100" value="50" oninput="app.updateSliders()">
+                        <button class="btn btn-icon" onclick="app.stepSlider('liq-str', 5)">➕</button>
+                    </div>
+                </fieldset>
+            </div>
+
+            <div id="tab-import" class="tab-content">
+                <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;" onchange="app.importImage(event)">
+                <input type="file" id="file-thr" accept=".thr" style="display:none;" onchange="app.importTHR(event)">
+                
+                <div style="display:flex; gap:5px; margin-bottom:15px;">
+                    <button class="btn" style="flex:1; font-weight:bold;" onclick="document.getElementById('file-image').click()">📂 Image</button>
+                    <button class="btn" style="flex:1; font-weight:bold;" onclick="document.getElementById('file-thr').click()">📂 Tracé (.thr)</button>
+                </div>
+                
+                <fieldset id="fs-transform" disabled>
+                    <legend>🖼️ / 〰️ Calque Sélectionné</legend>
+                    
+                    <div id="div-opacity">
+                        <div class="row"><label>🌗 Opacité :</label></div>
+                        <div class="row-slider">
+                            <button class="btn btn-icon" onclick="app.stepSlider('img-opacity', -5)">➖</button>
+                            <input type="range" id="img-opacity" min="0" max="100" value="100" oninput="app.updateTransform()">
+                            <button class="btn btn-icon" onclick="app.stepSlider('img-opacity', 5)">➕</button>
+                        </div>
+                    </div>
+                    
+                    <div id="div-thr-width" style="display:none;">
+                        <div class="row"><label>📏 Épaisseur :</label> <span class="val-badge" id="val-thr-width">1.0</span></div>
+                        <div class="row-slider">
+                            <button class="btn btn-icon" onclick="app.stepSlider('thr-width', -1)">➖</button>
+                            <input type="range" id="thr-width" min="5" max="100" value="10" oninput="app.updateTransform()">
+                            <button class="btn btn-icon" onclick="app.stepSlider('thr-width', 1)">➕</button>
+                        </div>
+                    </div>
+
+                    <div class="row"><label>📐 Échelle :</label></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="app.stepSlider('img-scale', -5)">➖</button>
+                        <input type="range" id="img-scale" min="10" max="1000" value="100" oninput="app.updateTransform()">
+                        <button class="btn btn-icon" onclick="app.stepSlider('img-scale', 5)">➕</button>
+                    </div>
+                    <div class="row"><label>🔄 Rotation :</label> <span class="val-badge" id="val-rot">0°</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="app.stepSlider('img-rot', -1)">➖</button>
+                        <input type="range" id="img-rot" min="-180" max="180" value="0" oninput="app.updateTransform()">
+                        <button class="btn btn-icon" onclick="app.stepSlider('img-rot', 1)">➕</button>
+                    </div>
+                    <div style="display:flex; gap:5px; margin-top:10px;">
+                        <button class="btn" style="flex:1" onclick="app.toggleFlip('H')">↔️ Miroir H</button>
+                        <button class="btn" style="flex:1" onclick="app.toggleFlip('V')">↕️ Miroir V</button>
+                    </div>
+                </fieldset>
+            </div>
+
+            <div id="tab-layers" class="tab-content">
+                <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <label>Organisation :</label>
+                    <label style="background: #e3f2fd; padding: 3px 8px; border-radius: 12px; font-size:12px;">
+                        <input type="checkbox" id="multi-select-mode" onchange="app.refreshLayerList()"> Choix multiple
+                    </label>
+                </div>
+                
+                <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 5px; background: #f9f9f9; border-radius: 6px; border: 1px solid #eee;">
+                    <label style="font-size:12px; font-weight:bold; color: #0078D7; cursor:pointer;">
+                        <input type="checkbox" id="chk-highlight-sel" checked onchange="app.draw()"> 🌟 Halo de sélection
+                    </label>
+                </div>
+                
+                <div style="display:flex; gap:5px; margin-bottom:10px;">
+                    <button class="btn" title="Monter" onclick="app.moveLayer(-1)">⬆️</button>
+                    <button class="btn" title="Descendre" onclick="app.moveLayer(1)">⬇️</button>
+                    <button class="btn" style="flex:1" onclick="app.groupSelected()">📁 Grouper</button>
+                    <button class="btn" style="flex:1" onclick="app.ungroupSelected()">📂 Sortir</button>
+                </div>
+
+                <div style="font-size: 11px; color: #666; margin-bottom: 5px; text-align: center;">Maintien long pour glisser-déposer (Drag&Drop)</div>
+                <ul id="layer-list"></ul>
+                
+                <div style="display:flex; gap:5px; margin-top:10px;">
+                    <button class="btn" id="btn-lock" style="flex:1" onclick="app.toggleLock()">🔒 Verrouiller</button>
+                    <button class="btn" id="btn-merge" style="flex:1; background:#e8f5e9; color:#2e7d32;" onclick="app.mergeSelected()">🔗 Fusionner</button>
+                    <button class="btn" id="btn-delete" style="flex:1; background:#ffebee; color:#c62828;" onclick="app.deleteSelected()">🗑️ Suppr.</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ZONE SIMULATEUR -->
+    <div id="bottom-panel">
+        <div class="row">
+            <label>▶️ Simulateur de tracé (Bille) :</label>
+            <span class="val-badge" id="val-sim">0.0%</span>
+        </div>
+        <div class="row-slider" style="margin-bottom: 0;">
+            <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', -10)">➖</button>
+            <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
+            <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
+        </div>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.27</span>
+    </div>
+
+<script>
+MobileDragDrop.polyfill({ holdToDrag: 300 });
+window.addEventListener('touchmove', function(e) { 
+    if (!e.target.closest('#layer-list') && !e.target.closest('.tab-content')) {
+        e.preventDefault(); 
+    }
+}, {passive: false});
+
+const app = {
+    canvas: document.getElementById('canvas'),
+    ctx: document.getElementById('canvas').getContext('2d'),
+    
+    settings: { shape: 'round' },
+    layers: [], 
+    undoStack: [], redoStack: [],
+    layerCount: 1, imgCount: 1, wallCount: 1, folderCount: 1, importedCount: 1, zigzagCount: 1,
+    selectedIds: [], 
+    draggedId: null,
+    
+    simCache: { valid: false, pts: [], dists: [], totalDist: 0 },
+    lastActiveSimId: null,
+    
+    ui: {
+        tool: 'select', penWidth: 1.5, ropeLength: 5.0, tremor: 0.0, color: '#000000',
+        zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isDraggingImage: false, isLiquifying: false,
+        zigzagLineStyle: 'straight', waveAmp: 2.0, waveLen: 15.0,
+        zigzagAngle: 0, zigzagSpacing: 2.0, zigzagDrawMode: 'contour', liquifyRadius: 30, liquifyStrength: 50, wandTolerance: 30, pointerHover: null
+    },
+    
+    pos: { startPan: {x:0, y:0}, startImgDrag: {x:0, y:0, initX:0, initY:0}, anchor: {x:0, y:0}, lastSmoothed: {x:0, y:0}, currentPath: [], lastLiquify: {x:0, y:0}, lastClick: {x:0, y:0} },
+
+    genId() { return 'L' + Date.now() + Math.floor(Math.random() * 1000); },
+
+    init() {
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+        this.setupEvents();
+        
+        let saved = localStorage.getItem('sunae_autosave');
+        if (saved) {
+            this.loadFromJSON(saved, true);
+        } else {
+            this.draw();
+        }
+        this.changeTool();
+    },
+
+    invalidateSim() {
+        this.simCache.valid = false;
+    },
+
+    autoSave() {
+        try {
+            const cleanLayers = (arr) => arr.map(l => {
+                let cl = {...l, img:null};
+                if(cl.type === 'folder' && cl.layers) cl.layers = cleanLayers(cl.layers);
+                return cl;
+            });
+            const proj = {
+                filename: document.getElementById('project-filename').value,
+                settings: { 
+                    shape: this.settings.shape,
+                    zoom: this.ui.zoom*100, 
+                    showPoints: document.getElementById('chk-sim-points') ? document.getElementById('chk-sim-points').checked : true,
+                    showLinks: document.getElementById('chk-show-links') ? document.getElementById('chk-show-links').checked : true,
+                    tool: this.ui.tool, width: this.ui.penWidth*10, tremor: this.ui.tremor, rope: this.ui.ropeLength*2, color: this.ui.color 
+                },
+                layers: cleanLayers(this.layers)
+            };
+            localStorage.setItem('sunae_autosave', JSON.stringify(proj));
+        } catch(e) {
+            console.warn("Autosave échoué", e);
+        }
+    },
+
+    newProject() {
+        let choice = prompt("Forme de la nouvelle table :\nTapez 1 pour Table Ronde\nTapez 2 pour Table Rectangulaire (1200x500)", "1");
+        if (choice !== "1" && choice !== "2") return;
+
+        localStorage.removeItem('sunae_autosave');
+        this.layers = [];
+        this.undoStack = [];
+        this.redoStack = [];
+        this.selectedIds = [];
+        document.getElementById('project-filename').value = "mon_projet";
+        document.getElementById('slider-sim').value = 0;
+        this.ui.simPercent = 0;
+        
+        this.settings.shape = (choice === "2") ? 'rect' : 'round';
+        document.getElementById('table-shape').value = this.settings.shape;
+        
+        this.invalidateSim();
+        this.refreshLayerList();
+    },
+
+    changeShape() {
+        this.settings.shape = document.getElementById('table-shape').value;
+        this.invalidateSim();
+        this.draw();
+        this.autoSave();
+    },
+
+    isPointInBounds(pt) {
+        if (this.settings.shape === 'rect') {
+            return Math.abs(pt.x) <= 600 && Math.abs(pt.y) <= 250;
+        } else {
+            return Math.hypot(pt.x, pt.y) <= 300;
+        }
+    },
+
+    getExportRadius() {
+        if (this.settings.shape === 'rect') return Math.hypot(600, 250);
+        return 300;
+    },
+
+    resize() {
+        const wrapper = document.getElementById('canvas-wrapper');
+        const rect = wrapper.getBoundingClientRect();
+        this.canvas.width = rect.width * window.devicePixelRatio;
+        this.canvas.height = rect.height * window.devicePixelRatio;
+        this.canvas.style.width = rect.width + 'px';
+        this.canvas.style.height = rect.height + 'px';
+        this.vw = rect.width; this.vh = rect.height;
+        this.draw();
+    },
+
+    getScenePos(clientX, clientY) {
+        const rect = this.canvas.getBoundingClientRect();
+        let x = clientX - rect.left;
+        let y = clientY - rect.top;
+        return {
+            x: (x - this.vw/2 - this.ui.panX) / this.ui.zoom,
+            y: (y - this.vh/2 - this.ui.panY) / this.ui.zoom
+        };
+    },
+
+    checkImagePresence() {
+        let hasImage = this.layers.some(l => l.type === 'image' && l.effectiveVisible);
+        let wandContainer = document.getElementById('wand-container');
+        if (wandContainer) {
+            wandContainer.style.display = hasImage ? 'block' : 'none';
+            if (!hasImage && this.ui.zigzagDrawMode === 'wand') {
+                this.toggleWandMode();
+            }
+        }
+    },
+
+    toggleWandMode() {
+        if (this.ui.zigzagDrawMode === 'wand') {
+            this.ui.zigzagDrawMode = 'contour';
+            document.getElementById('btn-wand-mode').classList.remove('btn-primary');
+            document.getElementById('wand-options').style.display = 'none';
+            document.getElementById('canvas-wrapper').style.cursor = 'crosshair';
+            document.getElementById('zigzag-help-text').innerText = "Dessinez une forme fermée ou utilisez la détection auto sur une image.";
+        } else {
+            this.ui.zigzagDrawMode = 'wand';
+            document.getElementById('btn-wand-mode').classList.add('btn-primary');
+            document.getElementById('wand-options').style.display = 'block';
+            document.getElementById('canvas-wrapper').style.cursor = 'crosshair'; 
+            document.getElementById('zigzag-help-text').innerText = "Cliquez sur une image de fond pour générer un remplissage.";
+            
+            let btnGuide = document.getElementById('btn-draw-guide');
+            if (btnGuide) {
+                btnGuide.innerText = "✏️ Dessiner la courbe guide";
+                btnGuide.style.backgroundColor = "var(--primary)";
+            }
+        }
+    },
+
+    setupEvents() {
+        const wrapper = document.getElementById('canvas-wrapper');
+        let activePointers = new Map();
+        let initialPinchDistance = null;
+        let initialPinchZoom = 1.0;
+        let initialPinchCenter = null;
+
+        wrapper.addEventListener('pointerdown', (e) => {
+            e.preventDefault(); 
+            activePointers.set(e.pointerId, e);
+
+            let ptScene = this.getScenePos(e.clientX, e.clientY);
+            this.pos.lastClick = ptScene;
+
+            if (activePointers.size === 2) {
+                this.ui.isDrawing = false;
+                this.ui.isPanning = false;
+                this.ui.isDraggingImage = false;
+                this.ui.isLiquifying = false;
+                this.pos.currentPath = [];
+                let pts = Array.from(activePointers.values());
+                let dx = pts[0].clientX - pts[1].clientX;
+                let dy = pts[0].clientY - pts[1].clientY;
+                initialPinchDistance = Math.hypot(dx, dy);
+                initialPinchZoom = this.ui.zoom;
+                initialPinchCenter = { x: (pts[0].clientX + pts[1].clientX) / 2, y: (pts[0].clientY + pts[1].clientY) / 2 };
+                return;
+            }
+
+            if (e.button === 2 || this.ui.tool === 'select') {
+                let selInfo = this.selectedIds.length === 1 ? this.findLayer(this.selectedIds[0]) : null;
+                let sel = selInfo ? selInfo.layer : null;
+                
+                if (e.button !== 2 && this.ui.tool === 'select' && sel && (sel.type === 'image' || sel.type === 'imported_path') && !sel.effectiveLocked) {
+                    this.ui.isDraggingImage = true;
+                    this.pos.startImgDrag = { x: e.clientX, y: e.clientY, initX: sel.x, initY: sel.y };
+                    wrapper.style.cursor = 'move';
+                } else {
+                    this.ui.isPanning = true;
+                    this.pos.startPan = { x: e.clientX - this.ui.panX, y: e.clientY - this.ui.panY };
+                    wrapper.style.cursor = 'grabbing';
+                }
+                return;
+            }
+            
+            if (this.ui.tool === 'liquify') {
+                let selInfo = this.selectedIds.length === 1 ? this.findLayer(this.selectedIds[0]) : null;
+                let sel = selInfo ? selInfo.layer : null;
+                if (sel && (sel.type === 'zigzag' || sel.type === 'path' || sel.type === 'pen' || sel.type === 'imported_path') && !sel.effectiveLocked) {
+                    this.saveState();
+                    this.ui.isLiquifying = true;
+                    this.pos.lastLiquify = this.getScenePos(e.clientX, e.clientY);
+                } else {
+                    alert("Veuillez sélectionner un calque de tracé (Crayon, Remplissage ou Import) déverrouillé pour le déformer.");
+                }
+                return;
+            }
+
+            if (activePointers.size === 1 && (this.ui.tool === 'pen' || this.ui.tool === 'wall' || this.ui.tool === 'zigzag')) {
+                if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand') {
+                    // Click de la baguette géré au release
+                } else if (this.isPointInBounds(ptScene)) {
+                    this.ui.isDrawing = true;
+                    this.pos.anchor = {x: ptScene.x, y: ptScene.y};
+                    this.pos.lastSmoothed = {x: ptScene.x, y: ptScene.y};
+                    this.pos.currentPath = [{...this.pos.anchor}];
+                    this.draw();
+                }
+            }
+        });
+
+        wrapper.addEventListener('pointermove', (e) => {
+            e.preventDefault();
+            if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, e);
+
+            let ptScene = this.getScenePos(e.clientX, e.clientY);
+            this.ui.pointerHover = ptScene;
+
+            if (activePointers.size === 2) {
+                if (initialPinchDistance && initialPinchCenter) {
+                    let pts = Array.from(activePointers.values());
+                    let cx = (pts[0].clientX + pts[1].clientX) / 2;
+                    let cy = (pts[0].clientY + pts[1].clientY) / 2;
+                    let dx = pts[0].clientX - pts[1].clientX;
+                    let dy = pts[0].clientY - pts[1].clientY;
+                    let dist = Math.hypot(dx, dy);
+                    
+                    let scale = dist / initialPinchDistance;
+                    this.ui.zoom = Math.max(0.1, Math.min(10.0, initialPinchZoom * scale));
+                    document.getElementById('zoom-workspace').value = this.ui.zoom * 100;
+                    document.getElementById('val-zoom').innerText = Math.round(this.ui.zoom * 100) + "%";
+                    
+                    let panDx = cx - initialPinchCenter.x;
+                    let panDy = cy - initialPinchCenter.y;
+                    this.ui.panX += panDx;
+                    this.ui.panY += panDy;
+                    initialPinchCenter = {x: cx, y: cy}; 
+                    this.draw();
+                }
+                return;
+            }
+
+            if (this.ui.isLiquifying) {
+                let current = ptScene;
+                let dx = current.x - this.pos.lastLiquify.x;
+                let dy = current.y - this.pos.lastLiquify.y;
+                let radius = this.ui.liquifyRadius / this.ui.zoom;
+                let strength = this.ui.liquifyStrength / 100.0;
+
+                let sel = this.findLayer(this.selectedIds[0]).layer;
+                
+                sel.points.forEach(pt => {
+                    let dist = Math.hypot(pt.x - current.x, pt.y - current.y);
+                    if (dist < radius) {
+                        let force = Math.pow(1 - dist / radius, 2) * strength; 
+                        let nx = pt.x + dx * force;
+                        let ny = pt.y + dy * force;
+                        
+                        if (sel.type === 'zigzag' && sel.boundary) {
+                            if (this.pointInPolygon({x: nx, y: ny}, sel.boundary)) {
+                                pt.x = nx; pt.y = ny;
+                            }
+                        } else {
+                            pt.x = nx; pt.y = ny;
+                        }
+                    }
+                });
+
+                this.pos.lastLiquify = current;
+                this.draw();
+                return;
+            }
+
+            if (this.ui.isDraggingImage) {
+                let sel = this.findLayer(this.selectedIds[0]).layer;
+                if (sel) {
+                    let dx = (e.clientX - this.pos.startImgDrag.x) / this.ui.zoom;
+                    let dy = (e.clientY - this.pos.startImgDrag.y) / this.ui.zoom;
+                    sel.x = this.pos.startImgDrag.initX + dx;
+                    sel.y = this.pos.startImgDrag.initY + dy;
+                    if (sel.type === 'imported_path') {
+                        this.recalcImportedPath(sel);
+                    }
+                    this.draw();
+                }
+                return;
+            }
+
+            if (this.ui.isPanning) {
+                this.ui.panX = e.clientX - this.pos.startPan.x;
+                this.ui.panY = e.clientY - this.pos.startPan.y;
+                this.draw();
+                return;
+            }
+
+            if (this.ui.isDrawing) {
+                let sx = ptScene.x;
+                let sy = ptScene.y;
+                
+                if (this.ui.tool === 'pen' || this.ui.tool === 'zigzag') {
+                    let alpha = this.ui.tremor > 0 ? 1.0 - (this.ui.tremor / 105.0) : 1.0;
+                    sx = this.pos.lastSmoothed.x + alpha * (ptScene.x - this.pos.lastSmoothed.x);
+                    sy = this.pos.lastSmoothed.y + alpha * (ptScene.y - this.pos.lastSmoothed.y);
+                    this.pos.lastSmoothed = {x: sx, y: sy};
+                }
+
+                let d = Math.hypot(sx - this.pos.anchor.x, sy - this.pos.anchor.y);
+                let rope = (this.ui.tool === 'zigzag') ? 1.0 : this.ui.ropeLength; 
+
+                if (d > rope || this.ui.tool === 'wall') {
+                    let nx = sx, ny = sy;
+                    
+                    if (this.ui.tool === 'pen' || this.ui.tool === 'zigzag') {
+                        let angle = Math.atan2(sy - this.pos.anchor.y, sx - this.pos.anchor.x);
+                        nx = sx - Math.cos(angle) * rope;
+                        ny = sy - Math.sin(angle) * rope;
+                    }
+
+                    let testPos = {x: nx, y: ny};
+                    if (!this.isPointInBounds(testPos)) {
+                        if (this.settings.shape === 'rect') {
+                            nx = Math.max(-600, Math.min(600, nx));
+                            ny = Math.max(-250, Math.min(250, ny));
+                        } else {
+                            let r2 = Math.hypot(nx, ny);
+                            nx = (nx / r2) * 300;
+                            ny = (ny / r2) * 300;
+                        }
+                        testPos = {x: nx, y: ny};
+                    }
+                    
+                    let inWall = false;
+                    let flat = this.getFlatLayers();
+                    for (let l of flat) {
+                        if (l.effectiveVisible && l.type === 'wall' && this.pointInPolygon(testPos, l.points)) {
+                            inWall = true; break;
+                        }
+                    }
+                    if (!inWall) {
+                        this.pos.anchor = testPos;
+                        this.pos.currentPath.push({...this.pos.anchor});
+                    }
+                }
+                this.draw();
+            } else if (this.ui.tool === 'liquify' || (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand')) {
+                this.draw(); 
+            }
+        });
+
+        const endAction = (e) => {
+            activePointers.delete(e.pointerId);
+            if (activePointers.size < 2) {
+                initialPinchDistance = null;
+                initialPinchCenter = null;
+            }
+
+            if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand' && this.ui.pointerHover) {
+                let dist = Math.hypot(this.ui.pointerHover.x - this.pos.lastClick.x, this.ui.pointerHover.y - this.pos.lastClick.y);
+                if (dist < 10) { 
+                    this.executeMagicWand(this.ui.pointerHover);
+                }
+            }
+
+            if (this.ui.isLiquifying) {
+                this.ui.isLiquifying = false;
+                this.invalidateSim();
+                this.autoSave();
+            }
+
+            if (this.ui.isDraggingImage) {
+                this.ui.isDraggingImage = false;
+                wrapper.style.cursor = 'pointer';
+                this.invalidateSim();
+                this.autoSave(); 
+            }
+
+            if (this.ui.isPanning) {
+                this.ui.isPanning = false;
+                wrapper.style.cursor = 'crosshair';
+                if(this.ui.tool === 'select') wrapper.style.cursor = 'pointer';
+            }
+            
+            if (this.ui.isDrawing) {
+                this.ui.isDrawing = false;
+                if (this.pos.currentPath.length > 2) {
+                    if (this.ui.tool === 'wall') {
+                        this.pos.currentPath.push({...this.pos.currentPath[0]});
+                        this.addLayer({ type: 'wall', color: this.ui.color, width: this.ui.penWidth, points: [...this.pos.currentPath] });
+                    } else if (this.ui.tool === 'zigzag') {
+                        
+                        if (this.ui.zigzagDrawMode === 'guide' && this.selectedIds.length === 1) {
+                            let sel = this.findLayer(this.selectedIds[0]).layer;
+                            if (sel && sel.type === 'zigzag') {
+                                sel.guideCurve = [...this.pos.currentPath];
+                                sel.points = this.generateZigzag(sel);
+                                
+                                this.ui.zigzagDrawMode = 'contour';
+                                let btn = document.getElementById('btn-draw-guide');
+                                btn.innerText = "✏️ Dessiner la courbe guide";
+                                btn.style.backgroundColor = "var(--primary)";
+                                
+                                this.invalidateSim();
+                                this.draw();
+                                this.autoSave();
+                            }
+                        } else {
+                            this.pos.currentPath.push({...this.pos.currentPath[0]});
+                            let type = document.getElementById('zigzag-type').value;
+                            let layer = { 
+                                type: 'zigzag', 
+                                name: `〰️ Remplissage ${this.zigzagCount++}`, 
+                                color: this.ui.color, 
+                                width: 1.3, 
+                                boundary: [...this.pos.currentPath],
+                                zigzagType: type,
+                                lineStyle: this.ui.zigzagLineStyle,
+                                waveAmp: this.ui.waveAmp,
+                                waveLen: this.ui.waveLen,
+                                angle: this.ui.zigzagAngle,
+                                spacing: this.ui.zigzagSpacing,
+                                guideCurve: null,
+                                points: []
+                            };
+                            if (type === 'angle') {
+                                layer.points = this.generateZigzag(layer);
+                            }
+                            this.addLayer(layer);
+                            
+                            if (type === 'guide') {
+                                this.startDrawingGuide();
+                            }
+                        }
+                    } else {
+                        this.addLayer({ type: this.ui.tool, color: this.ui.color, width: this.ui.penWidth, points: [...this.pos.currentPath] });
+                    }
+                }
+                this.pos.currentPath = [];
+                this.invalidateSim();
+                this.draw();
+                this.autoSave();
+            }
+            this.ui.pointerHover = null;
+        };
+
+        wrapper.addEventListener('pointerup', endAction);
+        wrapper.addEventListener('pointercancel', endAction);
+        wrapper.addEventListener('pointerleave', endAction);
+        
+        wrapper.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            this.stepSlider('zoom-workspace', e.deltaY > 0 ? -10 : 10);
+        });
+        wrapper.addEventListener('contextmenu', e => e.preventDefault());
+    },
+
+    executeMagicWand(ptScene) {
+        let images = this.layers.filter(l => l.type === 'image' && l.img && l.effectiveVisible);
+        if (images.length === 0) {
+            return alert("Veuillez importer et afficher au moins une image de fond pour utiliser la détection automatique.");
+        }
+        
+        this.saveState();
+        
+        let W = this.settings.shape === 'rect' ? 1200 : 600;
+        let H = this.settings.shape === 'rect' ? 500 : 600;
+        
+        let offC = document.createElement('canvas');
+        offC.width = W; offC.height = H;
+        let oCtx = offC.getContext('2d');
+        oCtx.translate(W/2, H/2);
+        
+        for (let l of images) {
+            oCtx.save();
+            oCtx.translate(l.x, l.y);
+            oCtx.rotate(l.rot * Math.PI / 180);
+            oCtx.scale(l.scale * (l.flipH ? -1 : 1), l.scale * (l.flipV ? -1 : 1));
+            oCtx.globalAlpha = l.opacity !== undefined ? l.opacity : 1.0;
+            oCtx.drawImage(l.img, -l.img.width/2, -l.img.height/2);
+            oCtx.restore();
+        }
+        
+        let imgData = oCtx.getImageData(0,0,W,H);
+        let data = imgData.data;
+        
+        let startX = Math.round(ptScene.x + W/2);
+        let startY = Math.round(ptScene.y + H/2);
+        
+        if(startX < 0 || startX >= W || startY < 0 || startY >= H) return;
+        
+        let startIdx = (startY * W + startX) * 4;
+        let r0 = data[startIdx], g0 = data[startIdx+1], b0 = data[startIdx+2], a0 = data[startIdx+3];
+        
+        let tol = this.ui.wandTolerance;
+        let mask = new Uint8Array(W * H);
+        let queue = [{x: startX, y: startY}];
+        mask[startY * W + startX] = 1;
+        
+        let isMatch = (idx) => {
+            let a = data[idx+3];
+            if (a0 < 20 && a < 20) return true;
+            if (a0 >= 20 && a < 20) return false;
+            let diff = Math.abs(data[idx] - r0) + Math.abs(data[idx+1] - g0) + Math.abs(data[idx+2] - b0);
+            return diff <= tol * 3;
+        };
+        
+        let head = 0;
+        while(head < queue.length) {
+            let p = queue[head++];
+            let x = p.x, y = p.y;
+            
+            let dirs = [[1,0], [-1,0], [0,1], [0,-1]];
+            for(let d of dirs) {
+                let nx = x + d[0], ny = y + d[1];
+                if(nx>=0 && nx<W && ny>=0 && ny<H) {
+                    let nidx = ny * W + nx;
+                    if(!mask[nidx] && isMatch(nidx*4)) {
+                        mask[nidx] = 1;
+                        queue.push({x:nx, y:ny});
+                    }
+                }
+            }
+        }
+        
+        let edgeSet = new Set();
+        let edges = [];
+        for(let y=1; y<H-1; y++){
+            for(let x=1; x<W-1; x++){
+                if(mask[y*W+x]) {
+                    if(!mask[y*W+x-1] || !mask[y*W+x+1] || !mask[(y-1)*W+x] || !mask[(y+1)*W+x]) {
+                        edgeSet.add(x+","+y);
+                        edges.push({x,y});
+                    }
+                }
+            }
+        }
+        
+        if(edges.length === 0) return alert("Zone non trouvée.");
+        
+        let path = [];
+        let current = edges[0];
+        path.push(current);
+        edgeSet.delete(current.x+","+current.y);
+        let found = true;
+        let searchDirs = [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1], [2,0],[-2,0],[0,2],[0,-2], [3,0],[-3,0],[0,3],[0,-3]];
+        
+        while(found) {
+            found = false;
+            for(let d of searchDirs) {
+                let nx = current.x + d[0], ny = current.y + d[1];
+                let key = nx+","+ny;
+                if(edgeSet.has(key)) {
+                    current = {x:nx, y:ny};
+                    path.push(current);
+                    edgeSet.delete(key);
+                    found = true;
+                    break;
+                }
+            }
+        }
+        
+        let boundary = [];
+        for(let i=0; i<path.length; i+=3) { 
+            boundary.push({
+                x: path[i].x - W/2,
+                y: path[i].y - H/2
+            });
+        }
+        boundary.push({...boundary[0]}); 
+        boundary = this.smoothPath(boundary, 3);
+        
+        let layer = { 
+            type: 'zigzag', 
+            name: `〰️ Remplissage ${this.zigzagCount++}`, 
+            color: this.ui.color, 
+            width: 1.3, 
+            boundary: boundary,
+            zigzagType: document.getElementById('zigzag-type').value, 
+            lineStyle: this.ui.zigzagLineStyle,
+            waveAmp: this.ui.waveAmp,
+            waveLen: this.ui.waveLen,
+            angle: this.ui.zigzagAngle,
+            spacing: this.ui.zigzagSpacing,
+            guideCurve: null,
+            points: []
+        };
+        
+        if (layer.zigzagType === 'angle') {
+            layer.points = this.generateZigzag(layer);
+        }
+
+        this.undoStack.pop(); 
+        this.addLayer(layer);
+
+        if (layer.zigzagType === 'guide') {
+            this.startDrawingGuide();
+        } else if (this.ui.zigzagDrawMode === 'wand') {
+            this.toggleWandMode();
+        }
+    },
+
+    pointInPolygon(point, vs) {
+        let x = point.x, y = point.y, inside = false;
+        for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+            let xi = vs[i].x, yi = vs[i].y, xj = vs[j].x, yj = vs[j].y;
+            let intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
+    },
+
+    resamplePath(path, spacing) {
+        if (!path || path.length < 2) return path;
+        let resampled = [path[0]];
+        let distSinceLast = 0;
+        for (let i = 1; i < path.length; i++) {
+            let p0 = path[i-1];
+            let p1 = path[i];
+            let segmentLen = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+            let d = 0;
+            while (distSinceLast + segmentLen - d >= spacing) {
+                let remaining = spacing - distSinceLast;
+                d += remaining;
+                let ratio = d / segmentLen;
+                resampled.push({
+                    x: p0.x + (p1.x - p0.x) * ratio,
+                    y: p0.y + (p1.y - p0.y) * ratio
+                });
+                distSinceLast = 0;
+            }
+            distSinceLast += (segmentLen - d);
+        }
+        return resampled;
+    },
+
+    smoothPath(path, iterations=1) {
+        if (!path || path.length < 3) return path;
+        let smoothed = [...path];
+        for(let it=0; it<iterations; it++) {
+            let temp = [smoothed[0]];
+            for(let i=1; i<smoothed.length-1; i++) {
+                temp.push({
+                    x: (smoothed[i-1].x + smoothed[i].x + smoothed[i+1].x) / 3,
+                    y: (smoothed[i-1].y + smoothed[i].y + smoothed[i+1].y) / 3
+                });
+            }
+            temp.push(smoothed[smoothed.length-1]);
+            smoothed = temp;
+        }
+        return smoothed;
+    },
+
+    setZigzagLineStyle(style) {
+        this.ui.zigzagLineStyle = style;
+        document.getElementById('btn-zig-straight').className = style === 'straight' ? 'btn btn-primary' : 'btn';
+        document.getElementById('btn-zig-wave').className = style === 'wave' ? 'btn btn-primary' : 'btn';
+        
+        document.getElementById('wave-opts-div').style.display = style === 'wave' ? 'block' : 'none';
+        this.updateZigzagLive();
+    },
+
+    generateZigzag(layer) {
+        if (!layer.boundary || layer.boundary.length < 3) return [];
+        let spacing = layer.spacing || 2.0;
+        let isWave = layer.lineStyle === 'wave';
+        let wAmp = layer.waveAmp || 2.0;
+        let wLen = layer.waveLen || 15.0;
+        
+        if (layer.zigzagType === 'guide' && layer.guideCurve && layer.guideCurve.length > 1) {
+            
+            let guide = this.resamplePath(layer.guideCurve, spacing);
+            guide = this.smoothPath(guide, 15); 
+            
+            let lines = [];
+            let windowSize = Math.max(2, Math.floor(20.0 / spacing)); 
+            
+            for (let i = 0; i < guide.length; i++) {
+                let P = guide[i];
+                let iPrev = Math.max(0, i - windowSize);
+                let iNext = Math.min(guide.length - 1, i + windowSize);
+                
+                let T = { x: guide[iNext].x - guide[iPrev].x, y: guide[iNext].y - guide[iPrev].y };
+                let len = Math.hypot(T.x, T.y);
+                if (len < 1e-5) continue;
+                
+                let N = { x: -T.y / len, y: T.x / len };
+                
+                let intersections = [];
+                for (let j = 0; j < layer.boundary.length; j++) {
+                    let A = layer.boundary[j];
+                    let B = layer.boundary[(j + 1) % layer.boundary.length];
+                    
+                    let V = {x: B.x - A.x, y: B.y - A.y};
+                    let denom = N.x * V.y - N.y * V.x;
+                    if (Math.abs(denom) < 1e-6) continue;
+                    
+                    let AP = {x: A.x - P.x, y: A.y - P.y};
+                    let t = (AP.x * V.y - AP.y * V.x) / denom;
+                    let u = (AP.x * N.y - AP.y * N.x) / denom;
+                    
+                    if (u >= 0 && u <= 1) {
+                        intersections.push(t);
+                    }
+                }
+                
+                intersections.sort((a, b) => a - b);
+                
+                let validPair = null;
+                for (let k = 0; k < intersections.length; k += 2) {
+                    let t1 = intersections[k];
+                    let t2 = intersections[k+1];
+                    if (t2 === undefined) break;
+                    
+                    if (t1 <= 15.0 && t2 >= -15.0) {
+                        validPair = { L: {x: P.x + t1*N.x, y: P.y + t1*N.y}, R: {x: P.x + t2*N.x, y: P.y + t2*N.y}, N: N };
+                        break;
+                    }
+                }
+                
+                if (validPair) {
+                    lines.push(validPair);
+                }
+            }
+            
+            let path = [];
+            let leftToRight = true;
+            for (let line of lines) {
+                let segLen = Math.hypot(line.R.x - line.L.x, line.R.y - line.L.y);
+                let steps = Math.max(1, Math.ceil(segLen / 2)); 
+                
+                for(let s=0; s<=steps; s++) {
+                    let ratio = s / steps;
+                    let dist = ratio * segLen;
+                    let bRatio = leftToRight ? ratio : (1 - ratio);
+                    
+                    let bx = line.L.x + (line.R.x - line.L.x) * bRatio;
+                    let by = line.L.y + (line.R.y - line.L.y) * bRatio;
+                    
+                    if (isWave) {
+                        let phase = leftToRight ? dist : (segLen - dist);
+                        let offset = Math.sin((phase / wLen) * Math.PI * 2) * wAmp;
+                        let tx = bx + line.N.x * offset;
+                        let ty = by + line.N.y * offset;
+                        if (this.pointInPolygon({x:tx, y:ty}, layer.boundary)) {
+                            path.push({x:tx, y:ty});
+                        } else {
+                            path.push({x:bx, y:by});
+                        }
+                    } else {
+                        path.push({x:bx, y:by});
+                    }
+                }
+                leftToRight = !leftToRight;
+            }
+            return path;
+            
+        } else {
+            let angleRad = (layer.angle || 0) * Math.PI / 180;
+            let cosA = Math.cos(-angleRad);
+            let sinA = Math.sin(-angleRad);
+
+            let rotBounds = layer.boundary.map(p => ({
+                x: p.x * cosA - p.y * sinA,
+                y: p.x * sinA + p.y * cosA
+            }));
+
+            let minY = Math.min(...rotBounds.map(p => p.y));
+            let maxY = Math.max(...rotBounds.map(p => p.y));
+
+            let sweeps = [];
+            for (let y = minY + spacing/2; y < maxY; y += spacing) {
+                let intersects = [];
+                for (let i = 0; i < rotBounds.length; i++) {
+                    let p1 = rotBounds[i];
+                    let p2 = rotBounds[(i + 1) % rotBounds.length];
+                    if ((p1.y <= y && p2.y > y) || (p2.y <= y && p1.y > y)) {
+                        let x = p1.x + (y - p1.y) * (p2.x - p1.x) / (p2.y - p1.y);
+                        intersects.push(x);
+                    }
+                }
+                intersects.sort((a, b) => a - b);
+                let segments = [];
+                for (let i = 0; i < intersects.length; i += 2) {
+                    if (intersects[i] !== undefined && intersects[i+1] !== undefined) {
+                        segments.push({y: y, x1: intersects[i], x2: intersects[i+1]});
+                    }
+                }
+                if (segments.length > 0) sweeps.push(segments);
+            }
+
+            let strands = [];
+            for (let sweep of sweeps) {
+                for (let seg of sweep) {
+                    let matched = false;
+                    for (let strand of strands) {
+                        let lastSeg = strand[strand.length - 1];
+                        if (Math.abs(lastSeg.y - (seg.y - spacing)) < 0.01) {
+                            if (Math.max(seg.x1, lastSeg.x1) <= Math.min(seg.x2, lastSeg.x2) + 0.1) {
+                                strand.push(seg);
+                                matched = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!matched) strands.push([seg]);
+                }
+            }
+
+            const getClosestVert = (p) => {
+                let bestDist = Infinity, bestI = 0;
+                for(let i=0; i<rotBounds.length; i++) {
+                    let dist = Math.hypot(p.x-rotBounds[i].x, p.y-rotBounds[i].y);
+                    if(dist < bestDist) { bestDist = dist; bestI = i; }
+                }
+                return bestI;
+            };
+
+            const getBoundaryPath = (p1, p2) => {
+                let i1 = getClosestVert(p1);
+                let i2 = getClosestVert(p2);
+                let n = rotBounds.length;
+                let path1 = [], path2 = [];
+                let i = i1; while(i !== i2) { i = (i + 1) % n; path1.push(rotBounds[i]); }
+                i = i1; while(i !== i2) { i = (i - 1 + n) % n; path2.push(rotBounds[i]); }
+                
+                const len = (pArr) => {
+                    if(pArr.length===0) return Math.hypot(p1.x-p2.x, p1.y-p2.y);
+                    let l = Math.hypot(p1.x-pArr[0].x, p1.y-pArr[0].y);
+                    for(let j=0; j<pArr.length-1; j++) l += Math.hypot(pArr[j].x-pArr[j+1].x, pArr[j].y-pArr[j+1].y);
+                    l += Math.hypot(pArr[pArr.length-1].x-p2.x, pArr[pArr.length-1].y-p2.y);
+                    return l;
+                };
+                return len(path1) < len(path2) ? path1 : path2;
+            };
+
+            let path = [];
+            let currentEnd = null;
+
+            for (let i = 0; i < strands.length; i++) {
+                let strand = strands[i];
+                let leftToRight = true;
+                let strandPath = [];
+                
+                for (let line of strand) {
+                    let segLen = Math.abs(line.x2 - line.x1);
+                    let steps = Math.max(1, Math.ceil(segLen / 2)); 
+                    
+                    for(let s=0; s<=steps; s++) {
+                        let ratio = s / steps;
+                        let dist = ratio * segLen;
+                        let bx = leftToRight ? (line.x1 + (line.x2 - line.x1)*ratio) : (line.x2 + (line.x1 - line.x2)*ratio);
+                        
+                        if (isWave) {
+                            let phase = leftToRight ? dist : (segLen - dist);
+                            let offset = Math.sin((phase / wLen) * Math.PI * 2) * wAmp;
+                            let tx = bx;
+                            let ty = line.y + offset;
+                            
+                            let globTest = {
+                                x: tx * Math.cos(angleRad) - ty * Math.sin(angleRad),
+                                y: tx * Math.sin(angleRad) + ty * Math.cos(angleRad)
+                            };
+                            
+                            if (this.pointInPolygon(globTest, layer.boundary)) {
+                                strandPath.push({x: tx, y: ty});
+                            } else {
+                                strandPath.push({x: bx, y: line.y});
+                            }
+                        } else {
+                            strandPath.push({x: bx, y: line.y});
+                        }
+                    }
+                    leftToRight = !leftToRight;
+                }
+
+                if (currentEnd && strandPath.length > 0) {
+                    let nextStart = strandPath[0];
+                    let midRot = {x: (currentEnd.x + nextStart.x)/2, y: (currentEnd.y + nextStart.y)/2};
+                    
+                    let midGlob = {
+                        x: midRot.x * Math.cos(angleRad) - midRot.y * Math.sin(angleRad),
+                        y: midRot.x * Math.sin(angleRad) + midRot.y * Math.cos(angleRad)
+                    };
+                    
+                    if (!this.pointInPolygon(midGlob, layer.boundary)) {
+                        path.push(...getBoundaryPath(currentEnd, nextStart));
+                    }
+                }
+                
+                path.push(...strandPath);
+                if (strandPath.length > 0) currentEnd = strandPath[strandPath.length - 1];
+            }
+
+            cosA = Math.cos(angleRad);
+            sinA = Math.sin(angleRad);
+            return path.map(p => ({
+                x: p.x * cosA - p.y * sinA,
+                y: p.x * sinA + p.y * cosA
+            }));
+        }
+    },
+
+    startDrawingGuide() {
+        if (this.selectedIds.length !== 1) return;
+        let sel = this.findLayer(this.selectedIds[0]);
+        if (!sel || sel.layer.type !== 'zigzag') return;
+        
+        if (this.ui.zigzagDrawMode === 'wand') {
+            this.toggleWandMode();
+        }
+
+        this.ui.zigzagDrawMode = 'guide';
+        let btn = document.getElementById('btn-draw-guide');
+        btn.innerText = "Tracez la courbe sur la table...";
+        btn.style.backgroundColor = "#ff9800";
+        document.getElementById('zigzag-help-text').innerText = "2. Tracez maintenant la courbe au centre.";
+    },
+
+    updateZigzagLive(typeChanged = false) {
+        let type = document.getElementById('zigzag-type').value;
+        if (type === 'angle') {
+            document.getElementById('zig-angle-div').style.display = 'block';
+            document.getElementById('zig-guide-div').style.display = 'none';
+        } else {
+            document.getElementById('zig-angle-div').style.display = 'none';
+            document.getElementById('zig-guide-div').style.display = 'block';
+        }
+
+        this.ui.zigzagAngle = parseInt(document.getElementById('zigzag-angle').value);
+        document.getElementById('val-zigzag-angle').innerText = this.ui.zigzagAngle + "°";
+        this.ui.zigzagSpacing = parseInt(document.getElementById('zigzag-spacing').value) / 100.0;
+        document.getElementById('val-zigzag-spacing').innerText = this.ui.zigzagSpacing.toFixed(2);
+        
+        this.ui.waveAmp = parseInt(document.getElementById('wave-amp').value) / 10.0;
+        document.getElementById('val-wave-amp').innerText = this.ui.waveAmp.toFixed(1);
+        this.ui.waveLen = parseInt(document.getElementById('wave-len').value) / 10.0;
+        document.getElementById('val-wave-len').innerText = this.ui.waveLen.toFixed(1);
+        
+        if (this.selectedIds.length === 1) {
+            let sel = this.findLayer(this.selectedIds[0]);
+            if (sel && sel.layer.type === 'zigzag' && sel.layer.boundary) {
+                this.saveState();
+                sel.layer.zigzagType = type;
+                sel.layer.lineStyle = this.ui.zigzagLineStyle;
+                sel.layer.waveAmp = this.ui.waveAmp;
+                sel.layer.waveLen = this.ui.waveLen;
+                sel.layer.angle = this.ui.zigzagAngle;
+                sel.layer.spacing = this.ui.zigzagSpacing;
+                
+                if (type === 'angle' || (type === 'guide' && sel.layer.guideCurve)) {
+                    sel.layer.points = this.generateZigzag(sel.layer);
+                } else if (type === 'guide' && typeChanged) {
+                    this.startDrawingGuide();
+                }
+                
+                this.invalidateSim();
+                this.draw();
+                this.autoSave();
+            }
+        }
+    },
+
+    getFlatLayers(arr = this.layers, parentVisible = true, parentLocked = false) {
+        let res = [];
+        for (let l of arr) {
+            l.effectiveVisible = parentVisible && l.visible;
+            l.effectiveLocked = parentLocked || l.locked;
+            if (l.type === 'folder' && Array.isArray(l.layers)) {
+                res.push(...this.getFlatLayers(l.layers, l.effectiveVisible, l.effectiveLocked));
+            } else {
+                res.push(l);
+            }
+        }
+        return res;
+    },
+
+    findLayer(id, arr = this.layers) {
+        if(!arr || !Array.isArray(arr)) return null;
+        for (let i = 0; i < arr.length; i++) {
+            if (arr[i].id === id) return { layer: arr[i], parentArr: arr, idx: i };
+            if (arr[i].type === 'folder') {
+                let res = this.findLayer(id, arr[i].layers);
+                if (res) return res;
+            }
+        }
+        return null;
+    },
+
+    draw() {
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        let pr = window.devicePixelRatio;
+        this.ctx.translate(this.vw/2 * pr, this.vh/2 * pr);
+        this.ctx.translate(this.ui.panX * pr, this.ui.panY * pr);
+        this.ctx.scale(this.ui.zoom * pr, this.ui.zoom * pr);
+
+        this.ctx.beginPath();
+        if (this.settings && this.settings.shape === 'rect') {
+            this.ctx.rect(-600, -250, 1200, 500); 
+        } else {
+            this.ctx.arc(0, 0, 300, 0, Math.PI*2); 
+        }
+        this.ctx.fillStyle = "#ffffff"; this.ctx.fill();
+        this.ctx.lineWidth = 2; this.ctx.strokeStyle = "#000000"; this.ctx.stroke();
+
+        let flatLayers = this.getFlatLayers();
+        let activeSelId = this.selectedIds.length === 1 ? this.selectedIds[0] : null;
+        
+        let chkHighlight = document.getElementById('chk-highlight-sel');
+        let showHalo = chkHighlight && chkHighlight.checked;
+        
+        let chkLinks = document.getElementById('chk-show-links');
+        let showLinks = chkLinks ? chkLinks.checked : true;
+
+        if (showLinks) {
+            let prevEnd = null;
+            for (let i = flatLayers.length - 1; i >= 0; i--) {
+                let l = flatLayers[i];
+                if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && l.points && l.points.length > 0) {
+                    let currStart = l.points[0];
+                    if (prevEnd) {
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(prevEnd.x, prevEnd.y);
+                        this.ctx.lineTo(currStart.x, currStart.y);
+                        this.ctx.strokeStyle = "rgba(0, 200, 0, 0.6)"; 
+                        this.ctx.lineWidth = 1.0 / this.ui.zoom;
+                        this.ctx.setLineDash([4, 4]);
+                        this.ctx.stroke();
+                        this.ctx.setLineDash([]);
+                    }
+                    prevEnd = l.points[l.points.length - 1];
+                }
+            }
+        }
+
+        for (let i = flatLayers.length - 1; i >= 0; i--) {
+            let l = flatLayers[i];
+            if (!l.effectiveVisible) continue;
+            
+            if (l.type === 'image' && l.img) {
+                this.ctx.save();
+                this.ctx.translate(l.x, l.y);
+                this.ctx.rotate(l.rot * Math.PI / 180);
+                this.ctx.scale(l.scale * (l.flipH ? -1 : 1), l.scale * (l.flipV ? -1 : 1));
+                this.ctx.globalAlpha = l.opacity !== undefined ? l.opacity : 1.0;
+                
+                if (showHalo && this.selectedIds.includes(l.id)) {
+                    this.ctx.shadowColor = "rgba(255, 215, 0, 0.6)";
+                    this.ctx.shadowBlur = 15 / this.ui.zoom;
+                }
+                
+                this.ctx.drawImage(l.img, -l.img.width/2, -l.img.height/2);
+                this.ctx.restore();
+            } else if (l.points && l.points.length > 1) {
+                this.ctx.save();
+                
+                let isCurrentLayerSelected = this.selectedIds.includes(l.id);
+
+                if (l.id === activeSelId && l.type === 'zigzag' && l.boundary && this.ui.tool !== 'liquify') {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(l.boundary[0].x, l.boundary[0].y);
+                    for(let j=1; j<l.boundary.length; j++) this.ctx.lineTo(l.boundary[j].x, l.boundary[j].y);
+                    this.ctx.strokeStyle = "rgba(0, 120, 255, 0.4)";
+                    this.ctx.lineWidth = 1.5 / this.ui.zoom;
+                    this.ctx.setLineDash([5,5]);
+                    this.ctx.stroke();
+                    this.ctx.setLineDash([]);
+                    
+                    if (l.zigzagType === 'guide' && l.guideCurve) {
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(l.guideCurve[0].x, l.guideCurve[0].y);
+                        for(let j=1; j<l.guideCurve.length; j++) this.ctx.lineTo(l.guideCurve[j].x, l.guideCurve[j].y);
+                        this.ctx.strokeStyle = "rgba(142, 68, 173, 0.5)";
+                        this.ctx.lineWidth = 2.0 / this.ui.zoom;
+                        this.ctx.stroke();
+                    }
+                }
+
+                if (l.type === 'wall') {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(l.points[0].x, l.points[0].y);
+                    for(let j=1; j<l.points.length; j++) this.ctx.lineTo(l.points[j].x, l.points[j].y);
+                    this.ctx.fillStyle = "rgba(255, 0, 0, 0.2)"; this.ctx.fill();
+                    this.ctx.strokeStyle = "red"; this.ctx.lineWidth = 2;
+                    this.ctx.setLineDash([5, 5]); this.ctx.stroke(); this.ctx.setLineDash([]);
+                } else {
+                    if (showHalo && isCurrentLayerSelected) {
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(l.points[0].x, l.points[0].y);
+                        for(let j=1; j<l.points.length; j++) this.ctx.lineTo(l.points[j].x, l.points[j].y);
+                        this.ctx.strokeStyle = "rgba(255, 215, 0, 0.6)"; 
+                        this.ctx.lineWidth = (l.width !== undefined ? l.width : 1.5) + (8 / this.ui.zoom);
+                        this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round'; 
+                        this.ctx.stroke();
+                    }
+
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(l.points[0].x, l.points[0].y);
+                    for(let j=1; j<l.points.length; j++) this.ctx.lineTo(l.points[j].x, l.points[j].y);
+                    this.ctx.strokeStyle = l.color; this.ctx.lineWidth = l.width !== undefined ? l.width : 1.5;
+                    this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round'; this.ctx.stroke();
+
+                    if (isCurrentLayerSelected && l.points.length > 0) {
+                        let pR = 4 / this.ui.zoom;
+                        
+                        this.ctx.beginPath(); 
+                        this.ctx.arc(l.points[0].x, l.points[0].y, pR, 0, Math.PI*2);
+                        this.ctx.fillStyle = "lime"; this.ctx.fill(); 
+                        this.ctx.strokeStyle = "black"; this.ctx.lineWidth = 1/this.ui.zoom; this.ctx.stroke();
+                        
+                        this.ctx.beginPath(); 
+                        this.ctx.arc(l.points[l.points.length-1].x, l.points[l.points.length-1].y, pR, 0, Math.PI*2);
+                        this.ctx.fillStyle = "red"; this.ctx.fill(); 
+                        this.ctx.strokeStyle = "black"; this.ctx.lineWidth = 1/this.ui.zoom; this.ctx.stroke();
+                    }
+                }
+                this.ctx.restore();
+            }
+        }
+
+        if (this.ui.isDrawing && this.pos.currentPath.length > 0) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(this.pos.currentPath[0].x, this.pos.currentPath[0].y);
+            for(let j=1; j<this.pos.currentPath.length; j++) this.ctx.lineTo(this.pos.currentPath[j].x, this.pos.currentPath[j].y);
+            
+            if (this.ui.tool === 'wall') {
+                this.ctx.strokeStyle = "red"; this.ctx.lineWidth = 2; this.ctx.setLineDash([5,5]); this.ctx.stroke(); this.ctx.setLineDash([]);
+            } else if (this.ui.tool === 'zigzag') {
+                if (this.ui.zigzagDrawMode === 'guide') {
+                    this.ctx.strokeStyle = "rgba(142, 68, 173, 0.8)";
+                    this.ctx.lineWidth = 3.0 / this.ui.zoom;
+                    this.ctx.stroke();
+                } else if (this.ui.zigzagDrawMode === 'contour') {
+                    this.ctx.strokeStyle = "rgba(255, 152, 0, 0.8)"; 
+                    this.ctx.lineWidth = 2.0 / this.ui.zoom; 
+                    this.ctx.stroke();
+                }
+            } else {
+                this.ctx.strokeStyle = this.ui.color; this.ctx.lineWidth = this.ui.penWidth;
+                this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round'; this.ctx.stroke();
+                
+                if (this.ui.ropeLength > 0) {
+                    this.ctx.beginPath(); this.ctx.moveTo(this.pos.lastSmoothed.x, this.pos.lastSmoothed.y); this.ctx.lineTo(this.pos.anchor.x, this.pos.anchor.y);
+                    this.ctx.strokeStyle = "red"; this.ctx.lineWidth = 1.5 / this.ui.zoom; this.ctx.setLineDash([4,4]); this.ctx.stroke(); this.ctx.setLineDash([]);
+                }
+            }
+        }
+
+        if (this.ui.tool === 'liquify' && this.ui.pointerHover) {
+            this.ctx.beginPath();
+            this.ctx.arc(this.ui.pointerHover.x, this.ui.pointerHover.y, this.ui.liquifyRadius / this.ui.zoom, 0, Math.PI*2);
+            this.ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
+            this.ctx.fillStyle = "rgba(255, 0, 0, 0.1)";
+            this.ctx.lineWidth = 1 / this.ui.zoom;
+            this.ctx.fill();
+            this.ctx.stroke();
+        } else if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand' && this.ui.pointerHover) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(this.ui.pointerHover.x - 10/this.ui.zoom, this.ui.pointerHover.y);
+            this.ctx.lineTo(this.ui.pointerHover.x + 10/this.ui.zoom, this.ui.pointerHover.y);
+            this.ctx.moveTo(this.ui.pointerHover.x, this.ui.pointerHover.y - 10/this.ui.zoom);
+            this.ctx.lineTo(this.ui.pointerHover.x, this.ui.pointerHover.y + 10/this.ui.zoom);
+            this.ctx.strokeStyle = "rgba(255, 0, 255, 0.8)";
+            this.ctx.lineWidth = 2 / this.ui.zoom;
+            this.ctx.stroke();
+        }
+
+        this.drawSimulation(flatLayers);
+    },
+
+    drawSimulation(flatLayers) {
+        if (!this.simCache.valid) {
+            let pts = [];
+            let lastSaved = null;
+            for (let i = flatLayers.length - 1; i >= 0; i--) {
+                let l = flatLayers[i];
+                if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && l.points) {
+                    for(let j = 0; j < l.points.length; j++) {
+                        let p = { x: l.points[j].x, y: l.points[j].y, layerId: l.id };
+                        if (!lastSaved || j === 0 || j === l.points.length - 1 || Math.hypot(p.x - lastSaved.x, p.y - lastSaved.y) > 2.5) {
+                            pts.push(p);
+                            lastSaved = p;
+                        }
+                    }
+                }
+            }
+
+            let dists = [0], totalDist = 0;
+            if (pts.length > 0) {
+                for (let i = 1; i < pts.length; i++) {
+                    totalDist += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+                    dists.push(totalDist);
+                }
+            }
+
+            this.simCache.pts = pts;
+            this.simCache.dists = dists;
+            this.simCache.totalDist = totalDist;
+            this.simCache.valid = true;
+        }
+
+        let pts = this.simCache.pts;
+        let dists = this.simCache.dists;
+        let totalDist = this.simCache.totalDist;
+
+        if (pts.length === 0) return;
+
+        let targetDist = (this.ui.simPercent / 1000.0) * totalDist;
+        let ballPos = pts[0];
+        let activeSimId = null;
+        
+        if (this.ui.simPercent > 0 && totalDist > 0) {
+            this.ctx.beginPath(); 
+            this.ctx.moveTo(pts[0].x, pts[0].y);
+            
+            let low = 0, high = dists.length - 1;
+            let idx = 0;
+            while (low <= high) {
+                let mid = Math.floor((low + high) / 2);
+                if (dists[mid] <= targetDist) {
+                    idx = mid;
+                    low = mid + 1;
+                } else {
+                    high = mid - 1;
+                }
+            }
+
+            let step = Math.max(1, Math.floor(idx / 2000));
+            for (let i = 1; i <= idx; i += step) {
+                this.ctx.lineTo(pts[i].x, pts[i].y);
+            }
+            if (idx % step !== 0) this.ctx.lineTo(pts[idx].x, pts[idx].y);
+
+            if (idx < pts.length - 1 && targetDist > dists[idx]) {
+                let segLen = dists[idx+1] - dists[idx];
+                let ratio = segLen > 0 ? (targetDist - dists[idx]) / segLen : 0;
+                let nx = pts[idx].x + (pts[idx+1].x - pts[idx].x) * ratio;
+                let ny = pts[idx].y + (pts[idx+1].y - pts[idx].y) * ratio;
+                this.ctx.lineTo(nx, ny);
+                ballPos = { x: nx, y: ny };
+                activeSimId = pts[idx+1].layerId;
+            } else {
+                ballPos = pts[idx];
+                activeSimId = pts[idx].layerId;
+            }
+            
+            this.ctx.strokeStyle = "rgba(0, 120, 215, 0.8)"; this.ctx.lineWidth = 3 / this.ui.zoom; this.ctx.stroke();
+        }
+
+        let pointRadius = 6 / this.ui.zoom;
+        let ballRadius = 7 / this.ui.zoom;
+
+        if (document.getElementById('chk-sim-points') && document.getElementById('chk-sim-points').checked) {
+            this.ctx.beginPath(); this.ctx.arc(pts[0].x, pts[0].y, pointRadius, 0, Math.PI*2); 
+            this.ctx.fillStyle = "green"; this.ctx.fill(); 
+            
+            this.ctx.beginPath(); this.ctx.arc(pts[pts.length-1].x, pts[pts.length-1].y, pointRadius, 0, Math.PI*2); 
+            this.ctx.fillStyle = "red"; this.ctx.fill(); 
+        }
+
+        if (this.ui.simPercent > 0 || totalDist === 0) {
+            this.ctx.beginPath(); this.ctx.arc(ballPos.x, ballPos.y, ballRadius, 0, Math.PI*2);
+            this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.strokeStyle="#000"; this.ctx.lineWidth=1/this.ui.zoom; this.ctx.stroke();
+        }
+
+        if (activeSimId !== this.lastActiveSimId) {
+            document.querySelectorAll('.layer-item.sim-active').forEach(el => el.classList.remove('sim-active'));
+            if (activeSimId) {
+                let li = document.getElementById('li-' + activeSimId);
+                if (li) li.classList.add('sim-active');
+                
+                const highlightChain = (arr, targetId) => {
+                    for (let l of arr) {
+                        if (l.id === targetId) return true;
+                        if (l.type === 'folder' && l.layers) {
+                            if (highlightChain(l.layers, targetId)) {
+                                let fEl = document.getElementById('li-' + l.id);
+                                if (fEl) fEl.classList.add('sim-active');
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                };
+                highlightChain(this.layers, activeSimId);
+            }
+            this.lastActiveSimId = activeSimId;
+        }
+    },
+
+    openTab(evt, tabName) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById(tabName).classList.add('active');
+        evt.currentTarget.classList.add('active');
+    },
+    
+    toggleSidebar() {
+        const panel = document.getElementById('right-panel');
+        const btn = document.getElementById('toggle-sidebar-btn');
+        if (panel.style.display === 'none') {
+            panel.style.display = 'flex';
+            btn.innerText = '▶ Cacher';
+        } else {
+            panel.style.display = 'none';
+            btn.innerText = '◀ Afficher';
+        }
+        setTimeout(() => this.resize(), 50); 
+    },
+
+    stepSlider(id, step) {
+        const el = document.getElementById(id);
+        let val = parseFloat(el.value) + step;
+        if(val < el.min) val = el.min;
+        if(val > el.max) val = el.max;
+        el.value = val;
+        el.dispatchEvent(new Event('input')); 
+    },
+
+    updateZoomFromSlider() {
+        let val = document.getElementById('zoom-workspace').value;
+        document.getElementById('val-zoom').innerText = val + "%";
+        this.ui.zoom = val / 100.0;
+        this.draw();
+        this.autoSave();
+    },
+
+    changeTool() {
+        let newTool = document.querySelector('input[name="tool"]:checked').value;
+        if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand' && newTool !== 'zigzag') {
+            this.toggleWandMode();
+        }
+        this.ui.tool = newTool;
+
+        let cursor = 'crosshair';
+        if(this.ui.tool === 'select') cursor = 'pointer';
+        if(this.ui.tool === 'liquify' || (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand')) cursor = 'none';
+        
+        document.getElementById('canvas-wrapper').style.cursor = cursor;
+        
+        document.getElementById('opts-pen').style.display = (this.ui.tool === 'pen') ? 'block' : 'none';
+        document.getElementById('opts-zigzag').style.display = (this.ui.tool === 'zigzag') ? 'block' : 'none';
+        document.getElementById('opts-liquify').style.display = (this.ui.tool === 'liquify') ? 'block' : 'none';
+
+        if (this.ui.tool === 'zigzag') {
+            this.checkImagePresence();
+        }
+
+        this.draw(); 
+        this.autoSave();
+    },
+
+    changeColor() {
+        this.ui.color = document.getElementById('color-picker').value;
+        const btn = document.getElementById('btn-color');
+        btn.style.backgroundColor = this.ui.color;
+        const hex = this.ui.color.replace('#', '');
+        const r = parseInt(hex.substr(0,2),16), g = parseInt(hex.substr(2,2),16), b = parseInt(hex.substr(4,2),16);
+        btn.style.color = ((r*299 + g*587 + b*114) / 1000) > 128 ? 'black' : 'white';
+        
+        if (this.selectedIds.length === 1) {
+            let sel = this.findLayer(this.selectedIds[0]);
+            if (sel && (sel.layer.type === 'path' || sel.layer.type === 'imported_path' || sel.layer.type === 'pen' || sel.layer.type === 'zigzag')) {
+                this.saveState();
+                sel.layer.color = this.ui.color;
+                this.draw();
+            }
+        }
+        this.autoSave();
+    },
+
+    updateSliders() {
+        this.ui.penWidth = document.getElementById('slider-width').value / 10.0;
+        document.getElementById('val-width').innerText = this.ui.penWidth.toFixed(1);
+        this.ui.tremor = document.getElementById('slider-tremor').value;
+        document.getElementById('val-tremor').innerText = this.ui.tremor;
+        this.ui.ropeLength = document.getElementById('slider-rope').value / 2.0;
+        document.getElementById('val-rope').innerText = this.ui.ropeLength.toFixed(1);
+        
+        this.ui.liquifyRadius = parseInt(document.getElementById('liq-radius').value);
+        document.getElementById('val-liq-radius').innerText = this.ui.liquifyRadius;
+        this.ui.liquifyStrength = parseInt(document.getElementById('liq-str').value);
+        document.getElementById('val-liq-str').innerText = this.ui.liquifyStrength + "%";
+
+        this.ui.wandTolerance = parseInt(document.getElementById('wand-tol').value);
+        if (document.getElementById('val-wand-tol')) {
+            document.getElementById('val-wand-tol').innerText = this.ui.wandTolerance;
+        }
+
+        this.autoSave();
+    },
+
+    updateSim() {
+        this.ui.simPercent = parseInt(document.getElementById('slider-sim').value);
+        document.getElementById('val-sim').innerText = (this.ui.simPercent / 10.0).toFixed(1) + "%";
+        this.draw();
+    },
+
+    onDragStart(e, id) {
+        this.draggedId = String(id);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', this.draggedId); 
+        setTimeout(() => e.target.style.opacity = '0.4', 0);
+    },
+
+    onDragOver(e, type) {
+        e.preventDefault(); 
+        e.dataTransfer.dropEffect = 'move';
+        let li = e.currentTarget;
+        if (type === 'folder') {
+            li.classList.add('drag-over-folder');
+            li.classList.remove('drag-over-layer');
+        } else {
+            li.classList.add('drag-over-layer');
+            li.classList.remove('drag-over-folder');
+        }
+    },
+
+    onDragLeave(e) {
+        e.currentTarget.classList.remove('drag-over-folder');
+        e.currentTarget.classList.remove('drag-over-layer');
+    },
+
+    onDrop(e, targetId) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        e.currentTarget.classList.remove('drag-over-folder');
+        e.currentTarget.classList.remove('drag-over-layer');
+        e.currentTarget.style.opacity = '1';
+
+        targetId = String(targetId);
+        let dragId = e.dataTransfer.getData('text/plain') || this.draggedId;
+        if (!dragId || dragId === targetId) return;
+
+        let draggedInfo = this.findLayer(dragId);
+        let targetInfo = this.findLayer(targetId);
+        if (!draggedInfo || !targetInfo) return;
+
+        if (draggedInfo.layer.type === 'folder') {
+            let isChild = this.findLayer(targetId, draggedInfo.layer.layers);
+            if (isChild) return alert("Impossible de déplacer un dossier dans lui-même.");
+        }
+
+        this.saveState();
+        let draggedLayer = draggedInfo.parentArr.splice(draggedInfo.idx, 1)[0];
+        targetInfo = this.findLayer(targetId); 
+
+        if (targetInfo.layer.type === 'folder') {
+            targetInfo.layer.layers.unshift(draggedLayer);
+            targetInfo.layer.isOpen = true;
+        } else {
+            targetInfo.parentArr.splice(targetInfo.idx, 0, draggedLayer);
+        }
+
+        this.draggedId = null;
+        this.selectedIds = [draggedLayer.id];
+        this.invalidateSim();
+        this.refreshLayerList();
+    },
+
+    onDragEnd(e) {
+        e.target.style.opacity = '1';
+        this.draggedId = null;
+    },
+
+    addLayer(data) {
+        this.saveState();
+        let name = data.name || (data.type === 'image' ? `🖼️ Image ${this.imgCount++}` : data.type === 'wall' ? `🧱 Mur ${this.wallCount++}` : `✏️ Tracé ${this.layerCount++}`);
+        let newL = { id: this.genId(), type: data.type, name: name, visible: true, locked: false, ...data };
+        
+        let targetArr = this.layers;
+        let insertIndex = 0; 
+        
+        if (this.selectedIds.length === 1) {
+            let info = this.findLayer(this.selectedIds[0]);
+            if (info) {
+                if (info.layer.type === 'folder') {
+                    if (!info.layer.layers) info.layer.layers = [];
+                    targetArr = info.layer.layers;
+                    insertIndex = 0; 
+                    info.layer.isOpen = true; 
+                } else {
+                    targetArr = info.parentArr;
+                    insertIndex = info.idx; 
+                }
+            }
+        }
+        
+        targetArr.splice(insertIndex, 0, newL);
+        this.selectedIds = [newL.id];
+        this.invalidateSim();
+        this.refreshLayerList();
+    },
+
+    renderTree(arr, depth) {
+        let html = '';
+        arr.forEach(l => {
+            let isSel = this.selectedIds.includes(l.id);
+            let pad = depth * 20 + 8;
+            let col = l.type === 'wall' ? 'red' : l.type === 'image' ? '#ccc' : (l.type === 'folder' ? '#ffd700' : l.color);
+            if (l.type === 'imported_path') col = '#8e44ad';
+
+            let icon = '';
+            if (l.type === 'folder') {
+                icon = `<span onclick="app.toggleFolder('${l.id}', event)" style="cursor:pointer; margin-right:5px; width:12px; display:inline-block; font-size:10px;">${l.isOpen ? '▼' : '▶'}</span>`;
+            }
+
+            html += `<li id="li-${l.id}" class="layer-item ${isSel ? 'selected' : ''} ${l.locked ? 'locked' : ''}" style="padding-left: ${pad}px" 
+                draggable="true" 
+                ondragstart="app.onDragStart(event, '${l.id}')" 
+                ondragenter="event.preventDefault()" 
+                ondragover="app.onDragOver(event, '${l.type}')" 
+                ondragleave="app.onDragLeave(event)" 
+                ondrop="app.onDrop(event, '${l.id}')" 
+                ondragend="app.onDragEnd(event)">
+                
+                <input type="checkbox" style="margin-right:8px; pointer-events:auto;" ${l.visible ? 'checked' : ''} onchange="app.toggleVis('${l.id}')">
+                ${icon}
+                <span class="layer-icon" style="background-color: ${col}"></span>
+                <span style="flex:1; cursor:pointer;" onclick="app.selectLayer('${l.id}')">${l.name} ${l.locked ? '🔒' : '🔓'}</span>
+                <span class="rename-btn" style="pointer-events:auto;" onclick="app.renameLayer('${l.id}', event)">✏️</span>
+            </li>`;
+            
+            if (l.type === 'folder' && l.isOpen && Array.isArray(l.layers)) {
+                html += this.renderTree(l.layers, depth + 1);
+            }
+        });
+        return html;
+    },
+
+    refreshLayerList() {
+        document.getElementById('layer-list').innerHTML = this.renderTree(this.layers, 0);
+
+        let selInfo = this.selectedIds.length === 1 ? this.findLayer(this.selectedIds[0]) : null;
+        let sel = selInfo ? selInfo.layer : null;
+
+        document.getElementById('btn-lock').disabled = this.selectedIds.length === 0;
+        document.getElementById('btn-delete').disabled = this.selectedIds.length === 0;
+        document.getElementById('btn-merge').disabled = this.selectedIds.length < 2;
+        if(sel) document.getElementById('btn-lock').innerText = sel.locked ? "🔓 Déverrouiller" : "🔒 Verrouiller";
+
+        const fsTransform = document.getElementById('fs-transform');
+        if (sel && (sel.type === 'image' || sel.type === 'imported_path') && !sel.effectiveLocked) {
+            fsTransform.disabled = false;
+            document.getElementById('img-scale').value = sel.scale * 100;
+            document.getElementById('img-rot').value = sel.rot;
+            document.getElementById('val-rot').innerText = sel.rot + "°";
+            
+            if (sel.type === 'image') {
+                document.getElementById('img-opacity').value = (sel.opacity !== undefined ? sel.opacity : 1.0) * 100;
+                document.getElementById('div-opacity').style.display = 'block';
+                document.getElementById('div-thr-width').style.display = 'none';
+            } else {
+                document.getElementById('div-opacity').style.display = 'none';
+                document.getElementById('div-thr-width').style.display = 'block';
+                document.getElementById('thr-width').value = (sel.width !== undefined ? sel.width : 1.0) * 10;
+                document.getElementById('val-thr-width').innerText = (sel.width !== undefined ? sel.width : 1.0).toFixed(1);
+            }
+        } else {
+            fsTransform.disabled = true;
+        }
+
+        if (sel && sel.type === 'zigzag') {
+            document.getElementById('zigzag-type').value = sel.zigzagType || 'angle';
+            if (sel.zigzagType === 'guide') {
+                document.getElementById('zig-angle-div').style.display = 'none';
+                document.getElementById('zig-guide-div').style.display = 'block';
+                document.getElementById('btn-draw-guide').disabled = false;
+            } else {
+                document.getElementById('zig-angle-div').style.display = 'block';
+                document.getElementById('zig-guide-div').style.display = 'none';
+            }
+            document.getElementById('zigzag-angle').value = sel.angle || 0;
+            document.getElementById('val-zigzag-angle').innerText = (sel.angle || 0) + "°";
+            document.getElementById('zigzag-spacing').value = (sel.spacing || 2.0) * 100;
+            document.getElementById('val-zigzag-spacing').innerText = (sel.spacing || 2.0).toFixed(2);
+            
+            let style = sel.lineStyle || 'straight';
+            document.getElementById('btn-zig-straight').className = style === 'straight' ? 'btn btn-primary' : 'btn';
+            document.getElementById('btn-zig-wave').className = style === 'wave' ? 'btn btn-primary' : 'btn';
+            document.getElementById('wave-opts-div').style.display = style === 'wave' ? 'block' : 'none';
+            
+            document.getElementById('wave-amp').value = (sel.waveAmp || 5.0) * 10;
+            document.getElementById('val-wave-amp').innerText = (sel.waveAmp || 5.0).toFixed(1);
+            document.getElementById('wave-len').value = (sel.waveLen || 20.0) * 10;
+            document.getElementById('val-wave-len').innerText = (sel.waveLen || 20.0).toFixed(1);
+            
+        } else {
+            document.getElementById('btn-draw-guide').disabled = true;
+        }
+
+        if (sel && (sel.type === 'path' || sel.type === 'pen' || sel.type === 'imported_path' || sel.type === 'zigzag')) {
+            let savedColor = sel.color || '#000000';
+            document.getElementById('color-picker').value = savedColor;
+            this.ui.color = savedColor;
+            const btn = document.getElementById('btn-color');
+            btn.style.backgroundColor = savedColor;
+            const hex = savedColor.replace('#', '');
+            const r = parseInt(hex.substr(0,2),16), g = parseInt(hex.substr(2,2),16), b = parseInt(hex.substr(4,2),16);
+            btn.style.color = ((r*299 + g*587 + b*114) / 1000) > 128 ? 'black' : 'white';
+        }
+
+        this.checkImagePresence();
+
+        this.draw();
+        this.autoSave();
+    },
+
+    loadFromJSON(jsonStr, isAutoLoad = false) {
+        try {
+            const proj = JSON.parse(jsonStr);
+            if (proj.filename) {
+                document.getElementById('project-filename').value = proj.filename.replace('.sunae', '');
+            }
+            if (proj.settings) {
+                if (proj.settings.shape) {
+                    this.settings.shape = proj.settings.shape;
+                    document.getElementById('table-shape').value = this.settings.shape;
+                }
+                if (proj.settings.zoom !== undefined) { document.getElementById('zoom-workspace').value = proj.settings.zoom; this.updateZoomFromSlider(); }
+                if (proj.settings.showPoints !== undefined) {
+                    let chk = document.getElementById('chk-sim-points');
+                    if(chk) chk.checked = proj.settings.showPoints;
+                }
+                if (proj.settings.showLinks !== undefined) {
+                    let chk = document.getElementById('chk-show-links');
+                    if(chk) chk.checked = proj.settings.showLinks;
+                }
+                if (proj.settings.width !== undefined) document.getElementById('slider-width').value = Math.min(100, proj.settings.width * 10);
+                if (proj.settings.tremor !== undefined) document.getElementById('slider-tremor').value = proj.settings.tremor;
+                if (proj.settings.rope !== undefined) document.getElementById('slider-rope').value = proj.settings.rope;
+                this.updateSliders();
+                if (proj.settings.color) {
+                    document.getElementById('color-picker').value = proj.settings.color; 
+                    this.changeColor();
+                }
+                if (proj.settings.tool) {
+                    let toolRadio = document.querySelector(`input[name="tool"][value="${proj.settings.tool}"]`);
+                    if(toolRadio) { toolRadio.checked = true; this.changeTool(); }
+                }
+            }
+            if(!isAutoLoad) {
+                this.undoStack = []; this.redoStack = [];
+            }
+            this.restoreLayers(proj.layers);
+        } catch(e) {
+            console.error("Erreur de chargement du JSON", e);
+            alert("Impossible d'ouvrir ce fichier. Il est peut-être corrompu.");
+            if(isAutoLoad) localStorage.removeItem('sunae_autosave');
+        }
+    },
+
+    exportTHR() {
+        let thrLines = [];
+        let currentTheta = 0.0;
+        let flatLayers = this.getFlatLayers();
+        let R = this.getExportRadius(); 
+        
+        for (let i = flatLayers.length - 1; i >= 0; i--) {
+            let l = flatLayers[i];
+            if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && l.points && l.points.length > 0) {
+                
+                let optimizedPoints = [l.points[0]];
+                for(let j = 1; j < l.points.length; j++) {
+                    let prev = optimizedPoints[optimizedPoints.length - 1];
+                    let curr = l.points[j];
+                    if (Math.hypot(curr.x - prev.x, curr.y - prev.y) > 2.5 || j === l.points.length - 1) {
+                        optimizedPoints.push(curr);
+                    }
+                }
+
+                optimizedPoints.forEach(pt => {
+                    let rho = Math.hypot(pt.x, pt.y) / R;
+                    rho = Math.max(0.0, Math.min(1.0, rho));
+                    let theta = Math.atan2(pt.y, pt.x) + (Math.PI / 2);
+                    while (theta - currentTheta > Math.PI) theta -= 2 * Math.PI;
+                    while (theta - currentTheta < -Math.PI) theta += 2 * Math.PI;
+                    currentTheta = theta;
+                    thrLines.push(`${theta.toFixed(5)} ${rho.toFixed(5)}`);
+                });
+            }
+        }
+        
+        if (thrLines.length === 0) return alert("Aucun tracé à exporter !");
+        
+        let baseName = document.getElementById('project-filename').value.trim() || "export_table";
+        let filename = baseName.endsWith('.thr') ? baseName : baseName + '.thr';
+
+        const blob = new Blob([thrLines.join('\n')], { type: "text/plain" });
+        let isApple = /Mac|iPod|iPhone|iPad/i.test(navigator.userAgent);
+        
+        if (navigator.canShare && isApple) {
+            const file = new File([blob], filename, { type: "text/plain" });
+            if (navigator.canShare({ files: [file] })) {
+                navigator.share({ files: [file], title: filename }).catch(e=>{});
+                return;
+            }
+        }
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a"); 
+        a.href = url; 
+        a.download = filename; 
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    },
+
+    async handleSave(extension, isSaveAs) {
+        let baseName = document.getElementById('project-filename').value.trim() || "mon_projet";
+        let isApple = /Mac|iPod|iPhone|iPad/i.test(navigator.userAgent);
+
+        if (isSaveAs && !window.showSaveFilePicker && !isApple) {
+            let userStr = prompt("Entrez le nom du fichier :", baseName.replace(extension, ''));
+            if (!userStr) return; 
+            baseName = userStr;
+            document.getElementById('project-filename').value = baseName;
+        }
+
+        let filename = baseName.endsWith(extension) ? baseName : baseName + extension;
+        let contentStr = "";
+
+        if (extension === '.sunae') {
+            const cleanLayers = (arr) => arr.map(l => {
+                let cl = {...l, img:null};
+                if(cl.type === 'folder' && cl.layers) cl.layers = cleanLayers(cl.layers);
+                return cl;
+            });
+            const proj = {
+                filename: filename,
+                settings: { 
+                    shape: this.settings.shape,
+                    zoom: this.ui.zoom*100, 
+                    showPoints: document.getElementById('chk-sim-points') ? document.getElementById('chk-sim-points').checked : true,
+                    showLinks: document.getElementById('chk-show-links') ? document.getElementById('chk-show-links').checked : true,
+                    tool: this.ui.tool, width: this.ui.penWidth*10, tremor: this.ui.tremor, rope: this.ui.ropeLength*2, color: this.ui.color 
+                },
+                layers: cleanLayers(this.layers)
+            };
+            contentStr = JSON.stringify(proj);
+        } else {
+            this.exportTHR();
+            return;
+        }
+
+        const blob = new Blob([contentStr], { type: "application/json" });
+
+        if (navigator.canShare && isApple) {
+            const file = new File([blob], filename, { type: "application/json" });
+            if (navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({ files: [file], title: filename });
+                    return;
+                } catch(e) { console.log(e); return; }
+            }
+        }
+
+        if (isSaveAs && window.showSaveFilePicker) {
+            try {
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: filename,
+                    types: [{ description: 'Projet Sunae', accept: {'application/json': ['.sunae']} }]
+                });
+                const writable = await handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                return;
+            } catch (e) {
+                if (e.name !== 'AbortError') console.error(e);
+                return;
+            }
+        }
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a"); 
+        a.href = url; 
+        a.download = filename; 
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    },
+
+    loadProject(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        document.getElementById('project-filename').value = file.name.replace('.sunae', '').replace('.json', '');
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            this.loadFromJSON(evt.target.result, false);
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+    }
+};
+
+window.onload = () => app.init();
+</script>
+</body>
+</html>
