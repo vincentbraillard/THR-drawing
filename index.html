@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -99,7 +98,7 @@
                         <input type="text" id="project-filename" value="mon_projet" oninput="app.autoSave()">
                     </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-                        <!-- Suppression de l'attribut accept pour l'iPad -->
+                        <!-- Ouverture universelle débloquée pour iPad -->
                         <input type="file" id="file-open" style="display: none;" onchange="app.loadProject(event)">
                         <button class="btn" style="flex:1" onclick="document.getElementById('file-open').click()">📂 Ouvrir</button>
                         <button class="btn" style="flex:1; color:red;" onclick="app.newProject()">🗑️ Nouveau</button>
@@ -201,8 +200,8 @@
                     <div class="row"><label>📏 Espacement :</label> <span class="val-badge" id="val-zigzag-spacing">2.00</span></div>
                     <div class="row-slider">
                         <button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', -10)">➖</button>
-                        <!-- Le curseur va de 1 à 150 (divisé par 10) => 0.1 à 15.0 mm -->
-                        <input type="range" id="zigzag-spacing" min="1" max="150" value="20" oninput="app.updateZigzagLive()">
+                        <!-- Échelle de 0.01 mm à 15.00 mm (divisé par 100) -->
+                        <input type="range" id="zigzag-spacing" min="1" max="1500" value="200" oninput="app.updateZigzagLive()">
                         <button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', 10)">➕</button>
                     </div>
                 </fieldset>
@@ -226,7 +225,7 @@
                 </fieldset>
             </div>
 
-            <!-- IMPORT (Image + THR) -->
+            <!-- IMPORT -->
             <div id="tab-import" class="tab-content">
                 <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;" onchange="app.importImage(event)">
                 <input type="file" id="file-thr" accept=".thr" style="display:none;" onchange="app.importTHR(event)">
@@ -285,6 +284,12 @@
                     </label>
                 </div>
                 
+                <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 5px; background: #f9f9f9; border-radius: 6px; border: 1px solid #eee;">
+                    <label style="font-size:12px; font-weight:bold; color: #0078D7; cursor:pointer;">
+                        <input type="checkbox" id="chk-highlight-sel" checked onchange="app.draw()"> 🌟 Halo de sélection
+                    </label>
+                </div>
+                
                 <div style="display:flex; gap:5px; margin-bottom:10px;">
                     <button class="btn" title="Monter" onclick="app.moveLayer(-1)">⬆️</button>
                     <button class="btn" title="Descendre" onclick="app.moveLayer(1)">⬇️</button>
@@ -315,7 +320,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.20</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.21</span>
     </div>
 
 <script>
@@ -336,6 +341,10 @@ const app = {
     layerCount: 1, imgCount: 1, wallCount: 1, folderCount: 1, importedCount: 1, zigzagCount: 1,
     selectedIds: [], 
     draggedId: null,
+    
+    // Cache Mathématique ultra-rapide pour le simulateur
+    simCache: { valid: false, pts: [], dists: [], totalDist: 0 },
+    lastActiveSimId: null,
     
     ui: {
         tool: 'select', penWidth: 1.5, ropeLength: 5.0, tremor: 0.0, color: '#000000',
@@ -359,6 +368,10 @@ const app = {
             this.draw();
         }
         this.changeTool();
+    },
+
+    invalidateSim() {
+        this.simCache.valid = false;
     },
 
     autoSave() {
@@ -400,6 +413,7 @@ const app = {
         this.settings.shape = (choice === "2") ? 'rect' : 'round';
         document.getElementById('table-shape').value = this.settings.shape;
         
+        this.invalidateSim();
         this.refreshLayerList();
     },
 
@@ -657,12 +671,14 @@ const app = {
 
             if (this.ui.isLiquifying) {
                 this.ui.isLiquifying = false;
+                this.invalidateSim();
                 this.autoSave();
             }
 
             if (this.ui.isDraggingImage) {
                 this.ui.isDraggingImage = false;
                 wrapper.style.cursor = 'pointer';
+                this.invalidateSim();
                 this.autoSave(); 
             }
 
@@ -690,6 +706,7 @@ const app = {
                                 btn.innerText = "✏️ Dessiner la courbe guide";
                                 btn.style.backgroundColor = "var(--primary)";
                                 
+                                this.invalidateSim();
                                 this.draw();
                                 this.autoSave();
                             }
@@ -722,6 +739,7 @@ const app = {
                     }
                 }
                 this.pos.currentPath = [];
+                this.invalidateSim();
                 this.draw();
                 this.autoSave();
             }
@@ -796,9 +814,8 @@ const app = {
         
         if (layer.zigzagType === 'guide' && layer.guideCurve && layer.guideCurve.length > 1) {
             
-            // Lissage fort de la courbe de base pour éviter les croisements chaotiques
             let guide = this.resamplePath(layer.guideCurve, spacing);
-            guide = this.smoothPath(guide, 15); // Lissage extrême
+            guide = this.smoothPath(guide, 15); 
             
             let lines = [];
             let windowSize = Math.max(2, Math.floor(20.0 / spacing)); 
@@ -840,8 +857,6 @@ const app = {
                     let t2 = intersections[k+1];
                     if (t2 === undefined) break;
                     
-                    // Sécurité anti-parasite absolue : on vérifie que P est encapsulé
-                    // On tolère 15px d'erreur max dû au lissage extrême du guide
                     if (t1 <= 15.0 && t2 >= -15.0) {
                         validPair = { L: {x: P.x + t1*N.x, y: P.y + t1*N.y}, R: {x: P.x + t2*N.x, y: P.y + t2*N.y} };
                         break;
@@ -952,7 +967,7 @@ const app = {
 
         this.ui.zigzagAngle = parseInt(document.getElementById('zigzag-angle').value);
         document.getElementById('val-zigzag-angle').innerText = this.ui.zigzagAngle + "°";
-        this.ui.zigzagSpacing = parseInt(document.getElementById('zigzag-spacing').value) / 10.0;
+        this.ui.zigzagSpacing = parseInt(document.getElementById('zigzag-spacing').value) / 100.0;
         document.getElementById('val-zigzag-spacing').innerText = this.ui.zigzagSpacing.toFixed(2);
         
         if (this.selectedIds.length === 1) {
@@ -969,6 +984,7 @@ const app = {
                     this.startDrawingGuide();
                 }
                 
+                this.invalidateSim();
                 this.draw();
                 this.autoSave();
             }
@@ -1022,6 +1038,9 @@ const app = {
         let flatLayers = this.getFlatLayers();
         let activeSelId = this.selectedIds.length === 1 ? this.selectedIds[0] : null;
         
+        let chkHighlight = document.getElementById('chk-highlight-sel');
+        let showHalo = chkHighlight && chkHighlight.checked;
+
         for (let i = flatLayers.length - 1; i >= 0; i--) {
             let l = flatLayers[i];
             if (!l.effectiveVisible) continue;
@@ -1032,11 +1051,19 @@ const app = {
                 this.ctx.rotate(l.rot * Math.PI / 180);
                 this.ctx.scale(l.scale * (l.flipH ? -1 : 1), l.scale * (l.flipV ? -1 : 1));
                 this.ctx.globalAlpha = l.opacity !== undefined ? l.opacity : 1.0;
+                
+                if (showHalo && this.selectedIds.includes(l.id)) {
+                    this.ctx.shadowColor = "rgba(0, 150, 255, 0.8)";
+                    this.ctx.shadowBlur = 15 / this.ui.zoom;
+                }
+                
                 this.ctx.drawImage(l.img, -l.img.width/2, -l.img.height/2);
                 this.ctx.restore();
             } else if (l.points && l.points.length > 1) {
                 this.ctx.save();
                 
+                let isCurrentLayerSelected = this.selectedIds.includes(l.id);
+
                 if (l.id === activeSelId && l.type === 'zigzag' && l.boundary && this.ui.tool !== 'liquify') {
                     this.ctx.beginPath();
                     this.ctx.moveTo(l.boundary[0].x, l.boundary[0].y);
@@ -1057,15 +1084,28 @@ const app = {
                     }
                 }
 
-                this.ctx.beginPath();
-                this.ctx.moveTo(l.points[0].x, l.points[0].y);
-                for(let j=1; j<l.points.length; j++) this.ctx.lineTo(l.points[j].x, l.points[j].y);
-                
                 if (l.type === 'wall') {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(l.points[0].x, l.points[0].y);
+                    for(let j=1; j<l.points.length; j++) this.ctx.lineTo(l.points[j].x, l.points[j].y);
                     this.ctx.fillStyle = "rgba(255, 0, 0, 0.2)"; this.ctx.fill();
                     this.ctx.strokeStyle = "red"; this.ctx.lineWidth = 2;
                     this.ctx.setLineDash([5, 5]); this.ctx.stroke(); this.ctx.setLineDash([]);
                 } else {
+                    // Halo de sélection extrêmement rapide (pas de shadowBlur, juste un trait épais en dessous)
+                    if (showHalo && isCurrentLayerSelected) {
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(l.points[0].x, l.points[0].y);
+                        for(let j=1; j<l.points.length; j++) this.ctx.lineTo(l.points[j].x, l.points[j].y);
+                        this.ctx.strokeStyle = "rgba(0, 150, 255, 0.4)"; 
+                        this.ctx.lineWidth = (l.width !== undefined ? l.width : 1.5) + (6 / this.ui.zoom);
+                        this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round'; 
+                        this.ctx.stroke();
+                    }
+
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(l.points[0].x, l.points[0].y);
+                    for(let j=1; j<l.points.length; j++) this.ctx.lineTo(l.points[j].x, l.points[j].y);
                     this.ctx.strokeStyle = l.color; this.ctx.lineWidth = l.width !== undefined ? l.width : 1.5;
                     this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round'; this.ctx.stroke();
                 }
@@ -1115,25 +1155,37 @@ const app = {
     },
 
     drawSimulation(flatLayers) {
-        let pts = [];
-        for (let i = flatLayers.length - 1; i >= 0; i--) {
-            let l = flatLayers[i];
-            if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && l.points) {
-                for(let j = 0; j < l.points.length; j++) {
-                    pts.push({ x: l.points[j].x, y: l.points[j].y, layerId: l.id });
+        // Cache management pour résoudre les lags
+        if (!this.simCache.valid) {
+            let pts = [];
+            for (let i = flatLayers.length - 1; i >= 0; i--) {
+                let l = flatLayers[i];
+                if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && l.points) {
+                    for(let j = 0; j < l.points.length; j++) {
+                        pts.push({ x: l.points[j].x, y: l.points[j].y, layerId: l.id });
+                    }
                 }
             }
+
+            let dists = [0], totalDist = 0;
+            if (pts.length > 0) {
+                for (let i = 1; i < pts.length; i++) {
+                    totalDist += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
+                    dists.push(totalDist);
+                }
+            }
+
+            this.simCache.pts = pts;
+            this.simCache.dists = dists;
+            this.simCache.totalDist = totalDist;
+            this.simCache.valid = true;
         }
-        
-        document.querySelectorAll('.layer-item').forEach(el => el.classList.remove('sim-active'));
+
+        let pts = this.simCache.pts;
+        let dists = this.simCache.dists;
+        let totalDist = this.simCache.totalDist;
 
         if (pts.length === 0) return;
-
-        let dists = [0], totalDist = 0;
-        for (let i = 1; i < pts.length; i++) {
-            totalDist += Math.hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y);
-            dists.push(totalDist);
-        }
 
         let targetDist = (this.ui.simPercent / 1000.0) * totalDist;
         let ballPos = pts[0];
@@ -1142,24 +1194,61 @@ const app = {
         if (this.ui.simPercent > 0 && totalDist > 0) {
             this.ctx.beginPath(); 
             this.ctx.moveTo(pts[0].x, pts[0].y);
-            for (let i = 1; i < pts.length; i++) {
-                if (dists[i] <= targetDist) {
-                    this.ctx.lineTo(pts[i].x, pts[i].y);
-                    ballPos = pts[i];
-                    activeSimId = pts[i].layerId;
+            
+            // Recherche Binaire très rapide
+            let low = 0, high = dists.length - 1;
+            let idx = 0;
+            while (low <= high) {
+                let mid = Math.floor((low + high) / 2);
+                if (dists[mid] <= targetDist) {
+                    idx = mid;
+                    low = mid + 1;
                 } else {
-                    let segLen = dists[i] - dists[i-1];
-                    let ratio = segLen > 0 ? (targetDist - dists[i-1]) / segLen : 0;
-                    let nx = pts[i-1].x + (pts[i].x - pts[i-1].x) * ratio;
-                    let ny = pts[i-1].y + (pts[i].y - pts[i-1].y) * ratio;
-                    this.ctx.lineTo(nx, ny);
-                    ballPos = { x: nx, y: ny };
-                    activeSimId = pts[i].layerId;
-                    break;
+                    high = mid - 1;
                 }
             }
-            this.ctx.strokeStyle = "rgba(0, 120, 215, 0.8)"; this.ctx.lineWidth = 3 / this.ui.zoom; this.ctx.stroke();
 
+            // Dessin ultra rapide du tracé
+            for (let i = 1; i <= idx; i++) {
+                this.ctx.lineTo(pts[i].x, pts[i].y);
+            }
+
+            // Interpolation du dernier millimètre
+            if (idx < pts.length - 1 && targetDist > dists[idx]) {
+                let segLen = dists[idx+1] - dists[idx];
+                let ratio = segLen > 0 ? (targetDist - dists[idx]) / segLen : 0;
+                let nx = pts[idx].x + (pts[idx+1].x - pts[idx].x) * ratio;
+                let ny = pts[idx].y + (pts[idx+1].y - pts[idx].y) * ratio;
+                this.ctx.lineTo(nx, ny);
+                ballPos = { x: nx, y: ny };
+                activeSimId = pts[idx+1].layerId;
+            } else {
+                ballPos = pts[idx];
+                activeSimId = pts[idx].layerId;
+            }
+            
+            this.ctx.strokeStyle = "rgba(0, 120, 215, 0.8)"; this.ctx.lineWidth = 3 / this.ui.zoom; this.ctx.stroke();
+        }
+
+        let pointRadius = 6 / this.ui.zoom;
+        let ballRadius = 7 / this.ui.zoom;
+
+        if (document.getElementById('chk-sim-points').checked) {
+            this.ctx.beginPath(); this.ctx.arc(pts[0].x, pts[0].y, pointRadius, 0, Math.PI*2); 
+            this.ctx.fillStyle = "green"; this.ctx.fill(); 
+            
+            this.ctx.beginPath(); this.ctx.arc(pts[pts.length-1].x, pts[pts.length-1].y, pointRadius, 0, Math.PI*2); 
+            this.ctx.fillStyle = "red"; this.ctx.fill(); 
+        }
+
+        if (this.ui.simPercent > 0 || totalDist === 0) {
+            this.ctx.beginPath(); this.ctx.arc(ballPos.x, ballPos.y, ballRadius, 0, Math.PI*2);
+            this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.strokeStyle="#000"; this.ctx.lineWidth=1/this.ui.zoom; this.ctx.stroke();
+        }
+
+        // Optimisation du DOM (ne met à jour la liste HTML que si le calque a changé)
+        if (activeSimId !== this.lastActiveSimId) {
+            document.querySelectorAll('.layer-item.sim-active').forEach(el => el.classList.remove('sim-active'));
             if (activeSimId) {
                 let li = document.getElementById('li-' + activeSimId);
                 if (li) li.classList.add('sim-active');
@@ -1179,22 +1268,7 @@ const app = {
                 };
                 highlightChain(this.layers, activeSimId);
             }
-        }
-
-        let pointRadius = 6 / this.ui.zoom;
-        let ballRadius = 7 / this.ui.zoom;
-
-        if (document.getElementById('chk-sim-points').checked) {
-            this.ctx.beginPath(); this.ctx.arc(pts[0].x, pts[0].y, pointRadius, 0, Math.PI*2); 
-            this.ctx.fillStyle = "green"; this.ctx.fill(); 
-            
-            this.ctx.beginPath(); this.ctx.arc(pts[pts.length-1].x, pts[pts.length-1].y, pointRadius, 0, Math.PI*2); 
-            this.ctx.fillStyle = "red"; this.ctx.fill(); 
-        }
-
-        if (this.ui.simPercent > 0 || totalDist === 0) {
-            this.ctx.beginPath(); this.ctx.arc(ballPos.x, ballPos.y, ballRadius, 0, Math.PI*2);
-            this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.strokeStyle="#000"; this.ctx.lineWidth=1/this.ui.zoom; this.ctx.stroke();
+            this.lastActiveSimId = activeSimId;
         }
     },
 
@@ -1347,6 +1421,7 @@ const app = {
 
         this.draggedId = null;
         this.selectedIds = [draggedLayer.id];
+        this.invalidateSim();
         this.refreshLayerList();
     },
 
@@ -1380,6 +1455,7 @@ const app = {
         
         targetArr.splice(insertIndex, 0, newL);
         this.selectedIds = [newL.id];
+        this.invalidateSim();
         this.refreshLayerList();
     },
 
@@ -1463,8 +1539,8 @@ const app = {
             }
             document.getElementById('zigzag-angle').value = sel.angle || 0;
             document.getElementById('val-zigzag-angle').innerText = (sel.angle || 0) + "°";
-            document.getElementById('zigzag-spacing').value = (sel.spacing || 2.0) * 10;
-            document.getElementById('val-zigzag-spacing').innerText = (sel.spacing || 2.0).toFixed(1);
+            document.getElementById('zigzag-spacing').value = (sel.spacing || 2.0) * 100;
+            document.getElementById('val-zigzag-spacing').innerText = (sel.spacing || 2.0).toFixed(2);
         } else {
             document.getElementById('btn-draw-guide').disabled = true;
         }
@@ -1496,7 +1572,7 @@ const app = {
         this.refreshLayerList();
     },
     
-    toggleVis(id) { let l = this.findLayer(id).layer; if(l) { l.visible = !l.visible; this.refreshLayerList(); } },
+    toggleVis(id) { let l = this.findLayer(id).layer; if(l) { l.visible = !l.visible; this.invalidateSim(); this.refreshLayerList(); } },
     toggleLock() { 
         this.selectedIds.forEach(id => {
             let l = this.findLayer(id).layer; if(l) l.locked = !l.locked;
@@ -1521,6 +1597,7 @@ const app = {
         };
         removeRecursive(this.layers);
         this.selectedIds = []; 
+        this.invalidateSim();
         this.refreshLayerList();
     },
 
@@ -1552,6 +1629,7 @@ const app = {
         } else if (dir === 1 && idx < arr.length - 1) {
             let t = arr[idx]; arr[idx] = arr[idx+1]; arr[idx+1] = t;
         }
+        this.invalidateSim();
         this.refreshLayerList();
     },
 
@@ -1583,6 +1661,7 @@ const app = {
         
         this.selectedIds = [newFolder.id];
         document.getElementById('multi-select-mode').checked = false;
+        this.invalidateSim();
         this.refreshLayerList();
     },
 
@@ -1594,11 +1673,13 @@ const app = {
             let children = info.layer.layers || [];
             info.parentArr.splice(info.idx, 1, ...children);
             this.selectedIds = [];
+            this.invalidateSim();
             this.refreshLayerList();
         } else if (info && info.parentArr !== this.layers) {
             this.saveState();
             let l = info.parentArr.splice(info.idx, 1)[0];
             this.layers.unshift(l); 
+            this.invalidateSim();
             this.refreshLayerList();
         }
     },
@@ -1634,6 +1715,7 @@ const app = {
         this.layers.unshift(newL);
         this.selectedIds = [newL.id];
         document.getElementById('multi-select-mode').checked = false;
+        this.invalidateSim();
         this.refreshLayerList();
     },
 
@@ -1735,6 +1817,7 @@ const app = {
             
             if (sel.layer.type === 'imported_path') {
                 this.recalcImportedPath(sel.layer);
+                this.invalidateSim();
             }
             this.draw();
         }
@@ -1748,6 +1831,7 @@ const app = {
             
             if (sel.layer.type === 'imported_path') {
                 this.recalcImportedPath(sel.layer);
+                this.invalidateSim();
             }
             this.draw();
         }
@@ -1832,6 +1916,7 @@ const app = {
         rebuildImgs(parsedArray);
         this.layers = parsedArray;
         this.selectedIds = [];
+        this.invalidateSim();
         this.refreshLayerList();
     },
 
@@ -2019,5 +2104,3 @@ window.onload = () => app.init();
 </script>
 </body>
 </html>
-
-
