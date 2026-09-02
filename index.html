@@ -200,7 +200,6 @@
                     <div class="row"><label>📏 Espacement :</label> <span class="val-badge" id="val-zigzag-spacing">2.00</span></div>
                     <div class="row-slider">
                         <button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', -10)">➖</button>
-                        <!-- Échelle de 0.01 mm à 15.00 mm (divisé par 100) -->
                         <input type="range" id="zigzag-spacing" min="1" max="1500" value="200" oninput="app.updateZigzagLive()">
                         <button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', 10)">➕</button>
                     </div>
@@ -320,7 +319,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.21</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.22</span>
     </div>
 
 <script>
@@ -342,7 +341,6 @@ const app = {
     selectedIds: [], 
     draggedId: null,
     
-    // Cache Mathématique ultra-rapide pour le simulateur
     simCache: { valid: false, pts: [], dists: [], totalDist: 0 },
     lastActiveSimId: null,
     
@@ -419,6 +417,7 @@ const app = {
 
     changeShape() {
         this.settings.shape = document.getElementById('table-shape').value;
+        this.invalidateSim();
         this.draw();
         this.autoSave();
     },
@@ -1053,7 +1052,7 @@ const app = {
                 this.ctx.globalAlpha = l.opacity !== undefined ? l.opacity : 1.0;
                 
                 if (showHalo && this.selectedIds.includes(l.id)) {
-                    this.ctx.shadowColor = "rgba(0, 150, 255, 0.8)";
+                    this.ctx.shadowColor = "rgba(255, 215, 0, 0.6)";
                     this.ctx.shadowBlur = 15 / this.ui.zoom;
                 }
                 
@@ -1092,13 +1091,12 @@ const app = {
                     this.ctx.strokeStyle = "red"; this.ctx.lineWidth = 2;
                     this.ctx.setLineDash([5, 5]); this.ctx.stroke(); this.ctx.setLineDash([]);
                 } else {
-                    // Halo de sélection extrêmement rapide (pas de shadowBlur, juste un trait épais en dessous)
                     if (showHalo && isCurrentLayerSelected) {
                         this.ctx.beginPath();
                         this.ctx.moveTo(l.points[0].x, l.points[0].y);
                         for(let j=1; j<l.points.length; j++) this.ctx.lineTo(l.points[j].x, l.points[j].y);
-                        this.ctx.strokeStyle = "rgba(0, 150, 255, 0.4)"; 
-                        this.ctx.lineWidth = (l.width !== undefined ? l.width : 1.5) + (6 / this.ui.zoom);
+                        this.ctx.strokeStyle = "rgba(255, 215, 0, 0.6)"; 
+                        this.ctx.lineWidth = (l.width !== undefined ? l.width : 1.5) + (8 / this.ui.zoom);
                         this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round'; 
                         this.ctx.stroke();
                     }
@@ -1155,14 +1153,19 @@ const app = {
     },
 
     drawSimulation(flatLayers) {
-        // Cache management pour résoudre les lags
         if (!this.simCache.valid) {
             let pts = [];
+            let lastSaved = null;
             for (let i = flatLayers.length - 1; i >= 0; i--) {
                 let l = flatLayers[i];
                 if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && l.points) {
                     for(let j = 0; j < l.points.length; j++) {
-                        pts.push({ x: l.points[j].x, y: l.points[j].y, layerId: l.id });
+                        let p = { x: l.points[j].x, y: l.points[j].y, layerId: l.id };
+                        // NOUVEAU : Allégement drastique en sautant les points proches pour stopper les lags du canvas
+                        if (!lastSaved || j === 0 || j === l.points.length - 1 || Math.hypot(p.x - lastSaved.x, p.y - lastSaved.y) > 2.5) {
+                            pts.push(p);
+                            lastSaved = p;
+                        }
                     }
                 }
             }
@@ -1195,7 +1198,6 @@ const app = {
             this.ctx.beginPath(); 
             this.ctx.moveTo(pts[0].x, pts[0].y);
             
-            // Recherche Binaire très rapide
             let low = 0, high = dists.length - 1;
             let idx = 0;
             while (low <= high) {
@@ -1208,12 +1210,13 @@ const app = {
                 }
             }
 
-            // Dessin ultra rapide du tracé
-            for (let i = 1; i <= idx; i++) {
+            // Limitation du nombre max de segments dessinés pour garantir 60 FPS constants
+            let step = Math.max(1, Math.floor(idx / 2000));
+            for (let i = 1; i <= idx; i += step) {
                 this.ctx.lineTo(pts[i].x, pts[i].y);
             }
+            if (idx % step !== 0) this.ctx.lineTo(pts[idx].x, pts[idx].y);
 
-            // Interpolation du dernier millimètre
             if (idx < pts.length - 1 && targetDist > dists[idx]) {
                 let segLen = dists[idx+1] - dists[idx];
                 let ratio = segLen > 0 ? (targetDist - dists[idx]) / segLen : 0;
@@ -1246,7 +1249,6 @@ const app = {
             this.ctx.fillStyle = "#ccc"; this.ctx.fill(); this.ctx.strokeStyle="#000"; this.ctx.lineWidth=1/this.ui.zoom; this.ctx.stroke();
         }
 
-        // Optimisation du DOM (ne met à jour la liste HTML que si le calque a changé)
         if (activeSimId !== this.lastActiveSimId) {
             document.querySelectorAll('.layer-item.sim-active').forEach(el => el.classList.remove('sim-active'));
             if (activeSimId) {
@@ -1856,6 +1858,7 @@ const app = {
             this.restoreLayers(JSON.parse(this.undoStack.pop()));
             document.getElementById('btn-undo').disabled = this.undoStack.length === 0;
             document.getElementById('btn-redo').disabled = false;
+            this.invalidateSim();
             this.autoSave();
         }
     },
@@ -1867,6 +1870,7 @@ const app = {
             this.restoreLayers(JSON.parse(this.redoStack.pop()));
             document.getElementById('btn-undo').disabled = false;
             document.getElementById('btn-redo').disabled = this.redoStack.length === 0;
+            this.invalidateSim();
             this.autoSave();
         }
     },
