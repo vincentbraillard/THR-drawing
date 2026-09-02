@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -125,9 +124,9 @@
                         <button class="btn btn-icon" onclick="app.stepSlider('zoom-workspace', 10)">➕</button>
                     </div>
                     <label style="display: flex; align-items: center; gap: 8px; font-weight: normal;">
-                        <input type="checkbox" id="chk-sim-points" checked onchange="app.draw(); app.autoSave();"> 🟢/🔴 Points globaux (Début/Fin Simulation)
+                        <input type="checkbox" id="chk-sim-points" checked onchange="app.draw(); app.autoSave();"> 🟢/🔴 Points (Début/Fin Calque)
                     </label>
-                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; margin-top: 6px;">
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; margin-top: 5px;">
                         <input type="checkbox" id="chk-show-links" checked onchange="app.draw(); app.autoSave();"> 🔗 Lignes de liaison inter-calques
                     </label>
                 </fieldset>
@@ -176,7 +175,7 @@
                 <!-- Paramètres Remplissage -->
                 <fieldset id="opts-zigzag" style="display:none; background:#fff3e0;">
                     <legend>〰️ Paramètres Remplissage</legend>
-                    <div style="font-size:11px; margin-bottom:10px; color:#555; font-weight:bold;" id="zigzag-help-text">Dessinez une forme fermée ou utilisez la baguette magique sur une image.</div>
+                    <div style="font-size:11px; margin-bottom:10px; color:#555; font-weight:bold;" id="zigzag-help-text">Dessinez une forme fermée ou utilisez la détection auto sur une image.</div>
                     
                     <div id="wand-container" style="display:none; background:#e8eaf6; padding: 10px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #c5cae9;">
                         <button id="btn-wand-mode" class="btn" style="width:100%; font-weight:bold; margin-bottom:5px;" onclick="app.toggleWandMode()">🪄 Utiliser la Détection Auto</button>
@@ -191,29 +190,49 @@
                     </div>
 
                     <div class="row" style="gap: 5px; margin-bottom: 15px;">
-                        <button id="btn-zig-straight" class="btn btn-primary" style="flex:1;" onclick="app.setZigzagLineStyle('straight')">〰️ Droites</button>
-                        <button id="btn-zig-wave" class="btn" style="flex:1;" onclick="app.setZigzagLineStyle('wave')">🌊 Vagues</button>
+                        <button id="btn-zig-straight" class="btn btn-primary" style="flex:1; padding: 5px 2px; font-size:11px;" onclick="app.setZigzagLineStyle('straight')">〰️ Droites</button>
+                        <button id="btn-zig-wave" class="btn" style="flex:1; padding: 5px 2px; font-size:11px;" onclick="app.setZigzagLineStyle('wave')">🌊 Vagues</button>
+                        <button id="btn-zig-contour" class="btn" style="flex:1; padding: 5px 2px; font-size:11px;" onclick="app.setZigzagLineStyle('contour')">🌀 Spirale</button>
                     </div>
 
-                    <div class="row">
-                        <label>Orientation :</label>
-                        <select id="zigzag-type" onchange="app.updateZigzagLive(true)">
-                            <option value="angle">Angle Fixe</option>
-                            <option value="guide">Suivre une Courbe</option>
-                        </select>
-                    </div>
+                    <div id="orientation-container">
+                        <div class="row">
+                            <label>Orientation :</label>
+                            <select id="zigzag-type" onchange="app.updateZigzagLive(true)">
+                                <option value="angle">Angle Fixe</option>
+                                <option value="guide">Suivre une Courbe</option>
+                            </select>
+                        </div>
 
-                    <div id="zig-angle-div">
-                        <div class="row"><label>🔄 Angle :</label> <span class="val-badge" id="val-zigzag-angle">0°</span></div>
-                        <div class="row-slider">
-                            <button class="btn btn-icon" onclick="app.stepSlider('zigzag-angle', -5)">➖</button>
-                            <input type="range" id="zigzag-angle" min="0" max="360" value="0" oninput="app.updateZigzagLive()">
-                            <button class="btn btn-icon" onclick="app.stepSlider('zigzag-angle', 5)">➕</button>
+                        <div id="zig-angle-div">
+                            <div class="row"><label>🔄 Angle :</label> <span class="val-badge" id="val-zigzag-angle">0°</span></div>
+                            <div class="row-slider">
+                                <button class="btn btn-icon" onclick="app.stepSlider('zigzag-angle', -5)">➖</button>
+                                <input type="range" id="zigzag-angle" min="0" max="360" value="0" oninput="app.updateZigzagLive()">
+                                <button class="btn btn-icon" onclick="app.stepSlider('zigzag-angle', 5)">➕</button>
+                            </div>
+                        </div>
+
+                        <div id="zig-guide-div" style="display:none; text-align:center; padding: 10px 0;">
+                            <button id="btn-draw-guide" class="btn btn-primary" style="width:100%;" onclick="app.startDrawingGuide()" disabled>✏️ Dessiner la courbe guide</button>
                         </div>
                     </div>
 
-                    <div id="zig-guide-div" style="display:none; text-align:center; padding: 10px 0;">
-                        <button id="btn-draw-guide" class="btn btn-primary" style="width:100%;" onclick="app.startDrawingGuide()" disabled>✏️ Dessiner la courbe guide</button>
+                    <!-- SPIRALE CONTOUR OPTIONS -->
+                    <div id="contour-opts-div" style="display:none; border-top: 1px solid #ccc; padding-top: 10px; margin-bottom: 10px;">
+                        <div class="row" style="margin-bottom: 10px;">
+                            <label>Sens du tracé :</label>
+                            <select id="contour-dir" onchange="app.updateZigzagLive()">
+                                <option value="in">Extérieur ➔ Centre</option>
+                                <option value="out">Centre ➔ Extérieur</option>
+                            </select>
+                        </div>
+                        <div class="row"><label>🔄 Départ (Rotation) :</label> <span class="val-badge" id="val-contour-rot">0°</span></div>
+                        <div class="row-slider" style="margin-bottom:0;">
+                            <button class="btn btn-icon" onclick="app.stepSlider('contour-rot', -5)">➖</button>
+                            <input type="range" id="contour-rot" min="0" max="360" value="0" oninput="app.updateZigzagLive()">
+                            <button class="btn btn-icon" onclick="app.stepSlider('contour-rot', 5)">➕</button>
+                        </div>
                     </div>
 
                     <div class="row"><label>📏 Espacement :</label> <span class="val-badge" id="val-zigzag-spacing">2.00</span></div>
@@ -353,7 +372,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v2.0</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v2.1</span>
     </div>
 
 <script>
@@ -381,7 +400,7 @@ const app = {
     ui: {
         tool: 'select', penWidth: 1.5, ropeLength: 5.0, tremor: 0.0, color: '#000000',
         zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isDraggingImage: false, isLiquifying: false,
-        zigzagLineStyle: 'straight', waveAmp: 2.0, waveLen: 15.0,
+        zigzagLineStyle: 'straight', waveAmp: 2.0, waveLen: 15.0, contourDir: 'in', contourRot: 0,
         zigzagAngle: 0, zigzagSpacing: 2.0, zigzagDrawMode: 'contour', liquifyRadius: 30, liquifyStrength: 50, wandTolerance: 30, pointerHover: null
     },
     
@@ -804,17 +823,19 @@ const app = {
                                 lineStyle: this.ui.zigzagLineStyle,
                                 waveAmp: this.ui.waveAmp,
                                 waveLen: this.ui.waveLen,
+                                contourDir: this.ui.contourDir,
+                                contourRot: this.ui.contourRot,
                                 angle: this.ui.zigzagAngle,
                                 spacing: this.ui.zigzagSpacing,
                                 guideCurve: null,
                                 points: []
                             };
-                            if (type === 'angle') {
-                                layer.points = this.generateZigzag(layer);
-                            }
+                            
+                            layer.points = this.generateZigzag(layer);
+                            
                             this.addLayer(layer);
                             
-                            if (type === 'guide') {
+                            if (type === 'guide' && layer.lineStyle !== 'contour') {
                                 this.startDrawingGuide();
                             }
                         }
@@ -966,20 +987,20 @@ const app = {
             lineStyle: this.ui.zigzagLineStyle,
             waveAmp: this.ui.waveAmp,
             waveLen: this.ui.waveLen,
+            contourDir: this.ui.contourDir,
+            contourRot: this.ui.contourRot,
             angle: this.ui.zigzagAngle,
             spacing: this.ui.zigzagSpacing,
             guideCurve: null,
             points: []
         };
         
-        if (layer.zigzagType === 'angle') {
-            layer.points = this.generateZigzag(layer);
-        }
+        layer.points = this.generateZigzag(layer);
 
         this.undoStack.pop(); 
         this.addLayer(layer);
 
-        if (layer.zigzagType === 'guide') {
+        if (layer.zigzagType === 'guide' && layer.lineStyle !== 'contour') {
             this.startDrawingGuide();
         } else if (this.ui.zigzagDrawMode === 'wand') {
             this.toggleWandMode();
@@ -1041,14 +1062,99 @@ const app = {
         this.ui.zigzagLineStyle = style;
         document.getElementById('btn-zig-straight').className = style === 'straight' ? 'btn btn-primary' : 'btn';
         document.getElementById('btn-zig-wave').className = style === 'wave' ? 'btn btn-primary' : 'btn';
+        document.getElementById('btn-zig-contour').className = style === 'contour' ? 'btn btn-primary' : 'btn';
         
         document.getElementById('wave-opts-div').style.display = style === 'wave' ? 'block' : 'none';
+        document.getElementById('contour-opts-div').style.display = style === 'contour' ? 'block' : 'none';
+        
+        if (style === 'contour') {
+            document.getElementById('orientation-container').style.display = 'none';
+        } else {
+            document.getElementById('orientation-container').style.display = 'block';
+            let type = document.getElementById('zigzag-type').value;
+            document.getElementById('zig-angle-div').style.display = type === 'angle' ? 'block' : 'none';
+            document.getElementById('zig-guide-div').style.display = type === 'guide' ? 'block' : 'none';
+        }
+        
         this.updateZigzagLive();
+    },
+    
+    generateContour(layer, spacing) {
+        let boundary = layer.boundary;
+        if (!boundary || boundary.length < 3) return [];
+
+        let direction = layer.contourDir || 'in'; 
+        let startAngleOffset = layer.contourRot || 0; 
+
+        let cx = 0, cy = 0;
+        boundary.forEach(p => { cx += p.x; cy += p.y; });
+        cx /= boundary.length;
+        cy /= boundary.length;
+
+        let perimeter = 0;
+        for(let i=0; i<boundary.length; i++) {
+            let p1 = boundary[i];
+            let p2 = boundary[(i+1)%boundary.length];
+            perimeter += Math.hypot(p2.x-p1.x, p2.y-p1.y);
+        }
+        
+        let ptsCount = Math.max(100, Math.floor(perimeter / 2)); 
+        let resampled = this.resamplePath([...boundary, boundary[0]], perimeter / ptsCount);
+        if (resampled.length > 1 && Math.hypot(resampled[0].x - resampled[resampled.length-1].x, resampled[0].y - resampled[resampled.length-1].y) < 1) {
+            resampled.pop();
+        }
+        let N = resampled.length;
+        if(N === 0) return [];
+
+        let maxDist = 0;
+        for (let p of resampled) {
+            let d = Math.hypot(p.x - cx, p.y - cy);
+            if (d > maxDist) maxDist = d;
+        }
+
+        let numLoops = Math.max(1, Math.ceil(maxDist / spacing));
+        let totalSteps = numLoops * N;
+        
+        let path = [];
+        let shiftIdx = Math.floor((startAngleOffset / 360.0) * N);
+
+        for (let i = 0; i <= totalSteps; i++) {
+            let loopProgress = i / totalSteps; 
+            let scale = 1.0 - loopProgress; 
+            
+            let bndIdx = (i + shiftIdx) % N;
+            let B = resampled[bndIdx];
+
+            let x = cx + (B.x - cx) * scale;
+            let y = cy + (B.y - cy) * scale;
+            path.push({x, y});
+        }
+
+        let rCenter = Math.max(0.5, spacing / 3.0);
+        let lastPt = path[path.length-1];
+        let angleToLast = Math.atan2(lastPt.y - cy, lastPt.x - cx);
+        for(let a=0; a<=Math.PI*2; a+=0.2) {
+            path.push({
+                x: cx + Math.cos(angleToLast + a)*rCenter,
+                y: cy + Math.sin(angleToLast + a)*rCenter
+            });
+        }
+
+        if (direction === 'out') {
+            path.reverse();
+        }
+
+        return path;
     },
 
     generateZigzag(layer) {
         if (!layer.boundary || layer.boundary.length < 3) return [];
         let spacing = layer.spacing || 2.0;
+        
+        if (layer.lineStyle === 'contour') {
+            return this.generateContour(layer, spacing);
+        }
+        
         let isWave = layer.lineStyle === 'wave';
         let wAmp = layer.waveAmp || 2.0;
         let wLen = layer.waveLen || 15.0;
@@ -1287,30 +1393,16 @@ const app = {
         }
     },
 
-    startDrawingGuide() {
-        if (this.selectedIds.length !== 1) return;
-        let sel = this.findLayer(this.selectedIds[0]);
-        if (!sel || sel.layer.type !== 'zigzag') return;
-        
-        if (this.ui.zigzagDrawMode === 'wand') {
-            this.toggleWandMode();
-        }
-
-        this.ui.zigzagDrawMode = 'guide';
-        let btn = document.getElementById('btn-draw-guide');
-        btn.innerText = "Tracez la courbe sur la table...";
-        btn.style.backgroundColor = "#ff9800";
-        document.getElementById('zigzag-help-text').innerText = "2. Tracez maintenant la courbe au centre.";
-    },
-
     updateZigzagLive(typeChanged = false) {
         let type = document.getElementById('zigzag-type').value;
-        if (type === 'angle') {
-            document.getElementById('zig-angle-div').style.display = 'block';
-            document.getElementById('zig-guide-div').style.display = 'none';
-        } else {
-            document.getElementById('zig-angle-div').style.display = 'none';
-            document.getElementById('zig-guide-div').style.display = 'block';
+        
+        let dirEl = document.getElementById('contour-dir');
+        if (dirEl) this.ui.contourDir = dirEl.value;
+        
+        let rotEl = document.getElementById('contour-rot');
+        if (rotEl) {
+            this.ui.contourRot = parseInt(rotEl.value);
+            document.getElementById('val-contour-rot').innerText = this.ui.contourRot + "°";
         }
 
         this.ui.zigzagAngle = parseInt(document.getElementById('zigzag-angle').value);
@@ -1331,18 +1423,28 @@ const app = {
                 sel.layer.lineStyle = this.ui.zigzagLineStyle;
                 sel.layer.waveAmp = this.ui.waveAmp;
                 sel.layer.waveLen = this.ui.waveLen;
+                sel.layer.contourDir = this.ui.contourDir;
+                sel.layer.contourRot = this.ui.contourRot;
                 sel.layer.angle = this.ui.zigzagAngle;
                 sel.layer.spacing = this.ui.zigzagSpacing;
                 
-                if (type === 'angle' || (type === 'guide' && sel.layer.guideCurve)) {
-                    sel.layer.points = this.generateZigzag(sel.layer);
-                } else if (type === 'guide' && typeChanged) {
+                sel.layer.points = this.generateZigzag(sel.layer);
+                
+                if (type === 'guide' && typeChanged && sel.layer.lineStyle !== 'contour') {
                     this.startDrawingGuide();
                 }
                 
                 this.invalidateSim();
                 this.draw();
                 this.autoSave();
+            }
+        } else {
+            if (type === 'angle') {
+                document.getElementById('zig-angle-div').style.display = 'block';
+                document.getElementById('zig-guide-div').style.display = 'none';
+            } else {
+                document.getElementById('zig-angle-div').style.display = 'none';
+                document.getElementById('zig-guide-div').style.display = 'block';
             }
         }
     },
@@ -1400,7 +1502,6 @@ const app = {
         let chkLinks = document.getElementById('chk-show-links');
         let showLinks = chkLinks ? chkLinks.checked : true;
 
-        // DESSIN DES POINTILLÉS DE LIAISON
         if (showLinks) {
             let prevEnd = null;
             for (let i = flatLayers.length - 1; i >= 0; i--) {
@@ -1422,7 +1523,6 @@ const app = {
             }
         }
 
-        // DESSIN DES CALQUES
         for (let i = flatLayers.length - 1; i >= 0; i--) {
             let l = flatLayers[i];
             if (!l.effectiveVisible) continue;
@@ -1456,7 +1556,7 @@ const app = {
                     this.ctx.stroke();
                     this.ctx.setLineDash([]);
                     
-                    if (l.zigzagType === 'guide' && l.guideCurve) {
+                    if (l.zigzagType === 'guide' && l.guideCurve && l.lineStyle !== 'contour') {
                         this.ctx.beginPath();
                         this.ctx.moveTo(l.guideCurve[0].x, l.guideCurve[0].y);
                         for(let j=1; j<l.guideCurve.length; j++) this.ctx.lineTo(l.guideCurve[j].x, l.guideCurve[j].y);
@@ -1490,7 +1590,6 @@ const app = {
                     this.ctx.strokeStyle = l.color; this.ctx.lineWidth = l.width !== undefined ? l.width : 1.5;
                     this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round'; this.ctx.stroke();
 
-                    // Points Début (Vert) et Fin (Rouge) sur le calque sélectionné
                     if (isCurrentLayerSelected && l.points.length > 0) {
                         let pR = 4.5 / this.ui.zoom;
                         
@@ -1730,12 +1829,9 @@ const app = {
         
         document.getElementById('canvas-wrapper').style.cursor = cursor;
         
-        let elPen = document.getElementById('opts-pen');
-        if (elPen) elPen.style.display = (this.ui.tool === 'pen') ? 'block' : 'none';
-        let elZig = document.getElementById('opts-zigzag');
-        if (elZig) elZig.style.display = (this.ui.tool === 'zigzag') ? 'block' : 'none';
-        let elLiq = document.getElementById('opts-liquify');
-        if (elLiq) elLiq.style.display = (this.ui.tool === 'liquify') ? 'block' : 'none';
+        document.getElementById('opts-pen').style.display = (this.ui.tool === 'pen') ? 'block' : 'none';
+        document.getElementById('opts-zigzag').style.display = (this.ui.tool === 'zigzag') ? 'block' : 'none';
+        document.getElementById('opts-liquify').style.display = (this.ui.tool === 'liquify') ? 'block' : 'none';
 
         if (this.ui.tool === 'zigzag') {
             this.checkImagePresence();
@@ -1777,12 +1873,9 @@ const app = {
         this.ui.liquifyStrength = parseInt(document.getElementById('liq-str').value);
         document.getElementById('val-liq-str').innerText = this.ui.liquifyStrength + "%";
 
-        let elWand = document.getElementById('wand-tol');
-        if (elWand) {
-            this.ui.wandTolerance = parseInt(elWand.value);
-            if (document.getElementById('val-wand-tol')) {
-                document.getElementById('val-wand-tol').innerText = this.ui.wandTolerance;
-            }
+        this.ui.wandTolerance = parseInt(document.getElementById('wand-tol').value);
+        if (document.getElementById('val-wand-tol')) {
+            document.getElementById('val-wand-tol').innerText = this.ui.wandTolerance;
         }
 
         this.autoSave();
@@ -1961,7 +2054,9 @@ const app = {
 
         if (sel && sel.type === 'zigzag') {
             document.getElementById('zigzag-type').value = sel.zigzagType || 'angle';
-            if (sel.zigzagType === 'guide') {
+            
+            let type = sel.zigzagType || 'angle';
+            if (type === 'guide') {
                 document.getElementById('zig-angle-div').style.display = 'none';
                 document.getElementById('zig-guide-div').style.display = 'block';
                 document.getElementById('btn-draw-guide').disabled = false;
@@ -1977,12 +2072,22 @@ const app = {
             let style = sel.lineStyle || 'straight';
             document.getElementById('btn-zig-straight').className = style === 'straight' ? 'btn btn-primary' : 'btn';
             document.getElementById('btn-zig-wave').className = style === 'wave' ? 'btn btn-primary' : 'btn';
-            document.getElementById('wave-opts-div').style.display = style === 'wave' ? 'block' : 'none';
+            document.getElementById('btn-zig-contour').className = style === 'contour' ? 'btn btn-primary' : 'btn';
             
-            document.getElementById('wave-amp').value = (sel.waveAmp || 5.0) * 10;
-            document.getElementById('val-wave-amp').innerText = (sel.waveAmp || 5.0).toFixed(1);
-            document.getElementById('wave-len').value = (sel.waveLen || 20.0) * 10;
-            document.getElementById('val-wave-len').innerText = (sel.waveLen || 20.0).toFixed(1);
+            document.getElementById('wave-opts-div').style.display = style === 'wave' ? 'block' : 'none';
+            document.getElementById('contour-opts-div').style.display = style === 'contour' ? 'block' : 'none';
+            document.getElementById('orientation-container').style.display = style === 'contour' ? 'none' : 'block';
+            
+            if (style === 'wave') {
+                document.getElementById('wave-amp').value = (sel.waveAmp || 5.0) * 10;
+                document.getElementById('val-wave-amp').innerText = (sel.waveAmp || 5.0).toFixed(1);
+                document.getElementById('wave-len').value = (sel.waveLen || 20.0) * 10;
+                document.getElementById('val-wave-len').innerText = (sel.waveLen || 20.0).toFixed(1);
+            } else if (style === 'contour') {
+                document.getElementById('contour-dir').value = sel.contourDir || 'in';
+                document.getElementById('contour-rot').value = sel.contourRot || 0;
+                document.getElementById('val-contour-rot').innerText = (sel.contourRot || 0) + "°";
+            }
             
         } else {
             let btnGuide = document.getElementById('btn-draw-guide');
@@ -2004,369 +2109,6 @@ const app = {
 
         this.draw();
         this.autoSave();
-    },
-
-    selectLayer(id) {
-        id = String(id);
-        let multi = document.getElementById('multi-select-mode').checked;
-        if (multi) {
-            if (this.selectedIds.includes(id)) this.selectedIds = this.selectedIds.filter(x => x !== id);
-            else this.selectedIds.push(id);
-        } else {
-            this.selectedIds = [id];
-        }
-        this.refreshLayerList();
-    },
-    
-    toggleVis(id) { let l = this.findLayer(id).layer; if(l) { l.visible = !l.visible; this.invalidateSim(); this.refreshLayerList(); } },
-    toggleLock() { 
-        this.selectedIds.forEach(id => {
-            let l = this.findLayer(id).layer; if(l) l.locked = !l.locked;
-        });
-        this.refreshLayerList(); 
-    },
-    
-    deleteSelected() {
-        if(this.selectedIds.length === 0) return;
-        this.saveState(); 
-        
-        let toDelete = [...this.selectedIds];
-        const removeRecursive = (arr) => {
-            if(!arr || !Array.isArray(arr)) return;
-            for(let i=0; i<arr.length; i++) {
-                if (toDelete.includes(arr[i].id)) {
-                    arr.splice(i, 1); i--;
-                } else if (arr[i].type === 'folder') {
-                    removeRecursive(arr[i].layers);
-                }
-            }
-        };
-        removeRecursive(this.layers);
-        this.selectedIds = []; 
-        this.invalidateSim();
-        this.refreshLayerList();
-    },
-
-    renameLayer(id, e) {
-        e.stopPropagation();
-        let l = this.findLayer(id).layer;
-        if(l) {
-            let baseName = l.name.replace(' 🔓','').replace(' 🔒','');
-            let n = prompt("Nouveau nom :", baseName);
-            if (n) { l.name = n; this.saveState(); this.refreshLayerList(); }
-        }
-    },
-
-    toggleFolder(id, e) {
-        e.stopPropagation();
-        let l = this.findLayer(id).layer;
-        if(l && l.type === 'folder') { l.isOpen = !l.isOpen; this.refreshLayerList(); }
-    },
-
-    moveLayer(dir) {
-        if(this.selectedIds.length !== 1) { alert("Veuillez sélectionner 1 seul calque pour le déplacer."); return; }
-        this.saveState();
-        let info = this.findLayer(this.selectedIds[0]);
-        let arr = info.parentArr;
-        let idx = info.idx;
-        
-        if (dir === -1 && idx > 0) {
-            let t = arr[idx]; arr[idx] = arr[idx-1]; arr[idx-1] = t;
-        } else if (dir === 1 && idx < arr.length - 1) {
-            let t = arr[idx]; arr[idx] = arr[idx+1]; arr[idx+1] = t;
-        }
-        this.invalidateSim();
-        this.refreshLayerList();
-    },
-
-    groupSelected() {
-        if(this.selectedIds.length === 0) return;
-        this.saveState();
-        
-        let newFolder = { id: this.genId(), type: 'folder', name: '📁 Dossier ' + this.folderCount++, visible: true, locked: false, isOpen: true, layers: [] };
-        let extracted = [];
-        let firstParent = null; let firstIdx = -1;
-
-        const extract = (arr) => {
-            if(!arr || !Array.isArray(arr)) return;
-            for(let i=0; i<arr.length; i++) {
-                if (this.selectedIds.includes(arr[i].id)) {
-                    if(!firstParent) { firstParent = arr; firstIdx = i; }
-                    extracted.push(arr.splice(i, 1)[0]);
-                    i--;
-                } else if (arr[i].type === 'folder') {
-                    extract(arr[i].layers);
-                }
-            }
-        };
-        extract(this.layers);
-        
-        newFolder.layers = extracted;
-        if(firstParent) firstParent.splice(firstIdx, 0, newFolder);
-        else this.layers.unshift(newFolder);
-        
-        this.selectedIds = [newFolder.id];
-        document.getElementById('multi-select-mode').checked = false;
-        this.invalidateSim();
-        this.refreshLayerList();
-    },
-
-    ungroupSelected() {
-        if(this.selectedIds.length !== 1) return;
-        let info = this.findLayer(this.selectedIds[0]);
-        if(info && info.layer.type === 'folder') {
-            this.saveState();
-            let children = info.layer.layers || [];
-            info.parentArr.splice(info.idx, 1, ...children);
-            this.selectedIds = [];
-            this.invalidateSim();
-            this.refreshLayerList();
-        } else if (info && info.parentArr !== this.layers) {
-            this.saveState();
-            let l = info.parentArr.splice(info.idx, 1)[0];
-            this.layers.unshift(l); 
-            this.invalidateSim();
-            this.refreshLayerList();
-        }
-    },
-
-    mergeSelected() {
-        let toMerge = [];
-        const extractAndRemove = (arr) => {
-            if(!arr || !Array.isArray(arr)) return;
-            for(let i = arr.length - 1; i >= 0; i--) {
-                if (arr[i].type === 'folder') {
-                    extractAndRemove(arr[i].layers);
-                } else if (this.selectedIds.includes(arr[i].id) && (arr[i].type === 'path' || arr[i].type === 'pen' || arr[i].type === 'imported_path' || arr[i].type === 'zigzag')) {
-                    toMerge.push(arr.splice(i, 1)[0]);
-                }
-            }
-        };
-
-        this.saveState();
-        extractAndRemove(this.layers);
-        
-        if (toMerge.length < 2) {
-            this.undoStack.pop(); 
-            return alert("Veuillez sélectionner au moins 2 tracés pour fusionner.");
-        }
-
-        let mergedPoints = [];
-        toMerge.forEach(l => { if(l.points) mergedPoints.push(...l.points) });
-        
-        let baseLayer = toMerge[0];
-        let name = `🔗 Fusion ${this.layerCount++}`;
-        let newL = { id: this.genId(), type: 'path', name: name, visible: true, locked: false, color: baseLayer.color, width: baseLayer.width, points: mergedPoints };
-        
-        this.layers.unshift(newL);
-        this.selectedIds = [newL.id];
-        document.getElementById('multi-select-mode').checked = false;
-        this.invalidateSim();
-        this.refreshLayerList();
-    },
-
-    importImage(e) {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const img = new Image();
-                img.onload = () => {
-                    this.addLayer({ type: 'image', img: img, src: event.target.result, x: 0, y: 0, scale: 1.0, opacity: 0.5, rot: 0, flipH: false, flipV: false });
-                }
-                img.src = event.target.result;
-            };
-            reader.readAsDataURL(file);
-        }
-        e.target.value = '';
-    },
-
-    importTHR(e) {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const text = event.target.result;
-                const lines = text.split('\n');
-                let originalPoints = [];
-                let R = this.getExportRadius();
-                
-                lines.forEach(line => {
-                    let parts = line.trim().split(/\s+/);
-                    if (parts.length >= 2) {
-                        let theta = parseFloat(parts[0]);
-                        let rho = parseFloat(parts[1]);
-                        if (!isNaN(theta) && !isNaN(rho)) {
-                            let r = rho * R;
-                            let angle = theta - Math.PI / 2;
-                            let x = r * Math.cos(angle);
-                            let y = r * Math.sin(angle);
-                            originalPoints.push({x, y});
-                        }
-                    }
-                });
-
-                if (originalPoints.length > 0) {
-                    this.addLayer({ 
-                        type: 'imported_path', 
-                        name: `🗺️ Tracé ${this.importedCount++}`,
-                        originalPoints: originalPoints,
-                        points: [...originalPoints], 
-                        x: 0, y: 0, scale: 1.0, opacity: 1.0, rot: 0, flipH: false, flipV: false,
-                        color: this.ui.color, width: 1.0 
-                    });
-                } else {
-                    alert("Ce fichier .thr semble vide ou invalide.");
-                }
-            };
-            reader.readAsText(file);
-        }
-        e.target.value = '';
-    },
-    
-    recalcImportedPath(layer) {
-        if (!layer.originalPoints) return;
-        let rad = layer.rot * Math.PI / 180;
-        let cosA = Math.cos(rad);
-        let sinA = Math.sin(rad);
-        
-        layer.points = layer.originalPoints.map(pt => {
-            let x = pt.x;
-            let y = pt.y;
-            if (layer.flipH) x = -x;
-            if (layer.flipV) y = -y;
-            x *= layer.scale;
-            y *= layer.scale;
-            
-            return {
-                x: x * cosA - y * sinA + layer.x,
-                y: x * sinA + y * cosA + layer.y
-            };
-        });
-    },
-
-    updateTransform() {
-        let sel = this.findLayer(this.selectedIds[0]);
-        if(sel && (sel.layer.type === 'image' || sel.layer.type === 'imported_path')) {
-            this.saveState();
-            
-            if (sel.layer.type === 'image') {
-                sel.layer.opacity = document.getElementById('img-opacity').value / 100.0;
-            } else {
-                sel.layer.width = document.getElementById('thr-width').value / 10.0;
-                document.getElementById('val-thr-width').innerText = sel.layer.width.toFixed(1);
-            }
-            
-            sel.layer.scale = document.getElementById('img-scale').value / 100.0;
-            sel.layer.rot = parseInt(document.getElementById('img-rot').value);
-            document.getElementById('val-rot').innerText = sel.layer.rot + "°";
-            
-            if (sel.layer.type === 'imported_path') {
-                this.recalcImportedPath(sel.layer);
-                this.invalidateSim();
-            }
-            this.draw();
-        }
-    },
-
-    toggleFlip(axis) {
-        let sel = this.findLayer(this.selectedIds[0]);
-        if(sel && (sel.layer.type === 'image' || sel.layer.type === 'imported_path')) {
-            this.saveState();
-            if(axis === 'H') sel.layer.flipH = !sel.layer.flipH; else sel.layer.flipV = !sel.layer.flipV;
-            
-            if (sel.layer.type === 'imported_path') {
-                this.recalcImportedPath(sel.layer);
-                this.invalidateSim();
-            }
-            this.draw();
-        }
-    },
-
-    saveState() {
-        const cleanLayers = (arr) => arr.map(l => {
-            let cl = {...l, img:null};
-            if(cl.type === 'folder' && cl.layers) cl.layers = cleanLayers(cl.layers);
-            return cl;
-        });
-        this.undoStack.push(JSON.stringify(cleanLayers(this.layers)));
-        this.redoStack = [];
-        document.getElementById('btn-undo').disabled = false;
-        document.getElementById('btn-redo').disabled = true;
-    },
-    
-    undo() {
-        if (this.undoStack.length > 0) {
-            const cleanLayers = (arr) => arr.map(l => { let cl={...l, img:null}; if(cl.type==='folder' && cl.layers) cl.layers=cleanLayers(cl.layers); return cl; });
-            this.redoStack.push(JSON.stringify(cleanLayers(this.layers)));
-            this.restoreLayers(JSON.parse(this.undoStack.pop()));
-            document.getElementById('btn-undo').disabled = this.undoStack.length === 0;
-            document.getElementById('btn-redo').disabled = false;
-            this.invalidateSim();
-            this.autoSave();
-        }
-    },
-    
-    redo() {
-        if (this.redoStack.length > 0) {
-            const cleanLayers = (arr) => arr.map(l => { let cl={...l, img:null}; if(cl.type==='folder' && cl.layers) cl.layers=cleanLayers(cl.layers); return cl; });
-            this.undoStack.push(JSON.stringify(cleanLayers(this.layers)));
-            this.restoreLayers(JSON.parse(this.redoStack.pop()));
-            document.getElementById('btn-undo').disabled = false;
-            document.getElementById('btn-redo').disabled = this.redoStack.length === 0;
-            this.invalidateSim();
-            this.autoSave();
-        }
-    },
-    
-    restoreLayers(parsedArray) {
-        const upgradeLayer = (l) => {
-            if (l.id === undefined || l.id === null) {
-                l.id = this.genId();
-            } else {
-                let sId = String(l.id).replace(/[^a-zA-Z0-9]/g, '_');
-                if (!sId.match(/^[a-zA-Z]/)) sId = 'L' + sId;
-                l.id = sId;
-            }
-
-            if (l.type === 'image') {
-                if (l.srcBase64 && !l.src) l.src = l.srcBase64;
-                if (l.image_b64 && !l.src) l.src = "data:image/png;base64," + l.image_b64;
-            }
-            if ((l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && !l.color) l.color = "#000000";
-            if ((l.type === 'path' || l.type === 'pen') && l.width === undefined) l.width = 1.5;
-            if (l.type === 'zigzag' && l.width === undefined) l.width = 1.3;
-            if (l.type === 'zigzag' && l.lineStyle === undefined) l.lineStyle = 'straight';
-            if (l.type === 'imported_path' && l.width === undefined) l.width = 1.0;
-
-            if (l.type === 'folder') {
-                if (!l.layers) l.layers = [];
-                l.layers.forEach(upgradeLayer);
-            }
-        };
-
-        if (Array.isArray(parsedArray)) {
-            parsedArray.forEach(upgradeLayer);
-        } else {
-            parsedArray = [];
-        }
-
-        const rebuildImgs = (arr) => {
-            arr.forEach(l => {
-                if (l.type === 'image') {
-                    const img = new Image();
-                    img.onload = () => { l.img = img; this.draw(); };
-                    if(l.src) img.src = l.src;
-                } else if (l.type === 'folder' && Array.isArray(l.layers)) {
-                    rebuildImgs(l.layers);
-                }
-            });
-        };
-        rebuildImgs(parsedArray);
-        this.layers = parsedArray;
-        this.selectedIds = [];
-        this.invalidateSim();
-        this.refreshLayerList();
     },
 
     loadFromJSON(jsonStr, isAutoLoad = false) {
