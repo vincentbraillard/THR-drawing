@@ -89,7 +89,6 @@
                 <button class="tab-btn" onclick="app.openTab(event, 'tab-layers')">📑 Calques</button>
             </div>
 
-            <!-- FICHIER -->
             <div id="tab-file" class="tab-content active">
                 <fieldset>
                     <legend>💾 Fichier & Projet</legend>
@@ -98,7 +97,6 @@
                         <input type="text" id="project-filename" value="mon_projet" oninput="app.autoSave()">
                     </div>
                     <div style="display: flex; gap: 5px; margin-bottom: 10px;">
-                        <!-- Ouverture universelle débloquée pour iPad -->
                         <input type="file" id="file-open" style="display: none;" onchange="app.loadProject(event)">
                         <button class="btn" style="flex:1" onclick="document.getElementById('file-open').click()">📂 Ouvrir</button>
                         <button class="btn" style="flex:1; color:red;" onclick="app.newProject()">🗑️ Nouveau</button>
@@ -131,7 +129,6 @@
                 <button class="btn-export" onclick="app.handleSave('.thr', false)">📤 Exporter vers Machine (.thr)</button>
             </div>
 
-            <!-- OUTILS -->
             <div id="tab-tools" class="tab-content">
                 <fieldset>
                     <legend>🛠️ Outils Actifs</legend>
@@ -147,7 +144,6 @@
                     </div>
                 </fieldset>
 
-                <!-- Paramètres Crayon -->
                 <fieldset id="opts-pen" style="display:none;">
                     <legend>🖌️ Paramètres Crayon</legend>
                     <div class="row"><label>📏 Épaisseur du trait :</label> <span class="val-badge" id="val-width">1.5</span></div>
@@ -170,7 +166,6 @@
                     </div>
                 </fieldset>
 
-                <!-- Paramètres Zigzag -->
                 <fieldset id="opts-zigzag" style="display:none; background:#fff3e0;">
                     <legend>〰️ Paramètres Zigzag</legend>
                     <div style="font-size:11px; margin-bottom:10px; color:#555;">1. Dessinez le contour pour le remplir.</div>
@@ -205,7 +200,6 @@
                     </div>
                 </fieldset>
 
-                <!-- Paramètres Liquify -->
                 <fieldset id="opts-liquify" style="display:none; background:#e1f5fe;">
                     <legend>💧 Pinceau Déformation</legend>
                     <div style="font-size:11px; margin-bottom:10px; color:#555;">Glissez sur la table pour tordre le tracé sélectionné. Le contour initial des zigzags est protégé.</div>
@@ -224,7 +218,6 @@
                 </fieldset>
             </div>
 
-            <!-- IMPORT -->
             <div id="tab-import" class="tab-content">
                 <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;" onchange="app.importImage(event)">
                 <input type="file" id="file-thr" accept=".thr" style="display:none;" onchange="app.importTHR(event)">
@@ -274,7 +267,6 @@
                 </fieldset>
             </div>
 
-            <!-- CALQUES -->
             <div id="tab-layers" class="tab-content">
                 <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <label>Organisation :</label>
@@ -319,7 +311,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.22</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.23</span>
     </div>
 
 <script>
@@ -889,6 +881,7 @@ const app = {
             return path;
             
         } else {
+            // Algorithme Angle Fixe avec regroupement par Îlots (Strands) pour éviter de traverser le vide
             let angleRad = (layer.angle || 0) * Math.PI / 180;
             let cosA = Math.cos(-angleRad);
             let sinA = Math.sin(-angleRad);
@@ -901,7 +894,8 @@ const app = {
             let minY = Math.min(...rotBounds.map(p => p.y));
             let maxY = Math.max(...rotBounds.map(p => p.y));
 
-            let lines = [];
+            // 1. Calcul de tous les segments de coupe
+            let sweeps = [];
             for (let y = minY + spacing/2; y < maxY; y += spacing) {
                 let intersects = [];
                 for (let i = 0; i < rotBounds.length; i++) {
@@ -913,27 +907,105 @@ const app = {
                     }
                 }
                 intersects.sort((a, b) => a - b);
+                let segments = [];
                 for (let i = 0; i < intersects.length; i += 2) {
                     if (intersects[i] !== undefined && intersects[i+1] !== undefined) {
-                        lines.push({y: y, x1: intersects[i], x2: intersects[i+1]});
+                        segments.push({y: y, x1: intersects[i], x2: intersects[i+1]});
                     }
                 }
+                if (segments.length > 0) sweeps.push(segments);
             }
 
-            let path = [];
-            let leftToRight = true;
-            for (let line of lines) {
-                let segLen = Math.abs(line.x2 - line.x1);
-                let steps = Math.max(1, Math.ceil(segLen / 2)); 
-                
-                if (leftToRight) {
-                    for(let s=0; s<=steps; s++) path.push({x: line.x1 + (line.x2 - line.x1)*(s/steps), y: line.y});
-                } else {
-                    for(let s=0; s<=steps; s++) path.push({x: line.x2 + (line.x1 - line.x2)*(s/steps), y: line.y});
+            // 2. Regroupement par îlots continus (Strands)
+            let strands = [];
+            for (let sweep of sweeps) {
+                for (let seg of sweep) {
+                    let matched = false;
+                    for (let strand of strands) {
+                        let lastSeg = strand[strand.length - 1];
+                        if (Math.abs(lastSeg.y - (seg.y - spacing)) < 0.01) {
+                            // S'il y a un chevauchement horizontal
+                            if (Math.max(seg.x1, lastSeg.x1) <= Math.min(seg.x2, lastSeg.x2) + 0.1) {
+                                strand.push(seg);
+                                matched = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!matched) strands.push([seg]);
                 }
-                leftToRight = !leftToRight;
             }
 
+            // Outil pour tracer le long de la bordure si besoin
+            const getClosestVert = (p) => {
+                let bestDist = Infinity, bestI = 0;
+                for(let i=0; i<rotBounds.length; i++) {
+                    let dist = Math.hypot(p.x-rotBounds[i].x, p.y-rotBounds[i].y);
+                    if(dist < bestDist) { bestDist = dist; bestI = i; }
+                }
+                return bestI;
+            };
+
+            const getBoundaryPath = (p1, p2) => {
+                let i1 = getClosestVert(p1);
+                let i2 = getClosestVert(p2);
+                let n = rotBounds.length;
+                let path1 = [], path2 = [];
+                let i = i1; while(i !== i2) { i = (i + 1) % n; path1.push(rotBounds[i]); }
+                i = i1; while(i !== i2) { i = (i - 1 + n) % n; path2.push(rotBounds[i]); }
+                
+                const len = (pArr) => {
+                    if(pArr.length===0) return Math.hypot(p1.x-p2.x, p1.y-p2.y);
+                    let l = Math.hypot(p1.x-pArr[0].x, p1.y-pArr[0].y);
+                    for(let j=0; j<pArr.length-1; j++) l += Math.hypot(pArr[j].x-pArr[j+1].x, pArr[j].y-pArr[j+1].y);
+                    l += Math.hypot(pArr[pArr.length-1].x-p2.x, pArr[pArr.length-1].y-p2.y);
+                    return l;
+                };
+                return len(path1) < len(path2) ? path1 : path2;
+            };
+
+            // 3. Dessin des îlots avec liaisons intelligentes
+            let path = [];
+            let currentEnd = null;
+
+            for (let i = 0; i < strands.length; i++) {
+                let strand = strands[i];
+                let leftToRight = true;
+                let strandPath = [];
+                
+                for (let line of strand) {
+                    let segLen = Math.abs(line.x2 - line.x1);
+                    let steps = Math.max(1, Math.ceil(segLen / 2)); 
+                    
+                    if (leftToRight) {
+                        for(let s=0; s<=steps; s++) strandPath.push({x: line.x1 + (line.x2 - line.x1)*(s/steps), y: line.y});
+                    } else {
+                        for(let s=0; s<=steps; s++) strandPath.push({x: line.x2 + (line.x1 - line.x2)*(s/steps), y: line.y});
+                    }
+                    leftToRight = !leftToRight;
+                }
+
+                if (currentEnd && strandPath.length > 0) {
+                    let nextStart = strandPath[0];
+                    let midRot = {x: (currentEnd.x + nextStart.x)/2, y: (currentEnd.y + nextStart.y)/2};
+                    
+                    // On convertit le milieu dans le système global pour vérifier s'il passe dans le vide
+                    let midGlob = {
+                        x: midRot.x * Math.cos(angleRad) - midRot.y * Math.sin(angleRad),
+                        y: midRot.x * Math.sin(angleRad) + midRot.y * Math.cos(angleRad)
+                    };
+                    
+                    if (!this.pointInPolygon(midGlob, layer.boundary)) {
+                        // Le chemin direct croise le vide, on longe la bordure
+                        path.push(...getBoundaryPath(currentEnd, nextStart));
+                    }
+                }
+                
+                path.push(...strandPath);
+                if (strandPath.length > 0) currentEnd = strandPath[strandPath.length - 1];
+            }
+
+            // Restauration de la rotation d'origine
             cosA = Math.cos(angleRad);
             sinA = Math.sin(angleRad);
             return path.map(p => ({
@@ -1161,7 +1233,6 @@ const app = {
                 if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && l.points) {
                     for(let j = 0; j < l.points.length; j++) {
                         let p = { x: l.points[j].x, y: l.points[j].y, layerId: l.id };
-                        // NOUVEAU : Allégement drastique en sautant les points proches pour stopper les lags du canvas
                         if (!lastSaved || j === 0 || j === l.points.length - 1 || Math.hypot(p.x - lastSaved.x, p.y - lastSaved.y) > 2.5) {
                             pts.push(p);
                             lastSaved = p;
@@ -1210,7 +1281,6 @@ const app = {
                 }
             }
 
-            // Limitation du nombre max de segments dessinés pour garantir 60 FPS constants
             let step = Math.max(1, Math.floor(idx / 2000));
             for (let i = 1; i <= idx; i += step) {
                 this.ctx.lineTo(pts[i].x, pts[i].y);
