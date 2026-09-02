@@ -364,7 +364,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v2.1 (Spirale)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v2.2 (Optimisée)</span>
     </div>
 
 <script>
@@ -388,6 +388,7 @@ const app = {
     
     simCache: { valid: false, pts: [], dists: [], totalDist: 0 },
     lastActiveSimId: null,
+    zigzagTimeout: null,
     
     ui: {
         tool: 'select', penWidth: 1.5, ropeLength: 5.0, tremor: 0.0, color: '#000000',
@@ -1065,17 +1066,17 @@ const app = {
 
     generateZigzag(layer) {
         if (!layer.boundary || layer.boundary.length < 3) return [];
-        let spacing = layer.spacing || 2.0;
+        // Sécurité primordiale pour éviter le plantage sur iPad si l'espacement est trop petit
+        let spacing = Math.max(0.5, layer.spacing || 2.0); 
         let isWave = layer.lineStyle === 'wave';
         let wAmp = layer.waveAmp || 2.0;
         let wLen = layer.waveLen || 15.0;
         
-        // --- NOUVEL ALGORITHME : SPIRALE DE CONTOUR ---
+        // --- ALGORITHME : SPIRALE DE CONTOUR ---
         if (layer.zigzagType === 'spiral') {
-            let boundary = this.resamplePath(layer.boundary, 2.0); // Résolution fine
+            let boundary = this.resamplePath(layer.boundary, 2.0); 
             if (boundary.length < 3) return [];
 
-            // Trouver le "centre visuel" du polygone pour éviter que la spirale sorte d'une forme concave
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             boundary.forEach(p => {
                 if(p.x < minX) minX = p.x; if(p.x > maxX) maxX = p.x;
@@ -1085,7 +1086,6 @@ const app = {
             let bestPoint = {x: cx, y: cy};
             let maxDist = -1;
             
-            // Grille grossière pour trouver le point le plus "profond" dans la forme
             let steps = 15;
             let stepX = (maxX - minX) / steps, stepY = (maxY - minY) / steps;
             for(let i=1; i<steps; i++) {
@@ -1111,7 +1111,6 @@ const app = {
             }
             cx = bestPoint.x; cy = bestPoint.y;
 
-            // Décalage du point de départ via Rotation
             let rotAngle = layer.angle || 0;
             let shiftIdx = Math.floor((rotAngle / 360.0) * boundary.length);
             let shiftedBoundary = boundary.slice(shiftIdx).concat(boundary.slice(0, shiftIdx));
@@ -1119,10 +1118,9 @@ const app = {
             let path = [];
             let M = shiftedBoundary.length;
             let isDone = false;
-            let k = 0; // Nombre de tours
+            let k = 0; 
             let reachedCenterCount = 0;
 
-            // Génération de la spirale par homothétie progressive
             while(!isDone && k < 1000) {
                 for (let j = 0; j < M; j++) {
                     let p = shiftedBoundary[j];
@@ -1133,7 +1131,7 @@ const app = {
 
                     if (shrink >= dist) {
                         reachedCenterCount++;
-                        if (reachedCenterCount > M * 1.5) { // Sécurité pour fermer correctement
+                        if (reachedCenterCount > M * 1.5) { 
                             isDone = true;
                             break;
                         }
@@ -1149,7 +1147,6 @@ const app = {
                 k++;
             }
 
-            // Petite boucle finale au centre
             let rCenter = spacing * 0.4;
             if (rCenter > 0.2) {
                 for(let a=0; a<=Math.PI*2; a+=0.3) {
@@ -1158,7 +1155,6 @@ const app = {
                 path.push({ x: cx + Math.cos(0)*rCenter, y: cy + Math.sin(0)*rCenter });
             }
 
-            // Ajout des vagues si activé
             if (isWave) {
                 let wavePath = [];
                 let totalDist = 0;
@@ -1176,7 +1172,6 @@ const app = {
                 path = wavePath;
             }
 
-            // Inversion de direction si demandé
             if (layer.spiralDir === 'out') {
                 path.reverse();
             }
@@ -1462,29 +1457,34 @@ const app = {
         this.ui.waveLen = parseInt(document.getElementById('wave-len').value) / 10.0;
         document.getElementById('val-wave-len').innerText = this.ui.waveLen.toFixed(1);
         
-        if (this.selectedIds.length === 1) {
-            let sel = this.findLayer(this.selectedIds[0]);
-            if (sel && sel.layer.type === 'zigzag' && sel.layer.boundary) {
-                this.saveState();
-                sel.layer.zigzagType = type;
-                sel.layer.spiralDir = document.getElementById('spiral-dir').value;
-                sel.layer.lineStyle = this.ui.zigzagLineStyle;
-                sel.layer.waveAmp = this.ui.waveAmp;
-                sel.layer.waveLen = this.ui.waveLen;
-                sel.layer.angle = this.ui.zigzagAngle;
-                sel.layer.spacing = this.ui.zigzagSpacing;
-                
-                if (type === 'angle' || type === 'spiral' || (type === 'guide' && sel.layer.guideCurve)) {
-                    sel.layer.points = this.generateZigzag(sel.layer);
-                } else if (type === 'guide' && typeChanged) {
-                    this.startDrawingGuide();
+        // CORRECTION 3: Debounce pour éviter de planter Safari sur iPad lors du glissement du curseur
+        if (this.zigzagTimeout) clearTimeout(this.zigzagTimeout);
+        
+        this.zigzagTimeout = setTimeout(() => {
+            if (this.selectedIds.length === 1) {
+                let sel = this.findLayer(this.selectedIds[0]);
+                if (sel && sel.layer.type === 'zigzag' && sel.layer.boundary) {
+                    this.saveState();
+                    sel.layer.zigzagType = type;
+                    sel.layer.spiralDir = document.getElementById('spiral-dir') ? document.getElementById('spiral-dir').value : 'in';
+                    sel.layer.lineStyle = this.ui.zigzagLineStyle;
+                    sel.layer.waveAmp = this.ui.waveAmp;
+                    sel.layer.waveLen = this.ui.waveLen;
+                    sel.layer.angle = this.ui.zigzagAngle;
+                    sel.layer.spacing = this.ui.zigzagSpacing;
+                    
+                    if (type === 'angle' || type === 'spiral' || (type === 'guide' && sel.layer.guideCurve)) {
+                        sel.layer.points = this.generateZigzag(sel.layer);
+                    } else if (type === 'guide' && typeChanged) {
+                        this.startDrawingGuide();
+                    }
+                    
+                    this.invalidateSim();
+                    this.draw();
+                    this.autoSave();
                 }
-                
-                this.invalidateSim();
-                this.draw();
-                this.autoSave();
             }
-        }
+        }, 150); // Le calcul ne se lance que 150ms après que le curseur s'arrête
     },
 
     getFlatLayers(arr = this.layers, parentVisible = true, parentLocked = false) {
@@ -1860,6 +1860,16 @@ const app = {
         if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand' && newTool !== 'zigzag') {
             this.toggleWandMode();
         }
+        
+        // CORRECTION 1: Réinitialisation sur "Angle" dès qu'on choisit le Remplissage
+        if (newTool === 'zigzag') {
+            document.getElementById('zigzag-type').value = 'angle';
+            document.getElementById('zig-angle-div').style.display = 'block';
+            document.getElementById('zig-guide-div').style.display = 'none';
+            document.getElementById('zig-spiral-div').style.display = 'none';
+            document.getElementById('zigzag-angle-label').innerText = "🔄 Angle :";
+        }
+
         this.ui.tool = newTool;
 
         let cursor = 'crosshair';
@@ -1994,6 +2004,7 @@ const app = {
         this.selectedIds = [draggedLayer.id];
         this.invalidateSim();
         this.refreshLayerList();
+        this.autoSave(); // CORRECTION 2
     },
 
     onDragEnd(e) {
@@ -2028,6 +2039,7 @@ const app = {
         this.selectedIds = [newL.id];
         this.invalidateSim();
         this.refreshLayerList();
+        this.autoSave(); // CORRECTION 2
     },
 
     renderTree(arr, depth) {
@@ -2153,7 +2165,7 @@ const app = {
         this.checkImagePresence();
 
         this.draw();
-        this.autoSave();
+        this.autoSave(); // CORRECTION 2
     },
 
     selectLayer(id) {
@@ -2195,6 +2207,7 @@ const app = {
         this.selectedIds = []; 
         this.invalidateSim();
         this.refreshLayerList();
+        this.autoSave(); // CORRECTION 2
     },
 
     renameLayer(id, e) {
@@ -2227,6 +2240,7 @@ const app = {
         }
         this.invalidateSim();
         this.refreshLayerList();
+        this.autoSave(); // CORRECTION 2
     },
 
     groupSelected() {
@@ -2259,6 +2273,7 @@ const app = {
         document.getElementById('multi-select-mode').checked = false;
         this.invalidateSim();
         this.refreshLayerList();
+        this.autoSave(); // CORRECTION 2
     },
 
     ungroupSelected() {
@@ -2271,12 +2286,14 @@ const app = {
             this.selectedIds = [];
             this.invalidateSim();
             this.refreshLayerList();
+            this.autoSave(); // CORRECTION 2
         } else if (info && info.parentArr !== this.layers) {
             this.saveState();
             let l = info.parentArr.splice(info.idx, 1)[0];
             this.layers.unshift(l); 
             this.invalidateSim();
             this.refreshLayerList();
+            this.autoSave(); // CORRECTION 2
         }
     },
 
@@ -2313,6 +2330,7 @@ const app = {
         document.getElementById('multi-select-mode').checked = false;
         this.invalidateSim();
         this.refreshLayerList();
+        this.autoSave(); // CORRECTION 2
     },
 
     importImage(e) {
@@ -2713,3 +2731,4 @@ window.onload = () => app.init();
 </script>
 </body>
 </html>
+
