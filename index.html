@@ -89,6 +89,7 @@
                 <button class="tab-btn" onclick="app.openTab(event, 'tab-layers')">📑 Calques</button>
             </div>
 
+            <!-- FICHIER -->
             <div id="tab-file" class="tab-content active">
                 <fieldset>
                     <legend>💾 Fichier & Projet</legend>
@@ -123,21 +124,19 @@
                         <button class="btn btn-icon" onclick="app.stepSlider('zoom-workspace', 10)">➕</button>
                     </div>
                     <label style="display: flex; align-items: center; gap: 8px; font-weight: normal;">
-                        <input type="checkbox" id="chk-sim-points" checked onchange="app.draw(); app.autoSave();"> 🟢/🔴 Points (Début/Fin Calque)
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; margin-top: 5px;">
-                        <input type="checkbox" id="chk-show-links" checked onchange="app.draw(); app.autoSave();"> 🔗 Lignes de liaison inter-calques
+                        <input type="checkbox" id="chk-sim-points" checked onchange="app.draw(); app.autoSave();"> 🟢/🔴 Points début/fin
                     </label>
                 </fieldset>
                 <button class="btn-export" onclick="app.handleSave('.thr', false)">📤 Exporter vers Machine (.thr)</button>
             </div>
 
+            <!-- OUTILS -->
             <div id="tab-tools" class="tab-content">
                 <fieldset>
                     <legend>🛠️ Outils Actifs</legend>
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="select" checked onchange="app.changeTool()"> 🖐️ Sélection/Déplacement</label>
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="pen" onchange="app.changeTool()"> ✏️ Crayon (Dessin continu)</label>
-                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="zigzag" onchange="app.changeTool()"> 〰️ Remplissage (Zones)</label>
+                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="zigzag" onchange="app.changeTool()"> 〰️ Remplissage (Zigzag)</label>
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="liquify" onchange="app.changeTool()"> 💧 Déformation (Relief)</label>
                     <label style="display:flex; margin-bottom:15px;"><input type="radio" name="tool" value="wall" onchange="app.changeTool()"> 🧱 Mur (Exclusion)</label>
                     
@@ -147,6 +146,7 @@
                     </div>
                 </fieldset>
 
+                <!-- Paramètres Crayon -->
                 <fieldset id="opts-pen" style="display:none;">
                     <legend>🖌️ Paramètres Crayon</legend>
                     <div class="row"><label>📏 Épaisseur du trait :</label> <span class="val-badge" id="val-width">1.5</span></div>
@@ -169,12 +169,13 @@
                     </div>
                 </fieldset>
 
+                <!-- Paramètres Zigzag -->
                 <fieldset id="opts-zigzag" style="display:none; background:#fff3e0;">
-                    <legend>〰️ Paramètres Remplissage</legend>
+                    <legend>〰️ Paramètres Zigzag</legend>
                     <div style="font-size:11px; margin-bottom:10px; color:#555; font-weight:bold;" id="zigzag-help-text">Dessinez une forme fermée ou utilisez la baguette magique sur une image.</div>
                     
                     <div id="wand-container" style="display:none; background:#e8eaf6; padding: 10px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #c5cae9;">
-                        <button id="btn-wand-mode" class="btn" style="width:100%; font-weight:bold; margin-bottom:5px;" onclick="app.toggleWandMode()">🪄 Utiliser la Détection Auto</button>
+                        <button id="btn-wand-mode" class="btn" style="width:100%; font-weight:bold; margin-bottom:5px;" onclick="app.toggleWandMode()">🪄 Utiliser la Baguette Magique</button>
                         <div id="wand-options" style="display:none;">
                             <div class="row"><label>🎚️ Sensibilité :</label> <span class="val-badge" id="val-wand-tol">30</span></div>
                             <div class="row-slider" style="margin-bottom:0;">
@@ -234,6 +235,7 @@
                     </div>
                 </fieldset>
 
+                <!-- Paramètres Liquify -->
                 <fieldset id="opts-liquify" style="display:none; background:#e1f5fe;">
                     <legend>💧 Pinceau Déformation</legend>
                     <div style="font-size:11px; margin-bottom:10px; color:#555;">Glissez sur la table pour tordre le tracé sélectionné. Le contour initial des zigzags est protégé.</div>
@@ -252,6 +254,7 @@
                 </fieldset>
             </div>
 
+            <!-- IMPORT -->
             <div id="tab-import" class="tab-content">
                 <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;" onchange="app.importImage(event)">
                 <input type="file" id="file-thr" accept=".thr" style="display:none;" onchange="app.importTHR(event)">
@@ -301,6 +304,7 @@
                 </fieldset>
             </div>
 
+            <!-- CALQUES -->
             <div id="tab-layers" class="tab-content">
                 <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <label>Organisation :</label>
@@ -345,7 +349,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.27</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v1.25</span>
     </div>
 
 <script>
@@ -411,8 +415,7 @@ const app = {
                 settings: { 
                     shape: this.settings.shape,
                     zoom: this.ui.zoom*100, 
-                    showPoints: document.getElementById('chk-sim-points') ? document.getElementById('chk-sim-points').checked : true,
-                    showLinks: document.getElementById('chk-show-links') ? document.getElementById('chk-show-links').checked : true,
+                    showPoints: document.getElementById('chk-sim-points').checked,
                     tool: this.ui.tool, width: this.ui.penWidth*10, tremor: this.ui.tremor, rope: this.ui.ropeLength*2, color: this.ui.color 
                 },
                 layers: cleanLayers(this.layers)
@@ -501,14 +504,15 @@ const app = {
             document.getElementById('btn-wand-mode').classList.remove('btn-primary');
             document.getElementById('wand-options').style.display = 'none';
             document.getElementById('canvas-wrapper').style.cursor = 'crosshair';
-            document.getElementById('zigzag-help-text').innerText = "Dessinez une forme fermée ou utilisez la détection auto sur une image.";
+            document.getElementById('zigzag-help-text').innerText = "Dessinez une forme fermée ou utilisez la baguette magique sur une image.";
         } else {
             this.ui.zigzagDrawMode = 'wand';
             document.getElementById('btn-wand-mode').classList.add('btn-primary');
             document.getElementById('wand-options').style.display = 'block';
             document.getElementById('canvas-wrapper').style.cursor = 'crosshair'; 
-            document.getElementById('zigzag-help-text').innerText = "Cliquez sur une image de fond pour générer un remplissage.";
+            document.getElementById('zigzag-help-text').innerText = "Cliquez sur une image de fond pour générer un zigzag.";
             
+            // Turn off guide mode if it was active
             let btnGuide = document.getElementById('btn-draw-guide');
             if (btnGuide) {
                 btnGuide.innerText = "✏️ Dessiner la courbe guide";
@@ -570,14 +574,14 @@ const app = {
                     this.ui.isLiquifying = true;
                     this.pos.lastLiquify = this.getScenePos(e.clientX, e.clientY);
                 } else {
-                    alert("Veuillez sélectionner un calque de tracé (Crayon, Remplissage ou Import) déverrouillé pour le déformer.");
+                    alert("Veuillez sélectionner un calque de tracé (Crayon, Zigzag ou Import) déverrouillé pour le déformer.");
                 }
                 return;
             }
 
             if (activePointers.size === 1 && (this.ui.tool === 'pen' || this.ui.tool === 'wall' || this.ui.tool === 'zigzag')) {
                 if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand') {
-                    // Click de la baguette géré au release
+                    // Do nothing here, we handle wand click on pointerUp
                 } else if (this.isPointInBounds(ptScene)) {
                     this.ui.isDrawing = true;
                     this.pos.anchor = {x: ptScene.x, y: ptScene.y};
@@ -835,7 +839,7 @@ const app = {
     executeMagicWand(ptScene) {
         let images = this.layers.filter(l => l.type === 'image' && l.img && l.effectiveVisible);
         if (images.length === 0) {
-            return alert("Veuillez importer et afficher au moins une image de fond pour utiliser la détection automatique.");
+            return alert("Veuillez importer et afficher au moins une image de fond pour utiliser la baguette magique.");
         }
         
         this.saveState();
@@ -949,7 +953,7 @@ const app = {
         
         let layer = { 
             type: 'zigzag', 
-            name: `〰️ Remplissage ${this.zigzagCount++}`, 
+            name: `🪄 Baguette ${this.zigzagCount++}`, 
             color: this.ui.color, 
             width: 1.3, 
             boundary: boundary,
@@ -1387,30 +1391,6 @@ const app = {
         
         let chkHighlight = document.getElementById('chk-highlight-sel');
         let showHalo = chkHighlight && chkHighlight.checked;
-        
-        let chkLinks = document.getElementById('chk-show-links');
-        let showLinks = chkLinks ? chkLinks.checked : true;
-
-        if (showLinks) {
-            let prevEnd = null;
-            for (let i = flatLayers.length - 1; i >= 0; i--) {
-                let l = flatLayers[i];
-                if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && l.points && l.points.length > 0) {
-                    let currStart = l.points[0];
-                    if (prevEnd) {
-                        this.ctx.beginPath();
-                        this.ctx.moveTo(prevEnd.x, prevEnd.y);
-                        this.ctx.lineTo(currStart.x, currStart.y);
-                        this.ctx.strokeStyle = "rgba(0, 200, 0, 0.6)"; 
-                        this.ctx.lineWidth = 1.0 / this.ui.zoom;
-                        this.ctx.setLineDash([4, 4]);
-                        this.ctx.stroke();
-                        this.ctx.setLineDash([]);
-                    }
-                    prevEnd = l.points[l.points.length - 1];
-                }
-            }
-        }
 
         for (let i = flatLayers.length - 1; i >= 0; i--) {
             let l = flatLayers[i];
@@ -1478,20 +1458,6 @@ const app = {
                     for(let j=1; j<l.points.length; j++) this.ctx.lineTo(l.points[j].x, l.points[j].y);
                     this.ctx.strokeStyle = l.color; this.ctx.lineWidth = l.width !== undefined ? l.width : 1.5;
                     this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round'; this.ctx.stroke();
-
-                    if (isCurrentLayerSelected && l.points.length > 0) {
-                        let pR = 4 / this.ui.zoom;
-                        
-                        this.ctx.beginPath(); 
-                        this.ctx.arc(l.points[0].x, l.points[0].y, pR, 0, Math.PI*2);
-                        this.ctx.fillStyle = "lime"; this.ctx.fill(); 
-                        this.ctx.strokeStyle = "black"; this.ctx.lineWidth = 1/this.ui.zoom; this.ctx.stroke();
-                        
-                        this.ctx.beginPath(); 
-                        this.ctx.arc(l.points[l.points.length-1].x, l.points[l.points.length-1].y, pR, 0, Math.PI*2);
-                        this.ctx.fillStyle = "red"; this.ctx.fill(); 
-                        this.ctx.strokeStyle = "black"; this.ctx.lineWidth = 1/this.ui.zoom; this.ctx.stroke();
-                    }
                 }
                 this.ctx.restore();
             }
@@ -1629,7 +1595,7 @@ const app = {
         let pointRadius = 6 / this.ui.zoom;
         let ballRadius = 7 / this.ui.zoom;
 
-        if (document.getElementById('chk-sim-points') && document.getElementById('chk-sim-points').checked) {
+        if (document.getElementById('chk-sim-points').checked) {
             this.ctx.beginPath(); this.ctx.arc(pts[0].x, pts[0].y, pointRadius, 0, Math.PI*2); 
             this.ctx.fillStyle = "green"; this.ctx.fill(); 
             
@@ -1713,7 +1679,8 @@ const app = {
 
         let cursor = 'crosshair';
         if(this.ui.tool === 'select') cursor = 'pointer';
-        if(this.ui.tool === 'liquify' || (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand')) cursor = 'none';
+        if(this.ui.tool === 'liquify') cursor = 'none';
+        if(this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand') cursor = 'none';
         
         document.getElementById('canvas-wrapper').style.cursor = cursor;
         
@@ -1762,9 +1729,7 @@ const app = {
         document.getElementById('val-liq-str').innerText = this.ui.liquifyStrength + "%";
 
         this.ui.wandTolerance = parseInt(document.getElementById('wand-tol').value);
-        if (document.getElementById('val-wand-tol')) {
-            document.getElementById('val-wand-tol').innerText = this.ui.wandTolerance;
-        }
+        document.getElementById('val-wand-tol').innerText = this.ui.wandTolerance;
 
         this.autoSave();
     },
@@ -1986,6 +1951,369 @@ const app = {
         this.autoSave();
     },
 
+    selectLayer(id) {
+        id = String(id);
+        let multi = document.getElementById('multi-select-mode').checked;
+        if (multi) {
+            if (this.selectedIds.includes(id)) this.selectedIds = this.selectedIds.filter(x => x !== id);
+            else this.selectedIds.push(id);
+        } else {
+            this.selectedIds = [id];
+        }
+        this.refreshLayerList();
+    },
+    
+    toggleVis(id) { let l = this.findLayer(id).layer; if(l) { l.visible = !l.visible; this.invalidateSim(); this.refreshLayerList(); } },
+    toggleLock() { 
+        this.selectedIds.forEach(id => {
+            let l = this.findLayer(id).layer; if(l) l.locked = !l.locked;
+        });
+        this.refreshLayerList(); 
+    },
+    
+    deleteSelected() {
+        if(this.selectedIds.length === 0) return;
+        this.saveState(); 
+        
+        let toDelete = [...this.selectedIds];
+        const removeRecursive = (arr) => {
+            if(!arr || !Array.isArray(arr)) return;
+            for(let i=0; i<arr.length; i++) {
+                if (toDelete.includes(arr[i].id)) {
+                    arr.splice(i, 1); i--;
+                } else if (arr[i].type === 'folder') {
+                    removeRecursive(arr[i].layers);
+                }
+            }
+        };
+        removeRecursive(this.layers);
+        this.selectedIds = []; 
+        this.invalidateSim();
+        this.refreshLayerList();
+    },
+
+    renameLayer(id, e) {
+        e.stopPropagation();
+        let l = this.findLayer(id).layer;
+        if(l) {
+            let baseName = l.name.replace(' 🔓','').replace(' 🔒','');
+            let n = prompt("Nouveau nom :", baseName);
+            if (n) { l.name = n; this.saveState(); this.refreshLayerList(); }
+        }
+    },
+
+    toggleFolder(id, e) {
+        e.stopPropagation();
+        let l = this.findLayer(id).layer;
+        if(l && l.type === 'folder') { l.isOpen = !l.isOpen; this.refreshLayerList(); }
+    },
+
+    moveLayer(dir) {
+        if(this.selectedIds.length !== 1) { alert("Veuillez sélectionner 1 seul calque pour le déplacer."); return; }
+        this.saveState();
+        let info = this.findLayer(this.selectedIds[0]);
+        let arr = info.parentArr;
+        let idx = info.idx;
+        
+        if (dir === -1 && idx > 0) {
+            let t = arr[idx]; arr[idx] = arr[idx-1]; arr[idx-1] = t;
+        } else if (dir === 1 && idx < arr.length - 1) {
+            let t = arr[idx]; arr[idx] = arr[idx+1]; arr[idx+1] = t;
+        }
+        this.invalidateSim();
+        this.refreshLayerList();
+    },
+
+    groupSelected() {
+        if(this.selectedIds.length === 0) return;
+        this.saveState();
+        
+        let newFolder = { id: this.genId(), type: 'folder', name: '📁 Dossier ' + this.folderCount++, visible: true, locked: false, isOpen: true, layers: [] };
+        let extracted = [];
+        let firstParent = null; let firstIdx = -1;
+
+        const extract = (arr) => {
+            if(!arr || !Array.isArray(arr)) return;
+            for(let i=0; i<arr.length; i++) {
+                if (this.selectedIds.includes(arr[i].id)) {
+                    if(!firstParent) { firstParent = arr; firstIdx = i; }
+                    extracted.push(arr.splice(i, 1)[0]);
+                    i--;
+                } else if (arr[i].type === 'folder') {
+                    extract(arr[i].layers);
+                }
+            }
+        };
+        extract(this.layers);
+        
+        newFolder.layers = extracted;
+        if(firstParent) firstParent.splice(firstIdx, 0, newFolder);
+        else this.layers.unshift(newFolder);
+        
+        this.selectedIds = [newFolder.id];
+        document.getElementById('multi-select-mode').checked = false;
+        this.invalidateSim();
+        this.refreshLayerList();
+    },
+
+    ungroupSelected() {
+        if(this.selectedIds.length !== 1) return;
+        let info = this.findLayer(this.selectedIds[0]);
+        if(info && info.layer.type === 'folder') {
+            this.saveState();
+            let children = info.layer.layers || [];
+            info.parentArr.splice(info.idx, 1, ...children);
+            this.selectedIds = [];
+            this.invalidateSim();
+            this.refreshLayerList();
+        } else if (info && info.parentArr !== this.layers) {
+            this.saveState();
+            let l = info.parentArr.splice(info.idx, 1)[0];
+            this.layers.unshift(l); 
+            this.invalidateSim();
+            this.refreshLayerList();
+        }
+    },
+
+    mergeSelected() {
+        let toMerge = [];
+        const extractAndRemove = (arr) => {
+            if(!arr || !Array.isArray(arr)) return;
+            for(let i = arr.length - 1; i >= 0; i--) {
+                if (arr[i].type === 'folder') {
+                    extractAndRemove(arr[i].layers);
+                } else if (this.selectedIds.includes(arr[i].id) && (arr[i].type === 'path' || arr[i].type === 'pen' || arr[i].type === 'imported_path' || arr[i].type === 'zigzag')) {
+                    toMerge.push(arr.splice(i, 1)[0]);
+                }
+            }
+        };
+
+        this.saveState();
+        extractAndRemove(this.layers);
+        
+        if (toMerge.length < 2) {
+            this.undoStack.pop(); 
+            return alert("Veuillez sélectionner au moins 2 tracés pour fusionner.");
+        }
+
+        let mergedPoints = [];
+        toMerge.forEach(l => { if(l.points) mergedPoints.push(...l.points) });
+        
+        let baseLayer = toMerge[0];
+        let name = `🔗 Fusion ${this.layerCount++}`;
+        let newL = { id: this.genId(), type: 'path', name: name, visible: true, locked: false, color: baseLayer.color, width: baseLayer.width, points: mergedPoints };
+        
+        this.layers.unshift(newL);
+        this.selectedIds = [newL.id];
+        document.getElementById('multi-select-mode').checked = false;
+        this.invalidateSim();
+        this.refreshLayerList();
+    },
+
+    importImage(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    this.addLayer({ type: 'image', img: img, src: event.target.result, x: 0, y: 0, scale: 1.0, opacity: 0.5, rot: 0, flipH: false, flipV: false });
+                }
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        e.target.value = '';
+    },
+
+    importTHR(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const text = event.target.result;
+                const lines = text.split('\n');
+                let originalPoints = [];
+                let R = this.getExportRadius();
+                
+                lines.forEach(line => {
+                    let parts = line.trim().split(/\s+/);
+                    if (parts.length >= 2) {
+                        let theta = parseFloat(parts[0]);
+                        let rho = parseFloat(parts[1]);
+                        if (!isNaN(theta) && !isNaN(rho)) {
+                            let r = rho * R;
+                            let angle = theta - Math.PI / 2;
+                            let x = r * Math.cos(angle);
+                            let y = r * Math.sin(angle);
+                            originalPoints.push({x, y});
+                        }
+                    }
+                });
+
+                if (originalPoints.length > 0) {
+                    this.addLayer({ 
+                        type: 'imported_path', 
+                        name: `🗺️ Tracé ${this.importedCount++}`,
+                        originalPoints: originalPoints,
+                        points: [...originalPoints], 
+                        x: 0, y: 0, scale: 1.0, opacity: 1.0, rot: 0, flipH: false, flipV: false,
+                        color: this.ui.color, width: 1.0 
+                    });
+                } else {
+                    alert("Ce fichier .thr semble vide ou invalide.");
+                }
+            };
+            reader.readAsText(file);
+        }
+        e.target.value = '';
+    },
+    
+    recalcImportedPath(layer) {
+        if (!layer.originalPoints) return;
+        let rad = layer.rot * Math.PI / 180;
+        let cosA = Math.cos(rad);
+        let sinA = Math.sin(rad);
+        
+        layer.points = layer.originalPoints.map(pt => {
+            let x = pt.x;
+            let y = pt.y;
+            if (layer.flipH) x = -x;
+            if (layer.flipV) y = -y;
+            x *= layer.scale;
+            y *= layer.scale;
+            
+            return {
+                x: x * cosA - y * sinA + layer.x,
+                y: x * sinA + y * cosA + layer.y
+            };
+        });
+    },
+
+    updateTransform() {
+        let sel = this.findLayer(this.selectedIds[0]);
+        if(sel && (sel.layer.type === 'image' || sel.layer.type === 'imported_path')) {
+            this.saveState();
+            
+            if (sel.layer.type === 'image') {
+                sel.layer.opacity = document.getElementById('img-opacity').value / 100.0;
+            } else {
+                sel.layer.width = document.getElementById('thr-width').value / 10.0;
+                document.getElementById('val-thr-width').innerText = sel.layer.width.toFixed(1);
+            }
+            
+            sel.layer.scale = document.getElementById('img-scale').value / 100.0;
+            sel.layer.rot = parseInt(document.getElementById('img-rot').value);
+            document.getElementById('val-rot').innerText = sel.layer.rot + "°";
+            
+            if (sel.layer.type === 'imported_path') {
+                this.recalcImportedPath(sel.layer);
+                this.invalidateSim();
+            }
+            this.draw();
+        }
+    },
+
+    toggleFlip(axis) {
+        let sel = this.findLayer(this.selectedIds[0]);
+        if(sel && (sel.layer.type === 'image' || sel.layer.type === 'imported_path')) {
+            this.saveState();
+            if(axis === 'H') sel.layer.flipH = !sel.layer.flipH; else sel.layer.flipV = !sel.layer.flipV;
+            
+            if (sel.layer.type === 'imported_path') {
+                this.recalcImportedPath(sel.layer);
+                this.invalidateSim();
+            }
+            this.draw();
+        }
+    },
+
+    saveState() {
+        const cleanLayers = (arr) => arr.map(l => {
+            let cl = {...l, img:null};
+            if(cl.type === 'folder' && cl.layers) cl.layers = cleanLayers(cl.layers);
+            return cl;
+        });
+        this.undoStack.push(JSON.stringify(cleanLayers(this.layers)));
+        this.redoStack = [];
+        document.getElementById('btn-undo').disabled = false;
+        document.getElementById('btn-redo').disabled = true;
+    },
+    
+    undo() {
+        if (this.undoStack.length > 0) {
+            const cleanLayers = (arr) => arr.map(l => { let cl={...l, img:null}; if(cl.type==='folder' && cl.layers) cl.layers=cleanLayers(cl.layers); return cl; });
+            this.redoStack.push(JSON.stringify(cleanLayers(this.layers)));
+            this.restoreLayers(JSON.parse(this.undoStack.pop()));
+            document.getElementById('btn-undo').disabled = this.undoStack.length === 0;
+            document.getElementById('btn-redo').disabled = false;
+            this.invalidateSim();
+            this.autoSave();
+        }
+    },
+    
+    redo() {
+        if (this.redoStack.length > 0) {
+            const cleanLayers = (arr) => arr.map(l => { let cl={...l, img:null}; if(cl.type==='folder' && cl.layers) cl.layers=cleanLayers(cl.layers); return cl; });
+            this.undoStack.push(JSON.stringify(cleanLayers(this.layers)));
+            this.restoreLayers(JSON.parse(this.redoStack.pop()));
+            document.getElementById('btn-undo').disabled = false;
+            document.getElementById('btn-redo').disabled = this.redoStack.length === 0;
+            this.invalidateSim();
+            this.autoSave();
+        }
+    },
+    
+    restoreLayers(parsedArray) {
+        const upgradeLayer = (l) => {
+            if (l.id === undefined || l.id === null) {
+                l.id = this.genId();
+            } else {
+                let sId = String(l.id).replace(/[^a-zA-Z0-9]/g, '_');
+                if (!sId.match(/^[a-zA-Z]/)) sId = 'L' + sId;
+                l.id = sId;
+            }
+
+            if (l.type === 'image') {
+                if (l.srcBase64 && !l.src) l.src = l.srcBase64;
+                if (l.image_b64 && !l.src) l.src = "data:image/png;base64," + l.image_b64;
+            }
+            if ((l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && !l.color) l.color = "#000000";
+            if ((l.type === 'path' || l.type === 'pen') && l.width === undefined) l.width = 1.5;
+            if (l.type === 'zigzag' && l.width === undefined) l.width = 1.3;
+            if (l.type === 'zigzag' && l.lineStyle === undefined) l.lineStyle = 'straight';
+            if (l.type === 'imported_path' && l.width === undefined) l.width = 1.0;
+
+            if (l.type === 'folder') {
+                if (!l.layers) l.layers = [];
+                l.layers.forEach(upgradeLayer);
+            }
+        };
+
+        if (Array.isArray(parsedArray)) {
+            parsedArray.forEach(upgradeLayer);
+        } else {
+            parsedArray = [];
+        }
+
+        const rebuildImgs = (arr) => {
+            arr.forEach(l => {
+                if (l.type === 'image') {
+                    const img = new Image();
+                    img.onload = () => { l.img = img; this.draw(); };
+                    if(l.src) img.src = l.src;
+                } else if (l.type === 'folder' && Array.isArray(l.layers)) {
+                    rebuildImgs(l.layers);
+                }
+            });
+        };
+        rebuildImgs(parsedArray);
+        this.layers = parsedArray;
+        this.selectedIds = [];
+        this.invalidateSim();
+        this.refreshLayerList();
+    },
+
     loadFromJSON(jsonStr, isAutoLoad = false) {
         try {
             const proj = JSON.parse(jsonStr);
@@ -1998,14 +2326,7 @@ const app = {
                     document.getElementById('table-shape').value = this.settings.shape;
                 }
                 if (proj.settings.zoom !== undefined) { document.getElementById('zoom-workspace').value = proj.settings.zoom; this.updateZoomFromSlider(); }
-                if (proj.settings.showPoints !== undefined) {
-                    let chk = document.getElementById('chk-sim-points');
-                    if(chk) chk.checked = proj.settings.showPoints;
-                }
-                if (proj.settings.showLinks !== undefined) {
-                    let chk = document.getElementById('chk-show-links');
-                    if(chk) chk.checked = proj.settings.showLinks;
-                }
+                if (proj.settings.showPoints !== undefined) document.getElementById('chk-sim-points').checked = proj.settings.showPoints;
                 if (proj.settings.width !== undefined) document.getElementById('slider-width').value = Math.min(100, proj.settings.width * 10);
                 if (proj.settings.tremor !== undefined) document.getElementById('slider-tremor').value = proj.settings.tremor;
                 if (proj.settings.rope !== undefined) document.getElementById('slider-rope').value = proj.settings.rope;
@@ -2111,9 +2432,7 @@ const app = {
                 filename: filename,
                 settings: { 
                     shape: this.settings.shape,
-                    zoom: this.ui.zoom*100, 
-                    showPoints: document.getElementById('chk-sim-points') ? document.getElementById('chk-sim-points').checked : true,
-                    showLinks: document.getElementById('chk-show-links') ? document.getElementById('chk-show-links').checked : true,
+                    zoom: this.ui.zoom*100, showPoints: document.getElementById('chk-sim-points').checked,
                     tool: this.ui.tool, width: this.ui.penWidth*10, tremor: this.ui.tremor, rope: this.ui.ropeLength*2, color: this.ui.color 
                 },
                 layers: cleanLayers(this.layers)
