@@ -277,7 +277,7 @@
                     <div class="row"><label>🔢 Nombre de traits générés :</label> <span class="val-badge" id="val-interp-steps">6</span></div>
                     <div class="row-slider">
                         <button class="btn btn-icon" onclick="app.stepSlider('interp-steps', -1)">➖</button>
-                        <input type="range" id="interp-steps" min="1" max="50" value="6" oninput="app.updateSliders()">
+                        <input type="range" id="interp-steps" min="1" max="50" value="6" oninput="app.updateInterpLive()">
                         <button class="btn btn-icon" onclick="app.stepSlider('interp-steps', 1)">➕</button>
                     </div>
                 </fieldset>
@@ -379,7 +379,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v2.5 (Sécurité, perf, robuste + Morphing)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v2.6 (Live Interpolation)</span>
     </div>
 
 <script>
@@ -404,6 +404,7 @@ const app = {
     simCache: { valid: false, pts: [], dists: [], totalDist: 0 },
     lastActiveSimId: null,
     zigzagTimeout: null,
+    interpTimeout: null,
     
     ui: {
         tool: 'select', penWidth: 1.5, ropeLength: 5.0, tremor: 0.0, color: '#000000',
@@ -660,12 +661,12 @@ const app = {
         for (let i = 0; i < allLines.length; i++) {
             let currentCurve = allLines[i];
             
+            // 1. Tracer l'aller
             finalPath.push(...currentCurve);
             
-            if (i < allLines.length - 1) {
-                let backward = [...currentCurve].reverse().slice(1);
-                finalPath.push(...backward);
-            }
+            // 2. Tracer le retour systématiquement (y compris sur le dernier trait)
+            let backward = [...currentCurve].reverse().slice(1);
+            finalPath.push(...backward);
         }
         return finalPath;
     },
@@ -718,12 +719,12 @@ const app = {
             if (this.ui.tool === 'liquify') {
                 let selInfo = this.selectedIds.length === 1 ? this.findLayer(this.selectedIds[0]) : null;
                 let sel = selInfo ? selInfo.layer : null;
-                if (sel && (sel.type === 'zigzag' || sel.type === 'path' || sel.type === 'pen' || sel.type === 'imported_path') && !sel.effectiveLocked) {
+                if (sel && (sel.type === 'zigzag' || sel.type === 'path' || sel.type === 'pen' || sel.type === 'imported_path' || sel.type === 'interp') && !sel.effectiveLocked) {
                     this.saveState();
                     this.ui.isLiquifying = true;
                     this.pos.lastLiquify = this.getScenePos(e.clientX, e.clientY);
                 } else {
-                    alert("Veuillez sélectionner un calque de tracé (Crayon, Remplissage ou Import) déverrouillé pour le déformer.");
+                    alert("Veuillez sélectionner un calque de tracé (Crayon, Remplissage, Interp ou Import) déverrouillé pour le déformer.");
                 }
                 return;
             }
@@ -978,10 +979,13 @@ const app = {
                             let finalPath = this.generateInterpolation(this.pos.interpLine1, line2, this.ui.interpSteps);
                             
                             this.addLayer({ 
-                                type: 'path', 
+                                type: 'interp', 
                                 name: `🧬 Interpolation ${this.layerCount++}`, 
                                 color: this.ui.color, 
-                                width: this.ui.penWidth, 
+                                width: 1.3, // Épaisseur constante pour l'interpolation
+                                line1: this.pos.interpLine1,
+                                line2: line2,
+                                steps: this.ui.interpSteps,
                                 points: finalPath 
                             });
 
@@ -1660,6 +1664,30 @@ const app = {
         }, 150); 
     },
 
+    updateInterpLive() {
+        let elInterp = document.getElementById('interp-steps');
+        if (!elInterp) return;
+        
+        this.ui.interpSteps = parseInt(elInterp.value);
+        document.getElementById('val-interp-steps').innerText = this.ui.interpSteps;
+        
+        if (this.interpTimeout) clearTimeout(this.interpTimeout);
+        
+        this.interpTimeout = setTimeout(() => {
+            if (this.selectedIds.length === 1) {
+                let sel = this.findLayer(this.selectedIds[0]);
+                if (sel && sel.layer.type === 'interp') {
+                    this.saveState();
+                    sel.layer.steps = this.ui.interpSteps;
+                    sel.layer.points = this.generateInterpolation(sel.layer.line1, sel.layer.line2, sel.layer.steps);
+                    this.invalidateSim();
+                    this.draw();
+                    this.autoSave();
+                }
+            }
+        }, 150);
+    },
+
     getFlatLayers(arr = this.layers, parentVisible = true, parentLocked = false) {
         let res = [];
         for (let l of arr) {
@@ -1717,7 +1745,7 @@ const app = {
             let prevEnd = null;
             for (let i = flatLayers.length - 1; i >= 0; i--) {
                 let l = flatLayers[i];
-                if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && l.points && l.points.length > 0) {
+                if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag' || l.type === 'interp') && l.points && l.points.length > 0) {
                     let currStart = l.points[0];
                     if (prevEnd) {
                         this.ctx.beginPath();
@@ -1889,7 +1917,7 @@ const app = {
             let lastSaved = null;
             for (let i = flatLayers.length - 1; i >= 0; i--) {
                 let l = flatLayers[i];
-                if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && l.points) {
+                if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag' || l.type === 'interp') && l.points) {
                     for(let j = 0; j < l.points.length; j++) {
                         let p = { x: l.points[j].x, y: l.points[j].y, layerId: l.id };
                         if (!lastSaved || j === 0 || j === l.points.length - 1 || Math.hypot(p.x - lastSaved.x, p.y - lastSaved.y) > 2.5) {
@@ -2097,7 +2125,7 @@ const app = {
         
         if (this.selectedIds.length === 1) {
             let sel = this.findLayer(this.selectedIds[0]);
-            if (sel && (sel.layer.type === 'path' || sel.layer.type === 'imported_path' || sel.layer.type === 'pen' || sel.layer.type === 'zigzag')) {
+            if (sel && (sel.layer.type === 'path' || sel.layer.type === 'imported_path' || sel.layer.type === 'pen' || sel.layer.type === 'zigzag' || sel.layer.type === 'interp')) {
                 this.saveState();
                 sel.layer.color = this.ui.color;
                 this.draw();
@@ -2118,12 +2146,6 @@ const app = {
         document.getElementById('val-liq-radius').innerText = this.ui.liquifyRadius;
         this.ui.liquifyStrength = parseInt(document.getElementById('liq-str').value);
         document.getElementById('val-liq-str').innerText = this.ui.liquifyStrength + "%";
-
-        let elInterp = document.getElementById('interp-steps');
-        if (elInterp) {
-            this.ui.interpSteps = parseInt(elInterp.value);
-            document.getElementById('val-interp-steps').innerText = this.ui.interpSteps;
-        }
 
         let elWand = document.getElementById('wand-tol');
         if (elWand) {
@@ -2309,6 +2331,12 @@ const app = {
             fsTransform.disabled = true;
         }
 
+        if (sel && sel.type === 'interp') {
+            document.getElementById('interp-steps').value = sel.steps || 6;
+            document.getElementById('val-interp-steps').innerText = sel.steps || 6;
+            this.ui.interpSteps = sel.steps || 6;
+        }
+
         if (sel && sel.type === 'zigzag') {
             document.getElementById('zigzag-type').value = sel.zigzagType || 'angle';
             
@@ -2350,7 +2378,7 @@ const app = {
             if (btnGuide) btnGuide.disabled = true;
         }
 
-        if (sel && (sel.type === 'path' || sel.type === 'pen' || sel.type === 'imported_path' || sel.type === 'zigzag')) {
+        if (sel && (sel.type === 'path' || sel.type === 'pen' || sel.type === 'imported_path' || sel.type === 'zigzag' || sel.type === 'interp')) {
             let savedColor = sel.color || '#000000';
             document.getElementById('color-picker').value = savedColor;
             this.ui.color = savedColor;
@@ -2503,7 +2531,7 @@ const app = {
             for(let i = arr.length - 1; i >= 0; i--) {
                 if (arr[i].type === 'folder') {
                     extractAndRemove(arr[i].layers);
-                } else if (this.selectedIds.includes(arr[i].id) && (arr[i].type === 'path' || arr[i].type === 'pen' || arr[i].type === 'imported_path' || arr[i].type === 'zigzag')) {
+                } else if (this.selectedIds.includes(arr[i].id) && (arr[i].type === 'path' || arr[i].type === 'pen' || arr[i].type === 'imported_path' || arr[i].type === 'zigzag' || arr[i].type === 'interp')) {
                     toMerge.push(arr.splice(i, 1)[0]);
                 }
             }
@@ -2696,12 +2724,13 @@ const app = {
                 if (l.srcBase64 && !l.src) l.src = l.srcBase64;
                 if (l.image_b64 && !l.src) l.src = "data:image/png;base64," + l.image_b64;
             }
-            if ((l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && !l.color) l.color = "#000000";
+            if ((l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag' || l.type === 'interp') && !l.color) l.color = "#000000";
             if ((l.type === 'path' || l.type === 'pen') && l.width === undefined) l.width = 1.5;
             if (l.type === 'zigzag' && l.width === undefined) l.width = 1.3;
             if (l.type === 'zigzag' && l.lineStyle === undefined) l.lineStyle = 'straight';
             if (l.type === 'zigzag' && l.spiralDir === undefined) l.spiralDir = 'in';
             if (l.type === 'imported_path' && l.width === undefined) l.width = 1.0;
+            if (l.type === 'interp' && l.width === undefined) l.width = 1.3;
 
             if (l.type === 'folder') {
                 if (!l.layers) l.layers = [];
@@ -2752,7 +2781,10 @@ const app = {
                 if (proj.settings.showLinks !== undefined && document.getElementById('chk-show-links')) {
                     document.getElementById('chk-show-links').checked = proj.settings.showLinks;
                 }
-                if (proj.settings.width !== undefined) document.getElementById('slider-width').value = Math.min(100, proj.settings.width * 10);
+                
+                // BUG FIX V2.6: Plus de multiplication par 10 lors du chargement de l'épaisseur du crayon
+                if (proj.settings.width !== undefined) document.getElementById('slider-width').value = Math.min(100, proj.settings.width);
+                
                 if (proj.settings.tremor !== undefined) document.getElementById('slider-tremor').value = proj.settings.tremor;
                 if (proj.settings.rope !== undefined) document.getElementById('slider-rope').value = proj.settings.rope;
                 this.updateSliders();
@@ -2801,7 +2833,7 @@ const app = {
         
         for (let i = flatLayers.length - 1; i >= 0; i--) {
             let l = flatLayers[i];
-            if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag') && l.points && l.points.length > 0) {
+            if (l.effectiveVisible && (l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag' || l.type === 'interp') && l.points && l.points.length > 0) {
                 
                 let optimizedPoints = [l.points[0]];
                 for(let j = 1; j < l.points.length; j++) {
