@@ -364,7 +364,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v2.2 (Optimisée)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v2.3 (Correctif Baguette)</span>
     </div>
 
 <script>
@@ -549,7 +549,7 @@ const app = {
             activePointers.set(e.pointerId, e);
 
             let ptScene = this.getScenePos(e.clientX, e.clientY);
-            this.pos.lastClick = ptScene;
+            this.pos.lastClick = ptScene; // <- IMPORTANT: C'est le point d'ancrage exact du clic
 
             if (activePointers.size === 2) {
                 this.ui.isDrawing = false;
@@ -597,7 +597,7 @@ const app = {
 
             if (activePointers.size === 1 && (this.ui.tool === 'pen' || this.ui.tool === 'wall' || this.ui.tool === 'zigzag')) {
                 if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand') {
-                    // Le clic wand se valide au relâchement
+                    // On ne fait rien sur le down pour la baguette magique (on attend le relâchement)
                 } else if (this.isPointInBounds(ptScene)) {
                     this.ui.isDrawing = true;
                     this.pos.anchor = {x: ptScene.x, y: ptScene.y};
@@ -613,7 +613,7 @@ const app = {
             if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, e);
 
             let ptScene = this.getScenePos(e.clientX, e.clientY);
-            this.ui.pointerHover = ptScene;
+            this.ui.pointerHover = ptScene; // Ceci peut ne pas se mettre à jour si on tapote juste sur un iPad
 
             if (activePointers.size === 2) {
                 if (initialPinchDistance && initialPinchCenter) {
@@ -753,10 +753,14 @@ const app = {
                 initialPinchCenter = null;
             }
 
-            if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand' && this.ui.pointerHover) {
-                let dist = Math.hypot(this.ui.pointerHover.x - this.pos.lastClick.x, this.ui.pointerHover.y - this.pos.lastClick.y);
+            if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand') {
+                // On utilise la position du clic initial car pointerHover est nul lors d'un tap tactile !
+                let upPos = this.ui.pointerHover || this.pos.lastClick; 
+                let dist = Math.hypot(upPos.x - this.pos.lastClick.x, upPos.y - this.pos.lastClick.y);
+                
+                // Si on a bougé de moins de 10 pixels (c'est un clic, pas un pan)
                 if (dist < 10) { 
-                    this.executeMagicWand(this.ui.pointerHover);
+                    this.executeMagicWand(this.pos.lastClick);
                 }
             }
 
@@ -887,7 +891,10 @@ const app = {
         let startX = Math.round(ptScene.x + W/2);
         let startY = Math.round(ptScene.y + H/2);
         
-        if(startX < 0 || startX >= W || startY < 0 || startY >= H) return;
+        if(startX < 0 || startX >= W || startY < 0 || startY >= H) {
+            this.undoStack.pop();
+            return;
+        }
         
         let startIdx = (startY * W + startX) * 4;
         let r0 = data[startIdx], g0 = data[startIdx+1], b0 = data[startIdx+2], a0 = data[startIdx+3];
@@ -898,11 +905,19 @@ const app = {
         mask[startY * W + startX] = 1;
         
         let isMatch = (idx) => {
-            let a = data[idx+3];
+            let r = data[idx], g = data[idx+1], b = data[idx+2], a = data[idx+3];
+            // Protection pour ne pas baver sur la transparence si on a cliqué sur de la transparence
             if (a0 < 20 && a < 20) return true;
             if (a0 >= 20 && a < 20) return false;
-            let diff = Math.abs(data[idx] - r0) + Math.abs(data[idx+1] - g0) + Math.abs(data[idx+2] - b0);
-            return diff <= tol * 3;
+            // On intègre l'Alpha dans la différence pour éviter que ça ne sélectionne les ombres lisses
+            let diff = Math.abs(r - r0) + Math.abs(g - g0) + Math.abs(b - b0) + Math.abs(a - a0);
+            return diff <= tol * 4;
+        };
+
+        let isInsideTable = (nx, ny) => {
+            if (this.settings.shape === 'rect') return true;
+            let dx = nx - W/2, dy = ny - H/2;
+            return (dx*dx + dy*dy) <= 300*300;
         };
         
         let head = 0;
@@ -913,7 +928,8 @@ const app = {
             let dirs = [[1,0], [-1,0], [0,1], [0,-1]];
             for(let d of dirs) {
                 let nx = x + d[0], ny = y + d[1];
-                if(nx>=0 && nx<W && ny>=0 && ny<H) {
+                // L'ajout de isInsideTable empêche la sélection de "carrer" les bords extérieurs de la table ronde !
+                if(nx>=0 && nx<W && ny>=0 && ny<H && isInsideTable(nx, ny)) {
                     let nidx = ny * W + nx;
                     if(!mask[nidx] && isMatch(nidx*4)) {
                         mask[nidx] = 1;
@@ -936,14 +952,23 @@ const app = {
             }
         }
         
-        if(edges.length === 0) return alert("Zone non trouvée.");
+        if(edges.length === 0) {
+            this.undoStack.pop();
+            return alert("Aucune zone trouvée.");
+        }
         
         let path = [];
         let current = edges[0];
         path.push(current);
         edgeSet.delete(current.x+","+current.y);
         let found = true;
-        let searchDirs = [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1], [2,0],[-2,0],[0,2],[0,-2], [3,0],[-3,0],[0,3],[0,-3]];
+        
+        // Limiter strictement la recherche aux voisins directs (dist 1 et 2)
+        // Cela empêche l'algo de "sauter" sur un trou intérieur au milieu de l'image (cause des lignes folles)
+        let searchDirs = [
+            [1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1], 
+            [2,0],[2,1],[1,2],[0,2],[-1,2],[-2,1],[-2,0],[-2,-1],[-1,-2],[0,-2],[1,-2],[2,-1]
+        ];
         
         while(found) {
             found = false;
@@ -966,6 +991,10 @@ const app = {
                 x: path[i].x - W/2,
                 y: path[i].y - H/2
             });
+        }
+        if (boundary.length < 3) {
+            this.undoStack.pop();
+            return alert("La zone sélectionnée est trop petite ou le bord n'a pas pu être tracé.");
         }
         boundary.push({...boundary[0]}); 
         boundary = this.smoothPath(boundary, 3);
@@ -1066,7 +1095,6 @@ const app = {
 
     generateZigzag(layer) {
         if (!layer.boundary || layer.boundary.length < 3) return [];
-        // Sécurité primordiale pour éviter le plantage sur iPad si l'espacement est trop petit
         let spacing = Math.max(0.5, layer.spacing || 2.0); 
         let isWave = layer.lineStyle === 'wave';
         let wAmp = layer.waveAmp || 2.0;
@@ -1457,7 +1485,6 @@ const app = {
         this.ui.waveLen = parseInt(document.getElementById('wave-len').value) / 10.0;
         document.getElementById('val-wave-len').innerText = this.ui.waveLen.toFixed(1);
         
-        // CORRECTION 3: Debounce pour éviter de planter Safari sur iPad lors du glissement du curseur
         if (this.zigzagTimeout) clearTimeout(this.zigzagTimeout);
         
         this.zigzagTimeout = setTimeout(() => {
@@ -1484,7 +1511,7 @@ const app = {
                     this.autoSave();
                 }
             }
-        }, 150); // Le calcul ne se lance que 150ms après que le curseur s'arrête
+        }, 150); 
     },
 
     getFlatLayers(arr = this.layers, parentVisible = true, parentLocked = false) {
@@ -1540,7 +1567,6 @@ const app = {
         let chkLinks = document.getElementById('chk-show-links');
         let showLinks = chkLinks ? chkLinks.checked : true;
 
-        // DESSIN DES POINTILLÉS DE LIAISON
         if (showLinks) {
             let prevEnd = null;
             for (let i = flatLayers.length - 1; i >= 0; i--) {
@@ -1562,7 +1588,6 @@ const app = {
             }
         }
 
-        // DESSIN DES CALQUES
         for (let i = flatLayers.length - 1; i >= 0; i--) {
             let l = flatLayers[i];
             if (!l.effectiveVisible) continue;
@@ -1861,7 +1886,6 @@ const app = {
             this.toggleWandMode();
         }
         
-        // CORRECTION 1: Réinitialisation sur "Angle" dès qu'on choisit le Remplissage
         if (newTool === 'zigzag') {
             document.getElementById('zigzag-type').value = 'angle';
             document.getElementById('zig-angle-div').style.display = 'block';
@@ -2004,7 +2028,7 @@ const app = {
         this.selectedIds = [draggedLayer.id];
         this.invalidateSim();
         this.refreshLayerList();
-        this.autoSave(); // CORRECTION 2
+        this.autoSave(); 
     },
 
     onDragEnd(e) {
@@ -2039,7 +2063,7 @@ const app = {
         this.selectedIds = [newL.id];
         this.invalidateSim();
         this.refreshLayerList();
-        this.autoSave(); // CORRECTION 2
+        this.autoSave(); 
     },
 
     renderTree(arr, depth) {
@@ -2165,7 +2189,7 @@ const app = {
         this.checkImagePresence();
 
         this.draw();
-        this.autoSave(); // CORRECTION 2
+        this.autoSave(); 
     },
 
     selectLayer(id) {
@@ -2207,7 +2231,7 @@ const app = {
         this.selectedIds = []; 
         this.invalidateSim();
         this.refreshLayerList();
-        this.autoSave(); // CORRECTION 2
+        this.autoSave(); 
     },
 
     renameLayer(id, e) {
@@ -2240,7 +2264,7 @@ const app = {
         }
         this.invalidateSim();
         this.refreshLayerList();
-        this.autoSave(); // CORRECTION 2
+        this.autoSave(); 
     },
 
     groupSelected() {
@@ -2273,7 +2297,7 @@ const app = {
         document.getElementById('multi-select-mode').checked = false;
         this.invalidateSim();
         this.refreshLayerList();
-        this.autoSave(); // CORRECTION 2
+        this.autoSave(); 
     },
 
     ungroupSelected() {
@@ -2286,14 +2310,14 @@ const app = {
             this.selectedIds = [];
             this.invalidateSim();
             this.refreshLayerList();
-            this.autoSave(); // CORRECTION 2
+            this.autoSave(); 
         } else if (info && info.parentArr !== this.layers) {
             this.saveState();
             let l = info.parentArr.splice(info.idx, 1)[0];
             this.layers.unshift(l); 
             this.invalidateSim();
             this.refreshLayerList();
-            this.autoSave(); // CORRECTION 2
+            this.autoSave(); 
         }
     },
 
@@ -2330,7 +2354,7 @@ const app = {
         document.getElementById('multi-select-mode').checked = false;
         this.invalidateSim();
         this.refreshLayerList();
-        this.autoSave(); // CORRECTION 2
+        this.autoSave(); 
     },
 
     importImage(e) {
@@ -2731,4 +2755,3 @@ window.onload = () => app.init();
 </script>
 </body>
 </html>
-
