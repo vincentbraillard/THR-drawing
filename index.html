@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -141,6 +142,7 @@
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="pen" onchange="app.changeTool()"> ✏️ Crayon (Dessin continu)</label>
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="zigzag" onchange="app.changeTool()"> 〰️ Remplissage (Zones)</label>
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="liquify" onchange="app.changeTool()"> 💧 Déformation (Relief)</label>
+                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="interp" onchange="app.changeTool()"> 🧬 Interpolation (Morphing)</label>
                     <label style="display:flex; margin-bottom:15px;"><input type="radio" name="tool" value="wall" onchange="app.changeTool()"> 🧱 Mur (Exclusion)</label>
                     
                     <div style="position: relative; width: 100%;">
@@ -267,6 +269,19 @@
                         <button class="btn btn-icon" onclick="app.stepSlider('liq-str', 5)">➕</button>
                     </div>
                 </fieldset>
+
+                <!-- Paramètres Interpolation -->
+                <fieldset id="opts-interp" style="display:none; background:#e8f5e9;">
+                    <legend>🧬 Paramètres Interpolation</legend>
+                    <div style="font-size:11px; margin-bottom:10px; color:#555;" id="interp-help-text">1. Dessinez le premier trait.</div>
+                    <div class="row"><label>🔢 Nombre de traits générés :</label> <span class="val-badge" id="val-interp-steps">6</span></div>
+                    <div class="row-slider">
+                        <button class="btn btn-icon" onclick="app.stepSlider('interp-steps', -1)">➖</button>
+                        <input type="range" id="interp-steps" min="1" max="50" value="6" oninput="app.updateSliders()">
+                        <button class="btn btn-icon" onclick="app.stepSlider('interp-steps', 1)">➕</button>
+                    </div>
+                </fieldset>
+
             </div>
 
             <!-- IMPORT -->
@@ -364,7 +379,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v2.4 (Sécurité, perf, robustesse)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v2.5 (Sécurité, perf, robuste + Morphing)</span>
     </div>
 
 <script>
@@ -394,16 +409,15 @@ const app = {
         tool: 'select', penWidth: 1.5, ropeLength: 5.0, tremor: 0.0, color: '#000000',
         zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isDraggingImage: false, isLiquifying: false,
         zigzagLineStyle: 'straight', waveAmp: 2.0, waveLen: 15.0,
-        zigzagAngle: 0, zigzagSpacing: 2.0, zigzagDrawMode: 'contour', liquifyRadius: 30, liquifyStrength: 50, wandTolerance: 30, pointerHover: null
+        zigzagAngle: 0, zigzagSpacing: 2.0, zigzagDrawMode: 'contour', liquifyRadius: 30, liquifyStrength: 50, wandTolerance: 30, pointerHover: null,
+        interpSteps: 6, interpState: 0
     },
     
-    pos: { startPan: {x:0, y:0}, startImgDrag: {x:0, y:0, initX:0, initY:0}, anchor: {x:0, y:0}, lastSmoothed: {x:0, y:0}, currentPath: [], lastLiquify: {x:0, y:0}, lastClick: {x:0, y:0} },
+    pos: { startPan: {x:0, y:0}, startImgDrag: {x:0, y:0, initX:0, initY:0}, anchor: {x:0, y:0}, lastSmoothed: {x:0, y:0}, currentPath: [], lastLiquify: {x:0, y:0}, lastClick: {x:0, y:0}, interpLine1: null },
 
     genId() { return 'L' + Date.now() + Math.floor(Math.random() * 1000); },
 
     // Échappe les caractères HTML dangereux avant insertion dans innerHTML.
-    // Empêche l'injection de balises/scripts via un nom de calque (renameLayer)
-    // ou via un fichier .sunae chargé depuis une source externe.
     escapeHtml(str) {
         if (str === null || str === undefined) return '';
         return String(str).replace(/[&<>"']/g, (c) => ({
@@ -433,10 +447,6 @@ const app = {
     AUTOSAVE_DEBOUNCE_MS: 400,
     _autoSaveTimer: null,
 
-    // Version sérialisable des calques : retire les objets Image() non-JSON-sérialisables
-    // (bitmaps décodés) et descend récursivement dans les dossiers.
-    // Utilisée par autoSave(), saveState(), undo(), redo() et handleSave() —
-    // avant il y avait 5 copies quasi identiques de cette logique.
     serializeLayers(arr) {
         return arr.map(l => {
             let cl = { ...l, img: null };
@@ -460,7 +470,6 @@ const app = {
     },
 
     setAutosaveStatus(state) {
-        // state: 'saved' | 'saving' | 'error'
         const el = document.getElementById('autosave-status');
         if (!el) return;
         if (state === 'saving') {
@@ -475,8 +484,6 @@ const app = {
         }
     },
 
-    // Écriture réelle dans localStorage. Appelée après un court délai (voir autoSave())
-    // pour éviter d'écrire à chaque pixel de déplacement d'un slider/color-picker.
     persistProject() {
         try {
             const proj = this.buildProjectPayload();
@@ -488,8 +495,6 @@ const app = {
         }
     },
 
-    // Point d'entrée appelé partout dans le code (inchangé pour ne pas casser les
-    // handlers existants) : regroupe les appels rapprochés en une seule écriture.
     autoSave() {
         this.setAutosaveStatus('saving');
         clearTimeout(this._autoSaveTimer);
@@ -589,6 +594,81 @@ const app = {
             }
         }
     },
+    
+    resamplePathToCount(path, n) {
+        if (!path || path.length < 2) return path;
+        if (n <= 1) return path;
+        
+        let totalLen = 0;
+        let dists = [0];
+        for (let i = 1; i < path.length; i++) {
+            let d = Math.hypot(path[i].x - path[i-1].x, path[i].y - path[i-1].y);
+            totalLen += d;
+            dists.push(totalLen);
+        }
+        
+        let newPath = [path[0]];
+        let step = totalLen / (n - 1);
+        let currentDist = step;
+        let idx = 1;
+
+        for (let i = 1; i < n - 1; i++) {
+            while (idx < dists.length && dists[idx] < currentDist) {
+                idx++;
+            }
+            if (idx >= dists.length) {
+                newPath.push({...path[path.length-1]});
+                currentDist += step;
+                continue;
+            }
+            let p0 = path[idx - 1];
+            let p1 = path[idx];
+            let d0 = dists[idx - 1];
+            let d1 = dists[idx];
+            let ratio = (d1 === d0) ? 0 : (currentDist - d0) / (d1 - d0);
+            
+            newPath.push({
+                x: p0.x + (p1.x - p0.x) * ratio,
+                y: p0.y + (p1.y - p0.y) * ratio
+            });
+            currentDist += step;
+        }
+        newPath.push({...path[path.length-1]});
+        return newPath;
+    },
+
+    generateInterpolation(line1, line2, steps) {
+        const resolution = 150; 
+        let P1 = this.resamplePathToCount(line1, resolution);
+        let P2 = this.resamplePathToCount(line2, resolution);
+        let allLines = [P1];
+
+        for (let i = 1; i <= steps; i++) {
+            let t = i / (steps + 1);
+            let interpLine = [];
+            for (let j = 0; j < resolution; j++) {
+                interpLine.push({
+                    x: P1[j].x + (P2[j].x - P1[j].x) * t,
+                    y: P1[j].y + (P2[j].y - P1[j].y) * t
+                });
+            }
+            allLines.push(interpLine);
+        }
+        allLines.push(P2);
+
+        let finalPath = [];
+        for (let i = 0; i < allLines.length; i++) {
+            let currentCurve = allLines[i];
+            
+            finalPath.push(...currentCurve);
+            
+            if (i < allLines.length - 1) {
+                let backward = [...currentCurve].reverse().slice(1);
+                finalPath.push(...backward);
+            }
+        }
+        return finalPath;
+    },
 
     setupEvents() {
         const wrapper = document.getElementById('canvas-wrapper');
@@ -602,7 +682,7 @@ const app = {
             activePointers.set(e.pointerId, e);
 
             let ptScene = this.getScenePos(e.clientX, e.clientY);
-            this.pos.lastClick = ptScene; // <- IMPORTANT: C'est le point d'ancrage exact du clic
+            this.pos.lastClick = ptScene;
 
             if (activePointers.size === 2) {
                 this.ui.isDrawing = false;
@@ -648,9 +728,9 @@ const app = {
                 return;
             }
 
-            if (activePointers.size === 1 && (this.ui.tool === 'pen' || this.ui.tool === 'wall' || this.ui.tool === 'zigzag')) {
+            if (activePointers.size === 1 && (this.ui.tool === 'pen' || this.ui.tool === 'wall' || this.ui.tool === 'zigzag' || this.ui.tool === 'interp')) {
                 if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand') {
-                    // On ne fait rien sur le down pour la baguette magique (on attend le relâchement)
+                    // Magique baguette
                 } else if (this.isPointInBounds(ptScene)) {
                     this.ui.isDrawing = true;
                     this.pos.anchor = {x: ptScene.x, y: ptScene.y};
@@ -666,7 +746,7 @@ const app = {
             if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, e);
 
             let ptScene = this.getScenePos(e.clientX, e.clientY);
-            this.ui.pointerHover = ptScene; // Ceci peut ne pas se mettre à jour si on tapote juste sur un iPad
+            this.ui.pointerHover = ptScene;
 
             if (activePointers.size === 2) {
                 if (initialPinchDistance && initialPinchCenter) {
@@ -749,7 +829,7 @@ const app = {
                 let sx = ptScene.x;
                 let sy = ptScene.y;
                 
-                if (this.ui.tool === 'pen' || this.ui.tool === 'zigzag') {
+                if (this.ui.tool === 'pen' || this.ui.tool === 'zigzag' || this.ui.tool === 'interp') {
                     let alpha = this.ui.tremor > 0 ? 1.0 - (this.ui.tremor / 105.0) : 1.0;
                     sx = this.pos.lastSmoothed.x + alpha * (ptScene.x - this.pos.lastSmoothed.x);
                     sy = this.pos.lastSmoothed.y + alpha * (ptScene.y - this.pos.lastSmoothed.y);
@@ -757,12 +837,12 @@ const app = {
                 }
 
                 let d = Math.hypot(sx - this.pos.anchor.x, sy - this.pos.anchor.y);
-                let rope = (this.ui.tool === 'zigzag') ? 1.0 : this.ui.ropeLength; 
+                let rope = (this.ui.tool === 'zigzag' || this.ui.tool === 'interp') ? 1.0 : this.ui.ropeLength; 
 
                 if (d > rope || this.ui.tool === 'wall') {
                     let nx = sx, ny = sy;
                     
-                    if (this.ui.tool === 'pen' || this.ui.tool === 'zigzag') {
+                    if (this.ui.tool === 'pen' || this.ui.tool === 'zigzag' || this.ui.tool === 'interp') {
                         let angle = Math.atan2(sy - this.pos.anchor.y, sx - this.pos.anchor.x);
                         nx = sx - Math.cos(angle) * rope;
                         ny = sy - Math.sin(angle) * rope;
@@ -807,11 +887,9 @@ const app = {
             }
 
             if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand') {
-                // On utilise la position du clic initial car pointerHover est nul lors d'un tap tactile !
                 let upPos = this.ui.pointerHover || this.pos.lastClick; 
                 let dist = Math.hypot(upPos.x - this.pos.lastClick.x, upPos.y - this.pos.lastClick.y);
                 
-                // Si on a bougé de moins de 10 pixels (c'est un clic, pas un pan)
                 if (dist < 10) { 
                     this.executeMagicWand(this.pos.lastClick);
                 }
@@ -843,7 +921,6 @@ const app = {
                         this.pos.currentPath.push({...this.pos.currentPath[0]});
                         this.addLayer({ type: 'wall', color: this.ui.color, width: this.ui.penWidth, points: [...this.pos.currentPath] });
                     } else if (this.ui.tool === 'zigzag') {
-                        
                         if (this.ui.zigzagDrawMode === 'guide' && this.selectedIds.length === 1) {
                             let sel = this.findLayer(this.selectedIds[0]).layer;
                             if (sel && sel.type === 'zigzag') {
@@ -888,6 +965,30 @@ const app = {
                             if (type === 'guide') {
                                 this.startDrawingGuide();
                             }
+                        }
+                    } else if (this.ui.tool === 'interp') {
+                        if (this.ui.interpState === 0) {
+                            // Enregistrement du premier trait
+                            this.pos.interpLine1 = [...this.pos.currentPath];
+                            this.ui.interpState = 1;
+                            document.getElementById('interp-help-text').innerText = "2. Dessinez le deuxième trait.";
+                        } else {
+                            // Enregistrement du second trait et calcul global
+                            let line2 = [...this.pos.currentPath];
+                            let finalPath = this.generateInterpolation(this.pos.interpLine1, line2, this.ui.interpSteps);
+                            
+                            this.addLayer({ 
+                                type: 'path', 
+                                name: `🧬 Interpolation ${this.layerCount++}`, 
+                                color: this.ui.color, 
+                                width: this.ui.penWidth, 
+                                points: finalPath 
+                            });
+
+                            // Réinitialisation de l'outil
+                            this.ui.interpState = 0;
+                            this.pos.interpLine1 = null;
+                            document.getElementById('interp-help-text').innerText = "1. Dessinez le premier trait.";
                         }
                     } else {
                         this.addLayer({ type: this.ui.tool, color: this.ui.color, width: this.ui.penWidth, points: [...this.pos.currentPath] });
@@ -959,10 +1060,8 @@ const app = {
         
         let isMatch = (idx) => {
             let r = data[idx], g = data[idx+1], b = data[idx+2], a = data[idx+3];
-            // Protection pour ne pas baver sur la transparence si on a cliqué sur de la transparence
             if (a0 < 20 && a < 20) return true;
             if (a0 >= 20 && a < 20) return false;
-            // On intègre l'Alpha dans la différence pour éviter que ça ne sélectionne les ombres lisses
             let diff = Math.abs(r - r0) + Math.abs(g - g0) + Math.abs(b - b0) + Math.abs(a - a0);
             return diff <= tol * 4;
         };
@@ -981,7 +1080,6 @@ const app = {
             let dirs = [[1,0], [-1,0], [0,1], [0,-1]];
             for(let d of dirs) {
                 let nx = x + d[0], ny = y + d[1];
-                // L'ajout de isInsideTable empêche la sélection de "carrer" les bords extérieurs de la table ronde !
                 if(nx>=0 && nx<W && ny>=0 && ny<H && isInsideTable(nx, ny)) {
                     let nidx = ny * W + nx;
                     if(!mask[nidx] && isMatch(nidx*4)) {
@@ -1016,8 +1114,6 @@ const app = {
         edgeSet.delete(current.x+","+current.y);
         let found = true;
         
-        // Limiter strictement la recherche aux voisins directs (dist 1 et 2)
-        // Cela empêche l'algo de "sauter" sur un trou intérieur au milieu de l'image (cause des lignes folles)
         let searchDirs = [
             [1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1], 
             [2,0],[2,1],[1,2],[0,2],[-1,2],[-2,1],[-2,0],[-2,-1],[-1,-2],[0,-2],[1,-2],[2,-1]
@@ -1153,7 +1249,6 @@ const app = {
         let wAmp = layer.waveAmp || 2.0;
         let wLen = layer.waveLen || 15.0;
         
-        // --- ALGORITHME : SPIRALE DE CONTOUR ---
         if (layer.zigzagType === 'spiral') {
             let boundary = this.resamplePath(layer.boundary, 2.0); 
             if (boundary.length < 3) return [];
@@ -1259,7 +1354,6 @@ const app = {
             return path;
         }
 
-        // --- ALGORITHME COURBE GUIDE ---
         if (layer.zigzagType === 'guide' && layer.guideCurve && layer.guideCurve.length > 1) {
             let guide = this.resamplePath(layer.guideCurve, spacing);
             guide = this.smoothPath(guide, 15); 
@@ -1347,7 +1441,6 @@ const app = {
             }
             return path;
             
-        // --- ALGORITHME ANGLE FIXE ---
         } else {
             let angleRad = (layer.angle || 0) * Math.PI / 180;
             let cosA = Math.cos(-angleRad);
@@ -1773,6 +1866,20 @@ const app = {
             this.ctx.stroke();
         }
 
+        // Affichage fantôme du premier trait d'interpolation
+        if (this.ui.tool === 'interp' && this.ui.interpState === 1 && this.pos.interpLine1) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(this.pos.interpLine1[0].x, this.pos.interpLine1[0].y);
+            for(let j = 1; j < this.pos.interpLine1.length; j++) {
+                this.ctx.lineTo(this.pos.interpLine1[j].x, this.pos.interpLine1[j].y);
+            }
+            this.ctx.strokeStyle = "rgba(0, 120, 255, 0.6)";
+            this.ctx.lineWidth = this.ui.penWidth;
+            this.ctx.setLineDash([5, 5]);
+            this.ctx.stroke();
+            this.ctx.setLineDash([]);
+        }
+
         this.drawSimulation(flatLayers);
     },
 
@@ -1962,6 +2069,15 @@ const app = {
         if (elZig) elZig.style.display = (this.ui.tool === 'zigzag') ? 'block' : 'none';
         let elLiq = document.getElementById('opts-liquify');
         if (elLiq) elLiq.style.display = (this.ui.tool === 'liquify') ? 'block' : 'none';
+        let elInterp = document.getElementById('opts-interp');
+        if (elInterp) elInterp.style.display = (this.ui.tool === 'interp') ? 'block' : 'none';
+        
+        if (this.ui.tool !== 'interp') {
+            this.ui.interpState = 0;
+            this.pos.interpLine1 = null;
+            let helpTxt = document.getElementById('interp-help-text');
+            if (helpTxt) helpTxt.innerText = "1. Dessinez le premier trait.";
+        }
 
         if (this.ui.tool === 'zigzag') {
             this.checkImagePresence();
@@ -2002,6 +2118,12 @@ const app = {
         document.getElementById('val-liq-radius').innerText = this.ui.liquifyRadius;
         this.ui.liquifyStrength = parseInt(document.getElementById('liq-str').value);
         document.getElementById('val-liq-str').innerText = this.ui.liquifyStrength + "%";
+
+        let elInterp = document.getElementById('interp-steps');
+        if (elInterp) {
+            this.ui.interpSteps = parseInt(elInterp.value);
+            document.getElementById('val-interp-steps').innerText = this.ui.interpSteps;
+        }
 
         let elWand = document.getElementById('wand-tol');
         if (elWand) {
@@ -2530,7 +2652,6 @@ const app = {
 
     saveState() {
         this.undoStack.push(JSON.stringify(this.serializeLayers(this.layers)));
-        // Plafonne la pile pour éviter une croissance mémoire illimitée sur une longue session
         if (this.undoStack.length > this.UNDO_STACK_LIMIT) this.undoStack.shift();
         this.redoStack = [];
         document.getElementById('btn-undo').disabled = false;
@@ -2661,11 +2782,6 @@ const app = {
         let flatLayers = this.getFlatLayers();
         let R = this.getExportRadius(); 
 
-        // Vérification des limites physiques du plateau : sur une table rectangulaire,
-        // getExportRadius() renvoie le rayon du cercle circonscrit (pour la normalisation
-        // rho), donc un point peut être hors du rectangle réel tout en ayant rho <= 1 et
-        // ne pas être détecté par le clamp ci-dessous. On avertit explicitement ici,
-        // notamment utile après une déformation Liquify qui peut faire sortir des points.
         let outOfBoundsCount = 0;
         for (let l of flatLayers) {
             if (l.effectiveVisible && l.points) {
