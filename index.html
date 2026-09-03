@@ -106,7 +106,7 @@
                         <button class="btn" style="flex:1" onclick="app.handleSave('.sunae', false)">💾 Enregistrer</button>
                         <button class="btn" style="flex:1" onclick="app.handleSave('.sunae', true)">📝 Sous...</button>
                     </div>
-                    <div style="font-size:11px; color:green; text-align:center;">✓ Auto-sauvegarde active</div>
+                    <div id="autosave-status" style="font-size:11px; color:green; text-align:center;">✓ Auto-sauvegarde active</div>
                 </fieldset>
                 <fieldset>
                     <legend>🖥️ Espace de travail</legend>
@@ -364,7 +364,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v2.3 (Correctif Baguette)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v2.4 (Sécurité, perf, robustesse)</span>
     </div>
 
 <script>
@@ -401,6 +401,16 @@ const app = {
 
     genId() { return 'L' + Date.now() + Math.floor(Math.random() * 1000); },
 
+    // Échappe les caractères HTML dangereux avant insertion dans innerHTML.
+    // Empêche l'injection de balises/scripts via un nom de calque (renameLayer)
+    // ou via un fichier .sunae chargé depuis une source externe.
+    escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str).replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    },
+
     init() {
         this.resize();
         window.addEventListener('resize', () => this.resize());
@@ -419,28 +429,71 @@ const app = {
         this.simCache.valid = false;
     },
 
-    autoSave() {
-        try {
-            const cleanLayers = (arr) => arr.map(l => {
-                let cl = {...l, img:null};
-                if(cl.type === 'folder' && cl.layers) cl.layers = cleanLayers(cl.layers);
-                return cl;
-            });
-            const proj = {
-                filename: document.getElementById('project-filename').value,
-                settings: { 
-                    shape: this.settings.shape,
-                    zoom: this.ui.zoom*100, 
-                    showPoints: document.getElementById('chk-sim-points') ? document.getElementById('chk-sim-points').checked : true,
-                    showLinks: document.getElementById('chk-show-links') ? document.getElementById('chk-show-links').checked : true,
-                    tool: this.ui.tool, width: this.ui.penWidth*10, tremor: this.ui.tremor, rope: this.ui.ropeLength*2, color: this.ui.color 
-                },
-                layers: cleanLayers(this.layers)
-            };
-            localStorage.setItem('sunae_autosave', JSON.stringify(proj));
-        } catch(e) {
-            console.warn("Autosave échoué", e);
+    UNDO_STACK_LIMIT: 50,
+    AUTOSAVE_DEBOUNCE_MS: 400,
+    _autoSaveTimer: null,
+
+    // Version sérialisable des calques : retire les objets Image() non-JSON-sérialisables
+    // (bitmaps décodés) et descend récursivement dans les dossiers.
+    // Utilisée par autoSave(), saveState(), undo(), redo() et handleSave() —
+    // avant il y avait 5 copies quasi identiques de cette logique.
+    serializeLayers(arr) {
+        return arr.map(l => {
+            let cl = { ...l, img: null };
+            if (cl.type === 'folder' && cl.layers) cl.layers = this.serializeLayers(cl.layers);
+            return cl;
+        });
+    },
+
+    buildProjectPayload() {
+        return {
+            filename: document.getElementById('project-filename').value,
+            settings: {
+                shape: this.settings.shape,
+                zoom: this.ui.zoom * 100,
+                showPoints: document.getElementById('chk-sim-points') ? document.getElementById('chk-sim-points').checked : true,
+                showLinks: document.getElementById('chk-show-links') ? document.getElementById('chk-show-links').checked : true,
+                tool: this.ui.tool, width: this.ui.penWidth * 10, tremor: this.ui.tremor, rope: this.ui.ropeLength * 2, color: this.ui.color
+            },
+            layers: this.serializeLayers(this.layers)
+        };
+    },
+
+    setAutosaveStatus(state) {
+        // state: 'saved' | 'saving' | 'error'
+        const el = document.getElementById('autosave-status');
+        if (!el) return;
+        if (state === 'saving') {
+            el.textContent = '… Sauvegarde en cours';
+            el.style.color = '#999';
+        } else if (state === 'error') {
+            el.textContent = '⚠️ Auto-sauvegarde impossible (espace de stockage plein)';
+            el.style.color = '#c62828';
+        } else {
+            el.textContent = '✓ Auto-sauvegarde active';
+            el.style.color = 'green';
         }
+    },
+
+    // Écriture réelle dans localStorage. Appelée après un court délai (voir autoSave())
+    // pour éviter d'écrire à chaque pixel de déplacement d'un slider/color-picker.
+    persistProject() {
+        try {
+            const proj = this.buildProjectPayload();
+            localStorage.setItem('sunae_autosave', JSON.stringify(proj));
+            this.setAutosaveStatus('saved');
+        } catch (e) {
+            console.warn("Autosave échoué", e);
+            this.setAutosaveStatus('error');
+        }
+    },
+
+    // Point d'entrée appelé partout dans le code (inchangé pour ne pas casser les
+    // handlers existants) : regroupe les appels rapprochés en une seule écriture.
+    autoSave() {
+        this.setAutosaveStatus('saving');
+        clearTimeout(this._autoSaveTimer);
+        this._autoSaveTimer = setTimeout(() => this.persistProject(), this.AUTOSAVE_DEBOUNCE_MS);
     },
 
     newProject() {
@@ -2091,7 +2144,7 @@ const app = {
                 <input type="checkbox" style="margin-right:8px; pointer-events:auto;" ${l.visible ? 'checked' : ''} onchange="app.toggleVis('${l.id}')">
                 ${icon}
                 <span class="layer-icon" style="background-color: ${col}"></span>
-                <span style="flex:1; cursor:pointer;" onclick="app.selectLayer('${l.id}')">${l.name} ${l.locked ? '🔒' : '🔓'}</span>
+                <span style="flex:1; cursor:pointer;" onclick="app.selectLayer('${l.id}')">${this.escapeHtml(l.name)} ${l.locked ? '🔒' : '🔓'}</span>
                 <span class="rename-btn" style="pointer-events:auto;" onclick="app.renameLayer('${l.id}', event)">✏️</span>
             </li>`;
             
@@ -2476,12 +2529,9 @@ const app = {
     },
 
     saveState() {
-        const cleanLayers = (arr) => arr.map(l => {
-            let cl = {...l, img:null};
-            if(cl.type === 'folder' && cl.layers) cl.layers = cleanLayers(cl.layers);
-            return cl;
-        });
-        this.undoStack.push(JSON.stringify(cleanLayers(this.layers)));
+        this.undoStack.push(JSON.stringify(this.serializeLayers(this.layers)));
+        // Plafonne la pile pour éviter une croissance mémoire illimitée sur une longue session
+        if (this.undoStack.length > this.UNDO_STACK_LIMIT) this.undoStack.shift();
         this.redoStack = [];
         document.getElementById('btn-undo').disabled = false;
         document.getElementById('btn-redo').disabled = true;
@@ -2489,8 +2539,8 @@ const app = {
     
     undo() {
         if (this.undoStack.length > 0) {
-            const cleanLayers = (arr) => arr.map(l => { let cl={...l, img:null}; if(cl.type==='folder' && cl.layers) cl.layers=cleanLayers(cl.layers); return cl; });
-            this.redoStack.push(JSON.stringify(cleanLayers(this.layers)));
+            this.redoStack.push(JSON.stringify(this.serializeLayers(this.layers)));
+            if (this.redoStack.length > this.UNDO_STACK_LIMIT) this.redoStack.shift();
             this.restoreLayers(JSON.parse(this.undoStack.pop()));
             document.getElementById('btn-undo').disabled = this.undoStack.length === 0;
             document.getElementById('btn-redo').disabled = false;
@@ -2501,8 +2551,8 @@ const app = {
     
     redo() {
         if (this.redoStack.length > 0) {
-            const cleanLayers = (arr) => arr.map(l => { let cl={...l, img:null}; if(cl.type==='folder' && cl.layers) cl.layers=cleanLayers(cl.layers); return cl; });
-            this.undoStack.push(JSON.stringify(cleanLayers(this.layers)));
+            this.undoStack.push(JSON.stringify(this.serializeLayers(this.layers)));
+            if (this.undoStack.length > this.UNDO_STACK_LIMIT) this.undoStack.shift();
             this.restoreLayers(JSON.parse(this.redoStack.pop()));
             document.getElementById('btn-undo').disabled = false;
             document.getElementById('btn-redo').disabled = this.redoStack.length === 0;
@@ -2610,6 +2660,28 @@ const app = {
         let currentTheta = 0.0;
         let flatLayers = this.getFlatLayers();
         let R = this.getExportRadius(); 
+
+        // Vérification des limites physiques du plateau : sur une table rectangulaire,
+        // getExportRadius() renvoie le rayon du cercle circonscrit (pour la normalisation
+        // rho), donc un point peut être hors du rectangle réel tout en ayant rho <= 1 et
+        // ne pas être détecté par le clamp ci-dessous. On avertit explicitement ici,
+        // notamment utile après une déformation Liquify qui peut faire sortir des points.
+        let outOfBoundsCount = 0;
+        for (let l of flatLayers) {
+            if (l.effectiveVisible && l.points) {
+                for (let pt of l.points) {
+                    if (!this.isPointInBounds(pt)) outOfBoundsCount++;
+                }
+            }
+        }
+        if (outOfBoundsCount > 0) {
+            let proceed = confirm(
+                `⚠️ ${outOfBoundsCount} point(s) semblent situés hors des limites physiques du plateau ` +
+                `(souvent après une déformation avec l'outil Liquify). Le moteur pourrait forcer sur la mécanique. ` +
+                `Exporter quand même ?`
+            );
+            if (!proceed) return;
+        }
         
         for (let i = flatLayers.length - 1; i >= 0; i--) {
             let l = flatLayers[i];
@@ -2677,22 +2749,8 @@ const app = {
         let contentStr = "";
 
         if (extension === '.sunae') {
-            const cleanLayers = (arr) => arr.map(l => {
-                let cl = {...l, img:null};
-                if(cl.type === 'folder' && cl.layers) cl.layers = cleanLayers(cl.layers);
-                return cl;
-            });
-            const proj = {
-                filename: filename,
-                settings: { 
-                    shape: this.settings.shape,
-                    zoom: this.ui.zoom*100, 
-                    showPoints: document.getElementById('chk-sim-points') ? document.getElementById('chk-sim-points').checked : true,
-                    showLinks: document.getElementById('chk-show-links') ? document.getElementById('chk-show-links').checked : true,
-                    tool: this.ui.tool, width: this.ui.penWidth*10, tremor: this.ui.tremor, rope: this.ui.ropeLength*2, color: this.ui.color 
-                },
-                layers: cleanLayers(this.layers)
-            };
+            const proj = this.buildProjectPayload();
+            proj.filename = filename;
             contentStr = JSON.stringify(proj);
         } else {
             this.exportTHR();
