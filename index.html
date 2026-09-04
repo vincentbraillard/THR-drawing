@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -274,12 +273,15 @@
                 <fieldset id="opts-interp" style="display:none; background:#e8f5e9;">
                     <legend>🧬 Paramètres Interpolation</legend>
                     <div style="font-size:11px; margin-bottom:10px; color:#555;" id="interp-help-text">1. Dessinez le premier trait.</div>
-                    <div class="row"><label>🔢 Nombre de traits générés :</label> <span class="val-badge" id="val-interp-steps">6</span></div>
+                    <div class="row"><label>🔢 Nombre de traits :</label> <span class="val-badge" id="val-interp-steps">6</span></div>
                     <div class="row-slider">
                         <button class="btn btn-icon" onclick="app.stepSlider('interp-steps', -1)">➖</button>
                         <input type="range" id="interp-steps" min="1" max="50" value="6" oninput="app.updateInterpLive()">
                         <button class="btn btn-icon" onclick="app.stepSlider('interp-steps', 1)">➕</button>
                     </div>
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; margin-top: 5px;">
+                        <input type="checkbox" id="chk-interp-roundtrip" checked onchange="app.updateInterpLive()"> 🔄 Tracé Aller-Retour
+                    </label>
                 </fieldset>
 
             </div>
@@ -379,7 +381,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v2.6 (Live Interpolation)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v2.7 (Morphing Murs & Aller-Retour)</span>
     </div>
 
 <script>
@@ -411,7 +413,7 @@ const app = {
         zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isDraggingImage: false, isLiquifying: false,
         zigzagLineStyle: 'straight', waveAmp: 2.0, waveLen: 15.0,
         zigzagAngle: 0, zigzagSpacing: 2.0, zigzagDrawMode: 'contour', liquifyRadius: 30, liquifyStrength: 50, wandTolerance: 30, pointerHover: null,
-        interpSteps: 6, interpState: 0
+        interpSteps: 6, interpState: 0, interpRoundTrip: true
     },
     
     pos: { startPan: {x:0, y:0}, startImgDrag: {x:0, y:0, initX:0, initY:0}, anchor: {x:0, y:0}, lastSmoothed: {x:0, y:0}, currentPath: [], lastLiquify: {x:0, y:0}, lastClick: {x:0, y:0}, interpLine1: null },
@@ -536,6 +538,18 @@ const app = {
             return Math.hypot(pt.x, pt.y) <= 300;
         }
     },
+    
+    isPointInWall(pt) {
+        let flat = this.getFlatLayers();
+        for (let l of flat) {
+            if (l.effectiveVisible && l.type === 'wall' && l.points && l.points.length > 2) {
+                if (this.pointInPolygon(pt, l.points)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    },
 
     getExportRadius() {
         if (this.settings.shape === 'rect') return Math.hypot(600, 250);
@@ -638,7 +652,7 @@ const app = {
         return newPath;
     },
 
-    generateInterpolation(line1, line2, steps) {
+    generateInterpolation(line1, line2, steps, roundTrip) {
         const resolution = 150; 
         let P1 = this.resamplePathToCount(line1, resolution);
         let P2 = this.resamplePathToCount(line2, resolution);
@@ -657,16 +671,38 @@ const app = {
         }
         allLines.push(P2);
 
-        let finalPath = [];
+        // Exclusion des murs : on filtre tous les points qui tombent dans un mur
+        let filteredLines = [];
         for (let i = 0; i < allLines.length; i++) {
-            let currentCurve = allLines[i];
-            
-            // 1. Tracer l'aller
-            finalPath.push(...currentCurve);
-            
-            // 2. Tracer le retour systématiquement (y compris sur le dernier trait)
-            let backward = [...currentCurve].reverse().slice(1);
-            finalPath.push(...backward);
+            let validPoints = allLines[i].filter(pt => !this.isPointInWall(pt));
+            if (validPoints.length > 0) {
+                filteredLines.push(validPoints);
+            }
+        }
+        allLines = filteredLines;
+
+        let finalPath = [];
+        if (allLines.length === 0) return finalPath;
+
+        if (roundTrip) {
+            for (let i = 0; i < allLines.length; i++) {
+                let currentCurve = allLines[i];
+                // 1. Tracer l'aller
+                finalPath.push(...currentCurve);
+                // 2. Tracer le retour systématiquement (y compris sur le dernier trait)
+                let backward = [...currentCurve].reverse().slice(1);
+                finalPath.push(...backward);
+            }
+        } else {
+            for (let i = 0; i < allLines.length; i++) {
+                let currentCurve = allLines[i];
+                // Mode alterné continu (serpentin)
+                if (i % 2 === 0) {
+                    finalPath.push(...currentCurve); // Aller
+                } else {
+                    finalPath.push(...[...currentCurve].reverse()); // Retour
+                }
+            }
         }
         return finalPath;
     },
@@ -976,16 +1012,20 @@ const app = {
                         } else {
                             // Enregistrement du second trait et calcul global
                             let line2 = [...this.pos.currentPath];
-                            let finalPath = this.generateInterpolation(this.pos.interpLine1, line2, this.ui.interpSteps);
+                            let chkRoundTrip = document.getElementById('chk-interp-roundtrip');
+                            let isRoundTrip = chkRoundTrip ? chkRoundTrip.checked : true;
+                            
+                            let finalPath = this.generateInterpolation(this.pos.interpLine1, line2, this.ui.interpSteps, isRoundTrip);
                             
                             this.addLayer({ 
                                 type: 'interp', 
                                 name: `🧬 Interpolation ${this.layerCount++}`, 
                                 color: this.ui.color, 
-                                width: 1.3, // Épaisseur constante pour l'interpolation
+                                width: 1.3, 
                                 line1: this.pos.interpLine1,
                                 line2: line2,
                                 steps: this.ui.interpSteps,
+                                roundTrip: isRoundTrip,
                                 points: finalPath 
                             });
 
@@ -1666,9 +1706,11 @@ const app = {
 
     updateInterpLive() {
         let elInterp = document.getElementById('interp-steps');
+        let chkRoundTrip = document.getElementById('chk-interp-roundtrip');
         if (!elInterp) return;
         
         this.ui.interpSteps = parseInt(elInterp.value);
+        this.ui.interpRoundTrip = chkRoundTrip ? chkRoundTrip.checked : true;
         document.getElementById('val-interp-steps').innerText = this.ui.interpSteps;
         
         if (this.interpTimeout) clearTimeout(this.interpTimeout);
@@ -1679,7 +1721,8 @@ const app = {
                 if (sel && sel.layer.type === 'interp') {
                     this.saveState();
                     sel.layer.steps = this.ui.interpSteps;
-                    sel.layer.points = this.generateInterpolation(sel.layer.line1, sel.layer.line2, sel.layer.steps);
+                    sel.layer.roundTrip = this.ui.interpRoundTrip;
+                    sel.layer.points = this.generateInterpolation(sel.layer.line1, sel.layer.line2, sel.layer.steps, sel.layer.roundTrip);
                     this.invalidateSim();
                     this.draw();
                     this.autoSave();
@@ -2335,6 +2378,12 @@ const app = {
             document.getElementById('interp-steps').value = sel.steps || 6;
             document.getElementById('val-interp-steps').innerText = sel.steps || 6;
             this.ui.interpSteps = sel.steps || 6;
+            
+            let chkRoundTrip = document.getElementById('chk-interp-roundtrip');
+            if (chkRoundTrip) {
+                chkRoundTrip.checked = sel.roundTrip !== undefined ? sel.roundTrip : true;
+                this.ui.interpRoundTrip = chkRoundTrip.checked;
+            }
         }
 
         if (sel && sel.type === 'zigzag') {
@@ -2731,6 +2780,7 @@ const app = {
             if (l.type === 'zigzag' && l.spiralDir === undefined) l.spiralDir = 'in';
             if (l.type === 'imported_path' && l.width === undefined) l.width = 1.0;
             if (l.type === 'interp' && l.width === undefined) l.width = 1.3;
+            if (l.type === 'interp' && l.roundTrip === undefined) l.roundTrip = true;
 
             if (l.type === 'folder') {
                 if (!l.layers) l.layers = [];
@@ -2781,10 +2831,7 @@ const app = {
                 if (proj.settings.showLinks !== undefined && document.getElementById('chk-show-links')) {
                     document.getElementById('chk-show-links').checked = proj.settings.showLinks;
                 }
-                
-                // BUG FIX V2.6: Plus de multiplication par 10 lors du chargement de l'épaisseur du crayon
                 if (proj.settings.width !== undefined) document.getElementById('slider-width').value = Math.min(100, proj.settings.width);
-                
                 if (proj.settings.tremor !== undefined) document.getElementById('slider-tremor').value = proj.settings.tremor;
                 if (proj.settings.rope !== undefined) document.getElementById('slider-rope').value = proj.settings.rope;
                 this.updateSliders();
