@@ -3072,4 +3072,126 @@ const app = {
                 let optimizedPoints = [l.points[0]];
                 for(let j = 1; j < l.points.length; j++) {
                     let prev = optimizedPoints[optimizedPoints.length - 1];
-Je suis une IA basée sur du texte. Cela dépasse mes capacités.
+                    let curr = l.points[j];
+                    if (Math.hypot(curr.x - prev.x, curr.y - prev.y) > 2.5 || j === l.points.length - 1) {
+                        optimizedPoints.push(curr);
+                    }
+                }
+
+                optimizedPoints.forEach(pt => {
+                    let rho = Math.hypot(pt.x, pt.y) / R;
+                    rho = Math.max(0.0, Math.min(1.0, rho));
+                    let theta = Math.atan2(pt.y, pt.x) + (Math.PI / 2);
+                    while (theta - currentTheta > Math.PI) theta -= 2 * Math.PI;
+                    while (theta - currentTheta < -Math.PI) theta += 2 * Math.PI;
+                    currentTheta = theta;
+                    thrLines.push(`${theta.toFixed(5)} ${rho.toFixed(5)}`);
+                });
+            }
+        }
+        
+        if (thrLines.length === 0) return alert("Aucun tracé à exporter !");
+        
+        let baseName = document.getElementById('project-filename').value.trim() || "export_table";
+        let filename = baseName.endsWith('.thr') ? baseName : baseName + '.thr';
+
+        const blob = new Blob([thrLines.join('\n')], { type: "text/plain" });
+        let isApple = /Mac|iPod|iPhone|iPad/i.test(navigator.userAgent);
+        
+        if (navigator.canShare && isApple) {
+            const file = new File([blob], filename, { type: "text/plain" });
+            if (navigator.canShare({ files: [file] })) {
+                navigator.share({ files: [file], title: filename }).catch(e=>{});
+                return;
+            }
+        }
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a"); 
+        a.href = url; 
+        a.download = filename; 
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    },
+
+    async handleSave(extension, isSaveAs) {
+        let baseName = document.getElementById('project-filename').value.trim() || "mon_projet";
+        let isApple = /Mac|iPod|iPhone|iPad/i.test(navigator.userAgent);
+
+        if (isSaveAs && !window.showSaveFilePicker && !isApple) {
+            let userStr = prompt("Entrez le nom du fichier :", baseName.replace(extension, ''));
+            if (!userStr) return; 
+            baseName = userStr;
+            document.getElementById('project-filename').value = baseName;
+        }
+
+        let filename = baseName.endsWith(extension) ? baseName : baseName + extension;
+        let contentStr = "";
+
+        if (extension === '.sunae') {
+            const proj = this.buildProjectPayload();
+            proj.filename = filename;
+            contentStr = JSON.stringify(proj);
+        } else {
+            this.exportTHR();
+            return;
+        }
+
+        const blob = new Blob([contentStr], { type: "application/json" });
+
+        if (navigator.canShare && isApple) {
+            const file = new File([blob], filename, { type: "application/json" });
+            if (navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({ files: [file], title: filename });
+                    return;
+                } catch(e) { console.log(e); return; }
+            }
+        }
+
+        if (isSaveAs && window.showSaveFilePicker) {
+            try {
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: filename,
+                    types: [{ description: 'Projet Sunae', accept: {'application/json': ['.sunae']} }]
+                });
+                const writable = await handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                return;
+            } catch (e) {
+                if (e.name !== 'AbortError') console.error(e);
+                return;
+            }
+        }
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a"); 
+        a.href = url; 
+        a.download = filename; 
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    },
+
+    loadProject(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        document.getElementById('project-filename').value = file.name.replace('.sunae', '').replace('.json', '');
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            this.loadFromJSON(evt.target.result, false);
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+    }
+};
+
+window.app = app;
+window.onload = () => app.init();
+</script>
+</body>
+</html>
