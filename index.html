@@ -88,7 +88,7 @@
             <div class="tabs">
                 <button class="tab-btn active" onclick="app.openTab(event, 'tab-file')">📁 Fichier</button>
                 <button class="tab-btn" onclick="app.openTab(event, 'tab-tools')">🖌️ Outils</button>
-                <button class="tab-btn" onclick="app.openTab(event, 'tab-import')">📥 Import</button>
+                <button class="tab-btn" onclick="app.openTab(event, 'tab-transform')">📐 Transf.</button>
                 <button class="tab-btn" onclick="app.openTab(event, 'tab-layers')">📑 Calques</button>
             </div>
 
@@ -140,7 +140,7 @@
             <div id="tab-tools" class="tab-content">
                 <fieldset>
                     <legend>🛠️ Outils Actifs</legend>
-                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="select" checked onchange="app.changeTool()"> 🖐️ Sélection/Déplacement</label>
+                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="select" checked onchange="app.changeTool()"> 🖐️ Sélection (Déplacement de vue)</label>
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="pen" onchange="app.changeTool()"> ✏️ Crayon (Dessin continu)</label>
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="text" onchange="app.changeTool()"> 🔤 Texte (Cases & Lettres)</label>
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="zigzag" onchange="app.changeTool()"> 〰️ Remplissage (Zones)</label>
@@ -320,52 +320,55 @@
 
             </div>
 
-            <!-- IMPORT -->
-            <div id="tab-import" class="tab-content">
+            <!-- TRANSFORMATIONS (Ancien Import) -->
+            <div id="tab-transform" class="tab-content">
                 <input type="file" id="file-image" accept="image/png, image/jpeg" style="display:none;" onchange="app.importImage(event)">
                 <input type="file" id="file-thr" accept=".thr" style="display:none;" onchange="app.importTHR(event)">
                 
                 <div style="display:flex; gap:5px; margin-bottom:15px;">
-                    <button class="btn" style="flex:1; font-weight:bold;" onclick="document.getElementById('file-image').click()">📂 Image</button>
-                    <button class="btn" style="flex:1; font-weight:bold;" onclick="document.getElementById('file-thr').click()">📂 Tracé (.thr)</button>
+                    <button class="btn" style="flex:1; font-weight:bold; background: #e3f2fd;" onclick="document.getElementById('file-image').click()">📂 + Image</button>
+                    <button class="btn" style="flex:1; font-weight:bold; background: #f3e5f5;" onclick="document.getElementById('file-thr').click()">📂 + Tracé (.thr)</button>
                 </div>
                 
-                <fieldset id="fs-transform" disabled>
-                    <legend>🖼️ / 〰️ Calque Sélectionné</legend>
+                <fieldset id="fs-transform" disabled style="background:#fff;">
+                    <legend>📐 Transformer la sélection</legend>
                     
-                    <div id="div-opacity">
-                        <div class="row"><label>🌗 Opacité :</label></div>
-                        <div class="row-slider">
-                            <button class="btn btn-icon" onclick="app.stepSlider('img-opacity', -5)">➖</button>
-                            <input type="range" id="img-opacity" min="0" max="100" value="100" oninput="app.updateTransform()">
-                            <button class="btn btn-icon" onclick="app.stepSlider('img-opacity', 5)">➕</button>
-                        </div>
-                    </div>
-                    
-                    <div id="div-thr-width" style="display:none;">
-                        <div class="row"><label>📏 Épaisseur :</label> <span class="val-badge" id="val-thr-width">1.0</span></div>
-                        <div class="row-slider">
-                            <button class="btn btn-icon" onclick="app.stepSlider('thr-width', -1)">➖</button>
-                            <input type="range" id="thr-width" min="5" max="100" value="10" oninput="app.updateTransform()">
-                            <button class="btn btn-icon" onclick="app.stepSlider('thr-width', 1)">➕</button>
-                        </div>
+                    <div style="text-align:center; font-size:11px; color:#666; margin-bottom:15px;">
+                        Déplacez, redimensionnez ou retournez le(s) calque(s) actif(s).
                     </div>
 
-                    <div class="row"><label>📐 Échelle :</label></div>
-                    <div class="row-slider">
-                        <button class="btn btn-icon" onclick="app.stepSlider('img-scale', -5)">➖</button>
-                        <input type="range" id="img-scale" min="10" max="1000" value="100" oninput="app.updateTransform()">
-                        <button class="btn btn-icon" onclick="app.stepSlider('img-scale', 5)">➕</button>
+                    <!-- DEPLACEMENT -->
+                    <label>Déplacement (Pas de 10mm) :</label>
+                    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:5px; margin-bottom:15px; max-width: 150px; margin-left: auto; margin-right: auto;">
+                        <div></div>
+                        <button class="btn" style="font-size:16px; background:#f0f0f0;" onclick="app.applyTransform(0, 10, 1, 1)">⬆️</button>
+                        <div></div>
+                        <button class="btn" style="font-size:16px; background:#f0f0f0;" onclick="app.applyTransform(-10, 0, 1, 1)">⬅️</button>
+                        <button class="btn" style="font-size:16px; background:#f0f0f0;" onclick="app.applyTransform(0, -10, 1, 1)">⬇️</button>
+                        <button class="btn" style="font-size:16px; background:#f0f0f0;" onclick="app.applyTransform(10, 0, 1, 1)">➡️</button>
                     </div>
-                    <div class="row"><label>🔄 Rotation :</label> <span class="val-badge" id="val-rot">0°</span></div>
-                    <div class="row-slider">
-                        <button class="btn btn-icon" onclick="app.stepSlider('img-rot', -1)">➖</button>
-                        <input type="range" id="img-rot" min="-180" max="180" value="0" oninput="app.updateTransform()">
-                        <button class="btn btn-icon" onclick="app.stepSlider('img-rot', 1)">➕</button>
+
+                    <!-- ECHELLE -->
+                    <label>Échelle (Taille) :</label>
+                    <div style="display:flex; gap:5px; margin-bottom:15px;">
+                        <button class="btn" style="flex:1; background:#e8f5e9; color:#2e7d32; font-weight:bold;" onclick="app.applyTransform(0, 0, 1.1, 1.1)">➕ 10%</button>
+                        <button class="btn" style="flex:1; background:#ffebee; color:#c62828; font-weight:bold;" onclick="app.applyTransform(0, 0, 0.9, 0.9)">➖ 10%</button>
                     </div>
-                    <div style="display:flex; gap:5px; margin-top:10px;">
-                        <button class="btn" style="flex:1" onclick="app.toggleFlip('H')">↔️ Miroir H</button>
-                        <button class="btn" style="flex:1" onclick="app.toggleFlip('V')">↕️ Miroir V</button>
+
+                    <!-- MIROIR -->
+                    <label>Miroir :</label>
+                    <div style="display:flex; gap:5px; margin-bottom:10px;">
+                        <button class="btn" style="flex:1" onclick="app.applyTransform(0, 0, -1, 1)">↔️ Horiz.</button>
+                        <button class="btn" style="flex:1" onclick="app.applyTransform(0, 0, 1, -1)">↕️ Vert.</button>
+                    </div>
+                    
+                    <div id="div-opacity" style="display:none; margin-top:15px; border-top:1px solid #eee; padding-top:10px;">
+                        <div class="row"><label>🌗 Opacité (Image uniquement) :</label></div>
+                        <div class="row-slider">
+                            <button class="btn btn-icon" onclick="app.stepSlider('img-opacity', -5)">➖</button>
+                            <input type="range" id="img-opacity" min="0" max="100" value="100" oninput="app.updateOpacityLive()">
+                            <button class="btn btn-icon" onclick="app.stepSlider('img-opacity', 5)">➕</button>
+                        </div>
                     </div>
                 </fieldset>
             </div>
@@ -395,10 +398,11 @@
                 <div style="font-size: 11px; color: #666; margin-bottom: 5px; text-align: center;">Maintien long pour glisser-déposer (Drag&Drop)</div>
                 <ul id="layer-list"></ul>
                 
-                <div style="display:flex; gap:5px; margin-top:10px;">
-                    <button class="btn" id="btn-lock" style="flex:1" onclick="app.toggleLock()">🔒 Verrouiller</button>
-                    <button class="btn" id="btn-merge" style="flex:1; background:#e8f5e9; color:#2e7d32;" onclick="app.mergeSelected()">🔗 Fusionner</button>
-                    <button class="btn" id="btn-delete" style="flex:1; background:#ffebee; color:#c62828;" onclick="app.deleteSelected()">🗑️ Suppr.</button>
+                <div style="display:flex; flex-wrap: wrap; gap:5px; margin-top:10px;">
+                    <button class="btn" id="btn-lock" style="flex:1; min-width:45%;" onclick="app.toggleLock()">🔒 Verr.</button>
+                    <button class="btn" id="btn-dup" style="flex:1; min-width:45%; background:#e3f2fd; color:#1565c0;" onclick="app.duplicateSelected()">📑 Dupl.</button>
+                    <button class="btn" id="btn-merge" style="flex:1; min-width:45%; background:#e8f5e9; color:#2e7d32;" onclick="app.mergeSelected()">🔗 Fus.</button>
+                    <button class="btn" id="btn-delete" style="flex:1; min-width:45%; background:#ffebee; color:#c62828;" onclick="app.deleteSelected()">🗑️ Sup.</button>
                 </div>
             </div>
         </div>
@@ -415,7 +419,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v2.9 (Texte Externe)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v3.0 (Mode Sécurisé & Transformations)</span>
     </div>
 
 <script>
@@ -673,6 +677,112 @@ const app = {
         return pts;
     },
 
+    // --- SYSTEME DE TRANSFORMATION (V3.0) ---
+    transformLayerData(l, dx, dy, sx, sy) {
+        if (l.type === 'image' || l.type === 'imported_path') {
+            l.x += dx; l.y -= dy; // Inversion Y pour l'axe visuel du canevas par rapport aux boutons
+            if (sx === -1) l.flipH = !l.flipH; else if (sx !== 1) l.scale *= sx;
+            if (sy === -1) l.flipV = !l.flipV; else if (sy !== 1) l.scale *= sy;
+            if (l.type === 'imported_path') this.recalcImportedPath(l);
+        } else if (l.type === 'text') {
+            l.x += dx; l.y -= dy;
+            if (sx !== 1 && sx !== -1) l.charW *= sx;
+            if (sy !== 1 && sy !== -1) l.charH *= sy;
+            // Note: Miroir non pris en charge nativement sur le calque texte généré.
+            l.points = this.generateTextPoints(l);
+        } else {
+            // Vecteurs (pen, zigzag, interp, wall)
+            let pts = [];
+            if (l.points) pts.push(...l.points);
+            if (l.boundary) pts.push(...l.boundary);
+            if (l.guideCurve) pts.push(...l.guideCurve);
+            if (l.line1) pts.push(...l.line1);
+            if (l.line2) pts.push(...l.line2);
+
+            if (pts.length === 0) return;
+
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            pts.forEach(p => {
+                if(p.x < minX) minX = p.x; if(p.x > maxX) maxX = p.x;
+                if(p.y < minY) minY = p.y; if(p.y > maxY) maxY = p.y;
+            });
+            let cx = (minX + maxX) / 2; let cy = (minY + maxY) / 2;
+
+            const transformArray = (arr) => {
+                if (!arr) return;
+                for (let i=0; i<arr.length; i++) {
+                    let nx = arr[i].x - cx; let ny = arr[i].y - cy;
+                    arr[i].x = (nx * sx) + cx + dx;
+                    arr[i].y = (ny * sy) + cy - dy; // Inversion visuelle Y pour les vecteurs aussi
+                }
+            };
+
+            transformArray(l.points); transformArray(l.boundary);
+            transformArray(l.guideCurve); transformArray(l.line1); transformArray(l.line2);
+
+            // Re-génération locale si c'est un calque paramétrique après la transformation
+            if (l.type === 'zigzag' && (l.zigzagType === 'angle' || l.zigzagType === 'spiral' || l.zigzagType === 'guide')) l.points = this.generateZigzag(l);
+            if (l.type === 'interp') l.points = this.generateInterpolation(l.line1, l.line2, l.steps, l.roundTrip);
+        }
+    },
+
+    applyTransform(dx, dy, sx, sy) {
+        if (this.selectedIds.length === 0) return;
+        this.saveState();
+        this.selectedIds.forEach(id => {
+            let info = this.findLayer(id);
+            if (info && !info.layer.locked) {
+                this.transformLayerData(info.layer, dx, dy, sx, sy);
+            }
+        });
+        this.invalidateSim(); this.draw(); this.autoSave(); this.refreshLayerList();
+    },
+
+    duplicateSelected() {
+        if (this.selectedIds.length === 0) return;
+        this.saveState();
+        
+        let newIds = [];
+        const duplicateRecursive = (layer) => {
+            let copy = JSON.parse(JSON.stringify(layer));
+            copy.id = this.genId();
+            copy.name = copy.name + " (Copie)";
+            if (copy.type === 'image') copy.img = layer.img;
+            
+            // Décaler légèrement la copie pour la voir (+20 px)
+            this.transformLayerData(copy, 20, -20, 1, 1);
+            
+            if (copy.type === 'folder' && copy.layers) {
+                copy.layers = copy.layers.map(child => duplicateRecursive(child));
+            }
+            newIds.push(copy.id);
+            return copy;
+        };
+
+        let toCopy = [];
+        const findTops = (arr) => {
+            for (let l of arr) {
+                if (this.selectedIds.includes(l.id)) toCopy.push(l);
+                else if (l.type === 'folder' && l.layers) findTops(l.layers);
+            }
+        };
+        findTops(this.layers);
+
+        if (toCopy.length > 0) {
+            let info = this.findLayer(toCopy[toCopy.length - 1].id);
+            let targetArr = info ? info.parentArr : this.layers;
+            let insertIdx = info ? info.idx + 1 : 0;
+
+            let copies = toCopy.map(l => duplicateRecursive(l));
+            // On insère après les éléments sélectionnés
+            targetArr.splice(insertIdx, 0, ...copies);
+        }
+
+        this.selectedIds = newIds;
+        this.invalidateSim(); this.refreshLayerList(); this.autoSave();
+    },
+    // ----------------------------------------
+
     setupEvents() {
         const wrapper = document.getElementById('canvas-wrapper');
         let activePointers = new Map(); let initPinchDist = null; let initPinchZoom = 1.0; let initPinchCenter = null;
@@ -722,14 +832,13 @@ const app = {
                 this.ui.isDrawing = false; this.ui.isPanning = false; return;
             }
 
+            // MÀJ v3.0 : L'outil de sélection (ou Clic Droit) déclenche UNIQUEMENT le Panoramique
+            // Il n'y a plus de déplacement libre des calques par glissement direct, 
+            // pour garantir la sécurité du design.
             if (e.button === 2 || this.ui.tool === 'select') {
-                let selInfo = this.selectedIds.length === 1 ? this.findLayer(this.selectedIds[0]) : null;
-                let sel = selInfo ? selInfo.layer : null;
-                if (e.button !== 2 && this.ui.tool === 'select' && sel && (sel.type === 'image' || sel.type === 'imported_path' || sel.type === 'text') && !sel.effectiveLocked) {
-                    this.ui.isDraggingImage = true; this.pos.startImgDrag = { x: e.clientX, y: e.clientY, initX: sel.x, initY: sel.y }; wrapper.style.cursor = 'move';
-                } else {
-                    this.ui.isPanning = true; this.pos.startPan = { x: e.clientX - this.ui.panX, y: e.clientY - this.ui.panY }; wrapper.style.cursor = 'grabbing';
-                }
+                this.ui.isPanning = true; 
+                this.pos.startPan = { x: e.clientX - this.ui.panX, y: e.clientY - this.ui.panY }; 
+                wrapper.style.cursor = 'grabbing';
                 return;
             }
             
@@ -796,18 +905,6 @@ const app = {
                 this.pos.lastLiquify = ptScene; this.draw(); return;
             }
 
-            if (this.ui.isDraggingImage) {
-                let sel = this.findLayer(this.selectedIds[0]).layer;
-                if (sel) {
-                    sel.x = this.pos.startImgDrag.initX + (e.clientX - this.pos.startImgDrag.x) / this.ui.zoom;
-                    sel.y = this.pos.startImgDrag.initY + (e.clientY - this.pos.startImgDrag.y) / this.ui.zoom;
-                    if (sel.type === 'imported_path') this.recalcImportedPath(sel);
-                    else if (sel.type === 'text') sel.points = this.generateTextPoints(sel);
-                    this.draw();
-                }
-                return;
-            }
-
             if (this.ui.isPanning) { this.ui.panX = e.clientX - this.pos.startPan.x; this.ui.panY = e.clientY - this.pos.startPan.y; this.draw(); return; }
 
             if (this.ui.isDrawing) {
@@ -847,7 +944,6 @@ const app = {
             }
 
             if (this.ui.isLiquifying) { this.ui.isLiquifying = false; this.invalidateSim(); this.autoSave(); }
-            if (this.ui.isDraggingImage) { this.ui.isDraggingImage = false; wrapper.style.cursor = 'pointer'; this.invalidateSim(); this.autoSave(); }
             if (this.ui.isPanning) { this.ui.isPanning = false; wrapper.style.cursor = this.ui.tool === 'select' ? 'pointer' : 'crosshair'; }
             
             if (this.ui.isDrawing) {
@@ -1577,15 +1673,18 @@ const app = {
     refreshLayerList() {
         document.getElementById('layer-list').innerHTML = this.renderTree(this.layers, 0);
         let selInfo = this.selectedIds.length === 1 ? this.findLayer(this.selectedIds[0]) : null; let sel = selInfo ? selInfo.layer : null;
-        document.getElementById('btn-lock').disabled = this.selectedIds.length === 0; document.getElementById('btn-delete').disabled = this.selectedIds.length === 0; document.getElementById('btn-merge').disabled = this.selectedIds.length < 2;
+        document.getElementById('btn-lock').disabled = this.selectedIds.length === 0; document.getElementById('btn-delete').disabled = this.selectedIds.length === 0; document.getElementById('btn-merge').disabled = this.selectedIds.length < 2; document.getElementById('btn-dup').disabled = this.selectedIds.length === 0;
         if(sel) document.getElementById('btn-lock').innerText = sel.locked ? "🔓 Déverrouiller" : "🔒 Verrouiller";
 
         const fsTransform = document.getElementById('fs-transform');
-        if (sel && (sel.type === 'image' || sel.type === 'imported_path') && !sel.effectiveLocked) {
-            fsTransform.disabled = false; document.getElementById('img-scale').value = sel.scale * 100; document.getElementById('img-rot').value = sel.rot; document.getElementById('val-rot').innerText = sel.rot + "°";
-            if (sel.type === 'image') { document.getElementById('img-opacity').value = (sel.opacity !== undefined ? sel.opacity : 1.0) * 100; document.getElementById('div-opacity').style.display = 'block'; document.getElementById('div-thr-width').style.display = 'none'; } 
-            else { document.getElementById('div-opacity').style.display = 'none'; document.getElementById('div-thr-width').style.display = 'block'; document.getElementById('thr-width').value = (sel.width !== undefined ? sel.width : 1.0) * 10; document.getElementById('val-thr-width').innerText = (sel.width !== undefined ? sel.width : 1.0).toFixed(1); }
-        } else { fsTransform.disabled = true; }
+        if (this.selectedIds.length > 0) {
+            let allUnlocked = this.selectedIds.every(id => { let f = this.findLayer(id); return f && !f.layer.effectiveLocked; });
+            fsTransform.disabled = !allUnlocked;
+            
+            if (this.selectedIds.length === 1 && sel && sel.type === 'image') {
+                document.getElementById('div-opacity').style.display = 'block'; document.getElementById('img-opacity').value = (sel.opacity !== undefined ? sel.opacity : 1.0) * 100;
+            } else { document.getElementById('div-opacity').style.display = 'none'; }
+        } else { fsTransform.disabled = true; document.getElementById('div-opacity').style.display = 'none'; }
 
         if (sel && sel.type === 'text') {
             document.getElementById('text-c').value = sel.charCount || 5; document.getElementById('val-text-c').innerText = sel.charCount || 5;
@@ -1767,25 +1866,12 @@ const app = {
         });
     },
 
-    updateTransform() {
+    updateOpacityLive() {
         let sel = this.findLayer(this.selectedIds[0]);
-        if(sel && (sel.layer.type === 'image' || sel.layer.type === 'imported_path')) {
+        if(sel && sel.layer.type === 'image') {
             this.saveState();
-            if (sel.layer.type === 'image') sel.layer.opacity = document.getElementById('img-opacity').value / 100.0;
-            else { sel.layer.width = document.getElementById('thr-width').value / 10.0; document.getElementById('val-thr-width').innerText = sel.layer.width.toFixed(1); }
-            sel.layer.scale = document.getElementById('img-scale').value / 100.0; sel.layer.rot = parseInt(document.getElementById('img-rot').value); document.getElementById('val-rot').innerText = sel.layer.rot + "°";
-            if (sel.layer.type === 'imported_path') { this.recalcImportedPath(sel.layer); this.invalidateSim(); }
-            this.draw();
-        }
-    },
-
-    toggleFlip(axis) {
-        let sel = this.findLayer(this.selectedIds[0]);
-        if(sel && (sel.layer.type === 'image' || sel.layer.type === 'imported_path')) {
-            this.saveState();
-            if(axis === 'H') sel.layer.flipH = !sel.layer.flipH; else sel.layer.flipV = !sel.layer.flipV;
-            if (sel.layer.type === 'imported_path') { this.recalcImportedPath(sel.layer); this.invalidateSim(); }
-            this.draw();
+            sel.layer.opacity = document.getElementById('img-opacity').value / 100.0;
+            this.draw(); this.autoSave();
         }
     },
 
@@ -1881,7 +1967,7 @@ const app = {
             }
         }
         if (outOfBoundsCount > 0) {
-            let proceed = confirm(`⚠️ ${outOfBoundsCount} point(s) semblent situés hors des limites physiques du plateau (souvent après une déformation avec l'outil Liquify). Le moteur pourrait forcer sur la mécanique. Exporter quand même ?`);
+            let proceed = confirm(`⚠️ ${outOfBoundsCount} point(s) semblent situés hors des limites physiques du plateau. Le moteur pourrait forcer sur la mécanique. Exporter quand même ?`);
             if (!proceed) return;
         }
         
