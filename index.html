@@ -184,7 +184,7 @@
 
                 <fieldset id="opts-liquify" style="display:none; background:#e1f5fe;">
                     <legend>💧 Pinceau Déformation</legend>
-                    <div style="font-size:11px; margin-bottom:10px; color:#555;">Glissez sur la table pour tordre le tracé.</div>
+                    <div style="font-size:11px; margin-bottom:10px; color:#555;">Glissez sur la table pour tordre le tracé sélectionné. Le contour initial des zigzags est protégé.</div>
                     <div class="row"><label>🔴 Taille du pinceau :</label> <span class="val-badge" id="val-liq-radius">30</span></div>
                     <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('liq-radius', -5)">➖</button><input type="range" id="liq-radius" min="5" max="200" value="30" oninput="app.updateSliders()"><button class="btn btn-icon" onclick="app.stepSlider('liq-radius', 5)">➕</button></div>
                     <div class="row"><label>💪 Force :</label> <span class="val-badge" id="val-liq-str">50%</span></div>
@@ -267,7 +267,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v3.3 (Transfo Dossiers & Dupliquer Pro)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v3.4 (Zero-Deformation Transfo)</span>
     </div>
 
 <script>
@@ -481,8 +481,6 @@ const app = {
         if (curr.type === 'text') {
             curr.x = cx + (orig.x - cx) * sx + dx; curr.y = cy + (orig.y - cy) * sy + dy;
             curr.charW = Math.max(5, orig.charW * Math.abs(sx)); curr.charH = Math.max(5, orig.charH * Math.abs(sy)); curr.spacing = orig.spacing * Math.abs(sx);
-            curr.points = this.generateTextPoints(curr);
-            return;
         }
 
         const tf = (oPts, cPts) => {
@@ -492,9 +490,6 @@ const app = {
 
         if (orig.points) tf(orig.points, curr.points); if (orig.boundary) tf(orig.boundary, curr.boundary);
         if (orig.guideCurve) tf(orig.guideCurve, curr.guideCurve); if (orig.line1) tf(orig.line1, curr.line1); if (orig.line2) tf(orig.line2, curr.line2);
-
-        if (curr.type === 'zigzag' && (curr.zigzagType === 'angle' || curr.zigzagType === 'spiral' || curr.zigzagType === 'guide')) curr.points = this.generateZigzag(curr);
-        else if (curr.type === 'interp') curr.points = this.generateInterpolation(curr.line1, curr.line2, curr.steps, curr.roundTrip);
     },
 
     transformLayerData(l, dx, dy, sx, sy, cx = null, cy = null) {
@@ -514,7 +509,6 @@ const app = {
         if (l.type === 'text') {
             if (cx !== null && cy !== null) { let nx = l.x - cx; let ny = l.y - cy; l.x = (nx * sx) + cx + dx; l.y = (ny * sy) + cy - dy; } else { l.x += dx; l.y -= dy; }
             if (sx !== 1 && sx !== -1) l.charW = Math.max(5, l.charW * Math.abs(sx)); if (sy !== 1 && sy !== -1) l.charH = Math.max(5, l.charH * Math.abs(sy)); if (sx !== 1 && sx !== -1) l.spacing = l.spacing * Math.abs(sx);
-            l.points = this.generateTextPoints(l); return;
         }
 
         let pts = []; if (l.points) pts.push(...l.points); if (l.boundary) pts.push(...l.boundary); if (l.guideCurve) pts.push(...l.guideCurve); if (l.line1) pts.push(...l.line1); if (l.line2) pts.push(...l.line2);
@@ -529,9 +523,6 @@ const app = {
 
         const tArr = (arr) => { if (!arr) return; for (let i=0; i<arr.length; i++) { arr[i].x = ((arr[i].x - center_x) * sx) + center_x + dx; arr[i].y = ((arr[i].y - center_y) * sy) + center_y - dy; } };
         tArr(l.points); tArr(l.boundary); tArr(l.guideCurve); tArr(l.line1); tArr(l.line2);
-
-        if (l.type === 'zigzag' && (l.zigzagType === 'angle' || l.zigzagType === 'spiral' || l.zigzagType === 'guide')) l.points = this.generateZigzag(l);
-        if (l.type === 'interp') l.points = this.generateInterpolation(l.line1, l.line2, l.steps, l.roundTrip);
     },
 
     deepCopyLayerWithImages(layer) {
@@ -1112,6 +1103,8 @@ const app = {
                     this.saveState();
                     sel.layer.zigzagType = type; sel.layer.spiralDir = document.getElementById('spiral-dir') ? document.getElementById('spiral-dir').value : 'in'; sel.layer.lineStyle = this.ui.zigzagLineStyle;
                     sel.layer.waveAmp = this.ui.waveAmp; sel.layer.waveLen = this.ui.waveLen; sel.layer.angle = this.ui.zigzagAngle; sel.layer.spacing = this.ui.zigzagSpacing;
+                    // Retrait volontaire du regenerate automatique pour éviter la perte de déformation.
+                    // Si l'utilisateur change les paramètres dans le menu de droite, c'est le seul moment où la régénération opère.
                     if (type === 'angle' || type === 'spiral' || (type === 'guide' && sel.layer.guideCurve)) sel.layer.points = this.generateZigzag(sel.layer);
                     else if (type === 'guide' && typeChanged) this.startDrawingGuide();
                     this.invalidateSim(); this.draw(); this.autoSave();
