@@ -140,7 +140,7 @@
             <div id="tab-tools" class="tab-content">
                 <fieldset>
                     <legend>🛠️ Outils Actifs</legend>
-                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="select" checked onchange="app.changeTool()"> 🖐️ Sélection (Déplacement de vue)</label>
+                    <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="select" checked onchange="app.changeTool()"> 🖐️ Sélection (Transformer & Vue)</label>
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="pen" onchange="app.changeTool()"> ✏️ Crayon (Dessin continu)</label>
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="text" onchange="app.changeTool()"> 🔤 Texte (Cases & Lettres)</label>
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="zigzag" onchange="app.changeTool()"> 〰️ Remplissage (Zones)</label>
@@ -333,37 +333,28 @@
                 <fieldset id="fs-transform" disabled style="background:#fff;">
                     <legend>📐 Transformer la sélection</legend>
                     
-                    <div style="text-align:center; font-size:11px; color:#666; margin-bottom:15px;">
-                        Déplacez, redimensionnez ou retournez le(s) calque(s) actif(s).
+                    <div style="text-align:center; font-size:12px; color:#1565c0; font-weight:bold; margin-bottom:15px; background: #e3f2fd; padding:10px; border-radius: 6px;">
+                        💡 Utilisez l'outil "🖐️ Sélection" pour déplacer et redimensionner le calque directement sur la table avec les points d'ancrage.
                     </div>
 
-                    <!-- DEPLACEMENT -->
-                    <label>Déplacement (Pas de 10mm) :</label>
-                    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:5px; margin-bottom:15px; max-width: 150px; margin-left: auto; margin-right: auto;">
-                        <div></div>
-                        <button class="btn" style="font-size:16px; background:#f0f0f0;" onclick="app.applyTransform(0, 10, 1, 1)">⬆️</button>
-                        <div></div>
-                        <button class="btn" style="font-size:16px; background:#f0f0f0;" onclick="app.applyTransform(-10, 0, 1, 1)">⬅️</button>
-                        <button class="btn" style="font-size:16px; background:#f0f0f0;" onclick="app.applyTransform(0, -10, 1, 1)">⬇️</button>
-                        <button class="btn" style="font-size:16px; background:#f0f0f0;" onclick="app.applyTransform(10, 0, 1, 1)">➡️</button>
-                    </div>
-
-                    <!-- ECHELLE -->
-                    <label>Échelle (Taille) :</label>
-                    <div style="display:flex; gap:5px; margin-bottom:15px;">
-                        <button class="btn" style="flex:1; background:#e8f5e9; color:#2e7d32; font-weight:bold;" onclick="app.applyTransform(0, 0, 1.1, 1.1)">➕ 10%</button>
-                        <button class="btn" style="flex:1; background:#ffebee; color:#c62828; font-weight:bold;" onclick="app.applyTransform(0, 0, 0.9, 0.9)">➖ 10%</button>
-                    </div>
-
-                    <!-- MIROIR -->
+                    <!-- MIROIR & ROTATION -->
                     <label>Miroir :</label>
                     <div style="display:flex; gap:5px; margin-bottom:10px;">
-                        <button class="btn" style="flex:1" onclick="app.applyTransform(0, 0, -1, 1)">↔️ Horiz.</button>
-                        <button class="btn" style="flex:1" onclick="app.applyTransform(0, 0, 1, -1)">↕️ Vert.</button>
+                        <button class="btn" style="flex:1" onclick="app.toggleFlip('H')">↔️ Horiz.</button>
+                        <button class="btn" style="flex:1" onclick="app.toggleFlip('V')">↕️ Vert.</button>
+                    </div>
+                    
+                    <div id="div-rot" style="display:none;">
+                        <div class="row"><label>🔄 Rotation :</label> <span class="val-badge" id="val-rot">0°</span></div>
+                        <div class="row-slider">
+                            <button class="btn btn-icon" onclick="app.stepSlider('img-rot', -1)">➖</button>
+                            <input type="range" id="img-rot" min="-180" max="180" value="0" oninput="app.updateTransform()">
+                            <button class="btn btn-icon" onclick="app.stepSlider('img-rot', 1)">➕</button>
+                        </div>
                     </div>
                     
                     <div id="div-opacity" style="display:none; margin-top:15px; border-top:1px solid #eee; padding-top:10px;">
-                        <div class="row"><label>🌗 Opacité (Image uniquement) :</label></div>
+                        <div class="row"><label>🌗 Opacité (Image) :</label></div>
                         <div class="row-slider">
                             <button class="btn btn-icon" onclick="app.stepSlider('img-opacity', -5)">➖</button>
                             <input type="range" id="img-opacity" min="0" max="100" value="100" oninput="app.updateOpacityLive()">
@@ -419,7 +410,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v3.0 (Mode Sécurisé & Transformations)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v3.1 (Transformation visuelle & Box)</span>
     </div>
 
 <script>
@@ -449,13 +440,14 @@ const app = {
     
     ui: {
         tool: 'select', penWidth: 1.5, ropeLength: 5.0, tremor: 0.0, color: '#000000',
-        zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isDraggingImage: false, isLiquifying: false,
+        zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isLiquifying: false,
         zigzagLineStyle: 'straight', waveAmp: 2.0, waveLen: 15.0,
         zigzagAngle: 0, zigzagSpacing: 2.0, zigzagDrawMode: 'contour', liquifyRadius: 30, liquifyStrength: 50, wandTolerance: 30, pointerHover: null,
-        interpSteps: 6, interpState: 0, interpRoundTrip: true
+        interpSteps: 6, interpState: 0, interpRoundTrip: true,
+        activeTransform: null
     },
     
-    pos: { startPan: {x:0, y:0}, startImgDrag: {x:0, y:0, initX:0, initY:0}, anchor: {x:0, y:0}, lastSmoothed: {x:0, y:0}, currentPath: [], lastLiquify: {x:0, y:0}, lastClick: {x:0, y:0}, interpLine1: null },
+    pos: { startPan: {x:0, y:0}, anchor: {x:0, y:0}, lastSmoothed: {x:0, y:0}, currentPath: [], lastLiquify: {x:0, y:0}, lastClick: {x:0, y:0}, interpLine1: null },
 
     sunaeAlphabet: typeof alphabetData !== 'undefined' ? alphabetData : {},
 
@@ -677,109 +669,72 @@ const app = {
         return pts;
     },
 
-    // --- SYSTEME DE TRANSFORMATION (V3.0) ---
-    transformLayerData(l, dx, dy, sx, sy) {
-        if (l.type === 'image' || l.type === 'imported_path') {
-            l.x += dx; l.y -= dy; // Inversion Y pour l'axe visuel du canevas par rapport aux boutons
-            if (sx === -1) l.flipH = !l.flipH; else if (sx !== 1) l.scale *= sx;
-            if (sy === -1) l.flipV = !l.flipV; else if (sy !== 1) l.scale *= sy;
-            if (l.type === 'imported_path') this.recalcImportedPath(l);
-        } else if (l.type === 'text') {
-            l.x += dx; l.y -= dy;
-            if (sx !== 1 && sx !== -1) l.charW *= sx;
-            if (sy !== 1 && sy !== -1) l.charH *= sy;
-            // Note: Miroir non pris en charge nativement sur le calque texte généré.
-            l.points = this.generateTextPoints(l);
+    // --- SYSTEME DE TRANSFORMATION VISUELLE ---
+    getLayerBBox(l) {
+        if (!l) return null;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+        if (l.type === 'image' && l.img) {
+            let w = l.img.width * l.scale; let h = l.img.height * l.scale;
+            return { minX: l.x - w/2, minY: l.y - h/2, maxX: l.x + w/2, maxY: l.y + h/2 };
         } else {
-            // Vecteurs (pen, zigzag, interp, wall)
             let pts = [];
-            if (l.points) pts.push(...l.points);
-            if (l.boundary) pts.push(...l.boundary);
-            if (l.guideCurve) pts.push(...l.guideCurve);
-            if (l.line1) pts.push(...l.line1);
-            if (l.line2) pts.push(...l.line2);
-
-            if (pts.length === 0) return;
-
-            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            if (l.points && l.points.length > 0) pts.push(...l.points);
+            else if (l.boundary && l.boundary.length > 0) pts.push(...l.boundary);
+            
+            if (pts.length === 0) return null;
             pts.forEach(p => {
-                if(p.x < minX) minX = p.x; if(p.x > maxX) maxX = p.x;
-                if(p.y < minY) minY = p.y; if(p.y > maxY) maxY = p.y;
+                if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+                if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
             });
-            let cx = (minX + maxX) / 2; let cy = (minY + maxY) / 2;
-
-            const transformArray = (arr) => {
-                if (!arr) return;
-                for (let i=0; i<arr.length; i++) {
-                    let nx = arr[i].x - cx; let ny = arr[i].y - cy;
-                    arr[i].x = (nx * sx) + cx + dx;
-                    arr[i].y = (ny * sy) + cy - dy; // Inversion visuelle Y pour les vecteurs aussi
-                }
-            };
-
-            transformArray(l.points); transformArray(l.boundary);
-            transformArray(l.guideCurve); transformArray(l.line1); transformArray(l.line2);
-
-            // Re-génération locale si c'est un calque paramétrique après la transformation
-            if (l.type === 'zigzag' && (l.zigzagType === 'angle' || l.zigzagType === 'spiral' || l.zigzagType === 'guide')) l.points = this.generateZigzag(l);
-            if (l.type === 'interp') l.points = this.generateInterpolation(l.line1, l.line2, l.steps, l.roundTrip);
+            if (minX === Infinity) return null;
+            return { minX, minY, maxX, maxY };
         }
     },
 
-    applyTransform(dx, dy, sx, sy) {
-        if (this.selectedIds.length === 0) return;
-        this.saveState();
-        this.selectedIds.forEach(id => {
-            let info = this.findLayer(id);
-            if (info && !info.layer.locked) {
-                this.transformLayerData(info.layer, dx, dy, sx, sy);
-            }
-        });
-        this.invalidateSim(); this.draw(); this.autoSave(); this.refreshLayerList();
-    },
+    applyAbsoluteTransform(orig, curr, dx, dy, sx, sy, cx, cy) {
+        if (Math.abs(sx) < 0.05) sx = sx < 0 ? -0.05 : 0.05;
+        if (Math.abs(sy) < 0.05) sy = sy < 0 ? -0.05 : 0.05;
 
-    duplicateSelected() {
-        if (this.selectedIds.length === 0) return;
-        this.saveState();
-        
-        let newIds = [];
-        const duplicateRecursive = (layer) => {
-            let copy = JSON.parse(JSON.stringify(layer));
-            copy.id = this.genId();
-            copy.name = copy.name + " (Copie)";
-            if (copy.type === 'image') copy.img = layer.img;
-            
-            // Décaler légèrement la copie pour la voir (+20 px)
-            this.transformLayerData(copy, 20, -20, 1, 1);
-            
-            if (copy.type === 'folder' && copy.layers) {
-                copy.layers = copy.layers.map(child => duplicateRecursive(child));
-            }
-            newIds.push(copy.id);
-            return copy;
-        };
-
-        let toCopy = [];
-        const findTops = (arr) => {
-            for (let l of arr) {
-                if (this.selectedIds.includes(l.id)) toCopy.push(l);
-                else if (l.type === 'folder' && l.layers) findTops(l.layers);
-            }
-        };
-        findTops(this.layers);
-
-        if (toCopy.length > 0) {
-            let info = this.findLayer(toCopy[toCopy.length - 1].id);
-            let targetArr = info ? info.parentArr : this.layers;
-            let insertIdx = info ? info.idx + 1 : 0;
-
-            let copies = toCopy.map(l => duplicateRecursive(l));
-            // On insère après les éléments sélectionnés
-            targetArr.splice(insertIdx, 0, ...copies);
+        if (curr.type === 'image') {
+            curr.x = cx + (orig.x - cx) * sx + dx;
+            curr.y = cy + (orig.y - cy) * sy + dy;
+            curr.scale = orig.scale * Math.max(Math.abs(sx), Math.abs(sy));
+            return;
         }
 
-        this.selectedIds = newIds;
-        this.invalidateSim(); this.refreshLayerList(); this.autoSave();
+        if (curr.type === 'text') {
+            curr.x = cx + (orig.x - cx) * sx + dx;
+            curr.y = cy + (orig.y - cy) * sy + dy;
+            curr.charW = Math.max(5, orig.charW * Math.abs(sx));
+            curr.charH = Math.max(5, orig.charH * Math.abs(sy));
+            curr.spacing = orig.spacing * Math.abs(sx);
+            curr.points = this.generateTextPoints(curr);
+            return;
+        }
+
+        const tf = (oPts, cPts) => {
+            if (!oPts || !cPts || oPts.length !== cPts.length) return;
+            for (let i = 0; i < oPts.length; i++) {
+                cPts[i].x = cx + (oPts[i].x - cx) * sx + dx;
+                cPts[i].y = cy + (oPts[i].y - cy) * sy + dy;
+            }
+        };
+
+        if (orig.points) tf(orig.points, curr.points);
+        if (orig.boundary) tf(orig.boundary, curr.boundary);
+        if (orig.guideCurve) tf(orig.guideCurve, curr.guideCurve);
+        if (orig.line1) tf(orig.line1, curr.line1);
+        if (orig.line2) tf(orig.line2, curr.line2);
+        if (orig.originalPoints) tf(orig.originalPoints, curr.originalPoints);
+
+        if (curr.type === 'zigzag' && (curr.zigzagType === 'angle' || curr.zigzagType === 'spiral' || curr.zigzagType === 'guide')) {
+            curr.points = this.generateZigzag(curr);
+        } else if (curr.type === 'interp') {
+            curr.points = this.generateInterpolation(curr.line1, curr.line2, curr.steps, curr.roundTrip);
+        } else if (curr.type === 'imported_path') {
+            this.recalcImportedPath(curr);
+        }
     },
     // ----------------------------------------
 
@@ -792,13 +747,14 @@ const app = {
             let ptScene = this.getScenePos(e.clientX, e.clientY); this.pos.lastClick = ptScene;
 
             if (activePointers.size === 2) {
-                this.ui.isDrawing = false; this.ui.isPanning = false; this.ui.isDraggingImage = false; this.ui.isLiquifying = false; this.pos.currentPath = [];
+                this.ui.isDrawing = false; this.ui.isPanning = false; this.ui.isLiquifying = false; this.ui.activeTransform = null; this.pos.currentPath = [];
                 let pts = Array.from(activePointers.values());
                 initPinchDist = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
                 initPinchZoom = this.ui.zoom; initPinchCenter = { x: (pts[0].clientX + pts[1].clientX)/2, y: (pts[0].clientY + pts[1].clientY)/2 };
                 return;
             }
 
+            // Gestion écriture dans les cases Texte
             let clickedSlot = null; let clickedLayer = null;
             if (this.ui.tool === 'text') {
                 let flat = this.getFlatLayers();
@@ -832,13 +788,44 @@ const app = {
                 this.ui.isDrawing = false; this.ui.isPanning = false; return;
             }
 
-            // MÀJ v3.0 : L'outil de sélection (ou Clic Droit) déclenche UNIQUEMENT le Panoramique
-            // Il n'y a plus de déplacement libre des calques par glissement direct, 
-            // pour garantir la sécurité du design.
-            if (e.button === 2 || this.ui.tool === 'select') {
-                this.ui.isPanning = true; 
-                this.pos.startPan = { x: e.clientX - this.ui.panX, y: e.clientY - this.ui.panY }; 
-                wrapper.style.cursor = 'grabbing';
+            // MÀJ v3.1 : Système visuel de Box de transformation
+            if (this.ui.tool === 'select') {
+                let selInfo = this.selectedIds.length === 1 ? this.findLayer(this.selectedIds[0]) : null;
+                let sel = selInfo ? selInfo.layer : null;
+                let hitTransform = false;
+
+                if (sel && !sel.effectiveLocked) {
+                    let bbox = this.getLayerBBox(sel);
+                    if (bbox) {
+                        let margin = 15 / this.ui.zoom;
+                        let hitMode = null;
+                        
+                        if (Math.hypot(ptScene.x - bbox.minX, ptScene.y - bbox.minY) < margin) hitMode = 'scale_nw';
+                        else if (Math.hypot(ptScene.x - bbox.maxX, ptScene.y - bbox.minY) < margin) hitMode = 'scale_ne';
+                        else if (Math.hypot(ptScene.x - bbox.minX, ptScene.y - bbox.maxY) < margin) hitMode = 'scale_sw';
+                        else if (Math.hypot(ptScene.x - bbox.maxX, ptScene.y - bbox.maxY) < margin) hitMode = 'scale_se';
+                        else if (ptScene.x >= bbox.minX && ptScene.x <= bbox.maxX && ptScene.y >= bbox.minY && ptScene.y <= bbox.maxY) {
+                            hitMode = 'move';
+                        }
+
+                        if (hitMode) {
+                            this.saveState();
+                            let origLayer = JSON.parse(JSON.stringify(sel));
+                            if (sel.type === 'image') origLayer.img = sel.img; // Garder la source image
+                            
+                            this.ui.activeTransform = { mode: hitMode, startX: ptScene.x, startY: ptScene.y, origBBox: bbox, origLayer: origLayer };
+                            wrapper.style.cursor = hitMode === 'move' ? 'move' : 'nwse-resize';
+                            hitTransform = true;
+                        }
+                    }
+                }
+
+                if (!hitTransform && e.button !== 2) {
+                    // Clic dans le vide -> Déplacement du Panoramique (Pan)
+                    this.ui.isPanning = true; 
+                    this.pos.startPan = { x: e.clientX - this.ui.panX, y: e.clientY - this.ui.panY }; 
+                    wrapper.style.cursor = 'grabbing';
+                }
                 return;
             }
             
@@ -887,6 +874,38 @@ const app = {
                     document.getElementById('zoom-workspace').value = this.ui.zoom * 100; document.getElementById('val-zoom').innerText = Math.round(this.ui.zoom * 100) + "%";
                     this.ui.panX += cx - initPinchCenter.x; this.ui.panY += cy - initPinchCenter.y; initPinchCenter = {x: cx, y: cy}; this.draw();
                 }
+                return;
+            }
+
+            // Gestion de la Box de Transformation active
+            if (this.ui.activeTransform) {
+                let tf = this.ui.activeTransform;
+                let dx = ptScene.x - tf.startX;
+                let dy = ptScene.y - tf.startY;
+                let sx = 1, sy = 1, cx = 0, cy = 0;
+                
+                if (tf.mode === 'move') {
+                    // Move seul
+                } else {
+                    let ob = tf.origBBox;
+                    let mw = ob.maxX - ob.minX; let mh = ob.maxY - ob.minY;
+                    if (mw < 1) mw = 1; if (mh < 1) mh = 1; // Sécurité div par 0
+
+                    if (tf.mode === 'scale_nw') {
+                        cx = ob.maxX; cy = ob.maxY; sx = (ob.maxX - ptScene.x) / mw; sy = (ob.maxY - ptScene.y) / mh;
+                    } else if (tf.mode === 'scale_ne') {
+                        cx = ob.minX; cy = ob.maxY; sx = (ptScene.x - ob.minX) / mw; sy = (ob.maxY - ptScene.y) / mh;
+                    } else if (tf.mode === 'scale_sw') {
+                        cx = ob.maxX; cy = ob.minY; sx = (ob.maxX - ptScene.x) / mw; sy = (ptScene.y - ob.minY) / mh;
+                    } else if (tf.mode === 'scale_se') {
+                        cx = ob.minX; cy = ob.minY; sx = (ptScene.x - ob.minX) / mw; sy = (ptScene.y - ob.minY) / mh;
+                    }
+                    dx = 0; dy = 0; // Le scale inclus la translation
+                }
+
+                let sel = this.findLayer(this.selectedIds[0]).layer;
+                this.applyAbsoluteTransform(tf.origLayer, sel, dx, dy, sx, sy, cx, cy);
+                this.draw();
                 return;
             }
 
@@ -941,6 +960,14 @@ const app = {
 
             if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand') {
                 if (Math.hypot((this.ui.pointerHover || this.pos.lastClick).x - this.pos.lastClick.x, (this.ui.pointerHover || this.pos.lastClick).y - this.pos.lastClick.y) < 10) this.executeMagicWand(this.pos.lastClick);
+            }
+
+            if (this.ui.activeTransform) {
+                this.ui.activeTransform = null;
+                this.invalidateSim(); this.draw(); this.autoSave();
+                this.refreshLayerList(); // Maj des sliders s'ils sont affichés
+                wrapper.style.cursor = 'crosshair';
+                if(this.ui.tool === 'select') wrapper.style.cursor = 'pointer';
             }
 
             if (this.ui.isLiquifying) { this.ui.isLiquifying = false; this.invalidateSim(); this.autoSave(); }
@@ -1484,6 +1511,32 @@ const app = {
             this.ctx.strokeStyle = "rgba(0, 120, 255, 0.6)"; this.ctx.lineWidth = this.ui.penWidth; this.ctx.setLineDash([5, 5]); this.ctx.stroke(); this.ctx.setLineDash([]);
         }
 
+        // MÀJ v3.1 : DESSIN DE LA BOX DE TRANSFORMATION
+        if (this.ui.tool === 'select' && this.selectedIds.length === 1) {
+            let selInfo = this.findLayer(this.selectedIds[0]);
+            if (selInfo && !selInfo.layer.effectiveLocked) {
+                let bbox = this.getLayerBBox(selInfo.layer);
+                if (bbox) {
+                    this.ctx.strokeStyle = '#0078D7';
+                    this.ctx.lineWidth = 1.5 / this.ui.zoom;
+                    this.ctx.setLineDash([5, 5]);
+                    this.ctx.strokeRect(bbox.minX, bbox.minY, bbox.maxX - bbox.minX, bbox.maxY - bbox.minY);
+                    this.ctx.setLineDash([]);
+                    
+                    this.ctx.fillStyle = '#ffffff';
+                    let s = 10 / this.ui.zoom;
+                    let drawHandle = (x, y) => {
+                        this.ctx.fillRect(x - s/2, y - s/2, s, s);
+                        this.ctx.strokeRect(x - s/2, y - s/2, s, s);
+                    };
+                    drawHandle(bbox.minX, bbox.minY);
+                    drawHandle(bbox.maxX, bbox.minY);
+                    drawHandle(bbox.minX, bbox.maxY);
+                    drawHandle(bbox.maxX, bbox.maxY);
+                }
+            }
+        }
+
         this.drawSimulation(flatLayers);
     },
 
@@ -1864,6 +1917,26 @@ const app = {
             let x = pt.x; let y = pt.y; if (layer.flipH) x = -x; if (layer.flipV) y = -y; x *= layer.scale; y *= layer.scale;
             return { x: x * cosA - y * sinA + layer.x, y: x * sinA + y * cosA + layer.y };
         });
+    },
+
+    updateTransform() {
+        let sel = this.findLayer(this.selectedIds[0]);
+        if(sel && (sel.layer.type === 'image' || sel.layer.type === 'imported_path')) {
+            this.saveState();
+            sel.layer.rot = parseInt(document.getElementById('img-rot').value); document.getElementById('val-rot').innerText = sel.layer.rot + "°";
+            if (sel.layer.type === 'imported_path') { this.recalcImportedPath(sel.layer); this.invalidateSim(); }
+            this.draw(); this.autoSave();
+        }
+    },
+
+    toggleFlip(axis) {
+        let sel = this.findLayer(this.selectedIds[0]);
+        if(sel && (sel.layer.type === 'image' || sel.layer.type === 'imported_path')) {
+            this.saveState();
+            if(axis === 'H') sel.layer.flipH = !sel.layer.flipH; else sel.layer.flipV = !sel.layer.flipV;
+            if (sel.layer.type === 'imported_path') { this.recalcImportedPath(sel.layer); this.invalidateSim(); }
+            this.draw(); this.autoSave();
+        }
     },
 
     updateOpacityLive() {
