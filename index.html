@@ -184,7 +184,7 @@
 
                 <fieldset id="opts-liquify" style="display:none; background:#e1f5fe;">
                     <legend>💧 Pinceau Déformation</legend>
-                    <div style="font-size:11px; margin-bottom:10px; color:#555;">Glissez sur la table pour tordre le tracé.</div>
+                    <div style="font-size:11px; margin-bottom:10px; color:#555;">Glissez sur la table pour tordre le tracé sélectionné. Le contour initial des zigzags est protégé.</div>
                     <div class="row"><label>🔴 Taille du pinceau :</label> <span class="val-badge" id="val-liq-radius">30</span></div>
                     <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('liq-radius', -5)">➖</button><input type="range" id="liq-radius" min="5" max="200" value="30" oninput="app.updateSliders()"><button class="btn btn-icon" onclick="app.stepSlider('liq-radius', 5)">➕</button></div>
                     <div class="row"><label>💪 Force :</label> <span class="val-badge" id="val-liq-str">50%</span></div>
@@ -212,9 +212,9 @@
                 <fieldset id="fs-transform" disabled style="background:#fff;">
                     <legend>📐 Transformer la sélection</legend>
                     <div style="text-align:center; font-size:12px; color:#1565c0; font-weight:bold; margin-bottom:15px; background: #e3f2fd; padding:10px; border-radius: 6px;">
-                        💡 Utilisez l'outil "🖐️ Sélection" pour déplacer et redimensionner le calque directement sur la table avec les points d'ancrage. <b>Maintenez SHIFT (Maj) pendant le redimensionnement pour conserver les proportions.</b>
+                        💡 Utilisez l'outil "🖐️ Sélection" pour déplacer et redimensionner le calque directement sur la table avec les points d'ancrage. <b>Maintenez SHIFT (Maj) ou CTRL pendant le redimensionnement pour conserver les proportions.</b>
                     </div>
-                    <label>Miroir :</label>
+                    <label>Miroir Global :</label>
                     <div style="display:flex; gap:5px; margin-bottom:10px;">
                         <button class="btn" style="flex:1" onclick="app.toggleFlip('H')">↔️ Horiz.</button>
                         <button class="btn" style="flex:1" onclick="app.toggleFlip('V')">↕️ Vert.</button>
@@ -267,7 +267,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v3.2 (Dupliquer & Proportions SHIFT)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v3.2 (No-Deform & Dupliquer Actif)</span>
     </div>
 
 <script>
@@ -414,7 +414,10 @@ const app = {
             allLines.push(interp);
         }
         allLines.push(P2); let filteredLines = [];
-        for (let i = 0; i < allLines.length; i++) { let valid = allLines[i].filter(pt => !this.isPointInWall(pt)); if (valid.length > 0) filteredLines.push(valid); }
+        for (let i = 0; i < allLines.length; i++) {
+            let valid = allLines[i].filter(pt => !this.isPointInWall(pt));
+            if (valid.length > 0) filteredLines.push(valid);
+        }
         allLines = filteredLines; let finalPath = []; if (allLines.length === 0) return finalPath;
         if (roundTrip) { for (let i = 0; i < allLines.length; i++) { finalPath.push(...allLines[i]); finalPath.push(...[...allLines[i]].reverse().slice(1)); } } 
         else { for (let i = 0; i < allLines.length; i++) { if (i % 2 === 0) finalPath.push(...allLines[i]); else finalPath.push(...[...allLines[i]].reverse()); } }
@@ -440,7 +443,7 @@ const app = {
         return pts;
     },
 
-    // --- SYSTEME DE TRANSFORMATION VISUELLE ---
+    // --- SYSTEME DE TRANSFORMATION VISUELLE SANS DEFORMATION ---
     getLayerBBox(l) {
         if (!l) return null; let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         if (l.type === 'image' && l.img) {
@@ -460,14 +463,15 @@ const app = {
         if (Math.abs(sx) < 0.05) sx = sx < 0 ? -0.05 : 0.05;
         if (Math.abs(sy) < 0.05) sy = sy < 0 ? -0.05 : 0.05;
 
-        if (curr.type === 'image') {
-            curr.x = cx + (orig.x - cx) * sx + dx; curr.y = cy + (orig.y - cy) * sy + dy; curr.scale = orig.scale * Math.max(Math.abs(sx), Math.abs(sy)); return;
+        if (curr.type === 'image' || curr.type === 'imported_path') {
+            curr.x = cx + (orig.x - cx) * sx + dx; curr.y = cy + (orig.y - cy) * sy + dy; curr.scale = orig.scale * Math.max(Math.abs(sx), Math.abs(sy));
+            if (curr.type === 'imported_path') this.recalcImportedPath(curr);
+            return;
         }
 
         if (curr.type === 'text') {
             curr.x = cx + (orig.x - cx) * sx + dx; curr.y = cy + (orig.y - cy) * sy + dy;
             curr.charW = Math.max(5, orig.charW * Math.abs(sx)); curr.charH = Math.max(5, orig.charH * Math.abs(sy)); curr.spacing = orig.spacing * Math.abs(sx);
-            curr.points = this.generateTextPoints(curr); return;
         }
 
         const tf = (oPts, cPts) => {
@@ -477,10 +481,6 @@ const app = {
 
         if (orig.points) tf(orig.points, curr.points); if (orig.boundary) tf(orig.boundary, curr.boundary);
         if (orig.guideCurve) tf(orig.guideCurve, curr.guideCurve); if (orig.line1) tf(orig.line1, curr.line1); if (orig.line2) tf(orig.line2, curr.line2);
-
-        if (curr.type === 'zigzag' && (curr.zigzagType === 'angle' || curr.zigzagType === 'spiral' || curr.zigzagType === 'guide')) curr.points = this.generateZigzag(curr);
-        else if (curr.type === 'interp') curr.points = this.generateInterpolation(curr.line1, curr.line2, curr.steps, curr.roundTrip);
-        else if (curr.type === 'imported_path') this.recalcImportedPath(curr);
     },
 
     transformLayerData(l, dx, dy, sx, sy) {
@@ -489,24 +489,27 @@ const app = {
             if (sx === -1) l.flipH = !l.flipH; else if (sx !== 1) l.scale *= Math.abs(sx);
             if (sy === -1) l.flipV = !l.flipV; else if (sy !== 1) l.scale *= Math.abs(sy);
             if (l.type === 'imported_path') this.recalcImportedPath(l);
-        } else if (l.type === 'text') {
+            return;
+        }
+        
+        if (l.type === 'text') {
             l.x += dx; l.y -= dy;
             if (sx !== 1 && sx !== -1) l.charW = Math.max(5, l.charW * Math.abs(sx));
             if (sy !== 1 && sy !== -1) l.charH = Math.max(5, l.charH * Math.abs(sy));
-            l.points = this.generateTextPoints(l);
-        } else {
-            let pts = []; if (l.points) pts.push(...l.points); if (l.boundary) pts.push(...l.boundary); if (l.guideCurve) pts.push(...l.guideCurve); if (l.line1) pts.push(...l.line1); if (l.line2) pts.push(...l.line2);
-            if (pts.length === 0) return;
-            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-            pts.forEach(p => { if(p.x < minX) minX = p.x; if(p.x > maxX) maxX = p.x; if(p.y < minY) minY = p.y; if(p.y > maxY) maxY = p.y; });
-            let cx = (minX + maxX) / 2; let cy = (minY + maxY) / 2;
-
-            const tArr = (arr) => { if (!arr) return; for (let i=0; i<arr.length; i++) { arr[i].x = ((arr[i].x - cx) * sx) + cx + dx; arr[i].y = ((arr[i].y - cy) * sy) + cy - dy; } };
-            tArr(l.points); tArr(l.boundary); tArr(l.guideCurve); tArr(l.line1); tArr(l.line2);
-
-            if (l.type === 'zigzag' && (l.zigzagType === 'angle' || l.zigzagType === 'spiral' || l.zigzagType === 'guide')) l.points = this.generateZigzag(l);
-            if (l.type === 'interp') l.points = this.generateInterpolation(l.line1, l.line2, l.steps, l.roundTrip);
+            if (sx !== 1 && sx !== -1) l.spacing = l.spacing * Math.abs(sx);
         }
+
+        let pts = []; 
+        if (l.points) pts.push(...l.points); if (l.boundary) pts.push(...l.boundary); if (l.guideCurve) pts.push(...l.guideCurve); if (l.line1) pts.push(...l.line1); if (l.line2) pts.push(...l.line2);
+        if (pts.length === 0) return;
+
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        pts.forEach(p => { if(p.x < minX) minX = p.x; if(p.x > maxX) maxX = p.x; if(p.y < minY) minY = p.y; if(p.y > maxY) maxY = p.y; });
+        if (minX === Infinity) return;
+        let cx = (minX + maxX) / 2; let cy = (minY + maxY) / 2;
+
+        const tArr = (arr) => { if (!arr) return; for (let i=0; i<arr.length; i++) { arr[i].x = ((arr[i].x - cx) * sx) + cx + dx; arr[i].y = ((arr[i].y - cy) * sy) + cy - dy; } };
+        tArr(l.points); tArr(l.boundary); tArr(l.guideCurve); tArr(l.line1); tArr(l.line2);
     },
 
     duplicateSelected() {
@@ -649,10 +652,8 @@ const app = {
                     else if (tf.mode === 'scale_sw') { cx = ob.maxX; cy = ob.minY; sx = (ob.maxX - ptScene.x) / mw; sy = (ptScene.y - ob.minY) / mh; } 
                     else if (tf.mode === 'scale_se') { cx = ob.minX; cy = ob.minY; sx = (ptScene.x - ob.minX) / mw; sy = (ptScene.y - ob.minY) / mh; }
                     
-                    // --- MÀJ v3.2 : Maintien des proportions avec SHIFT ou CTRL ---
                     if (e.shiftKey || e.ctrlKey || e.metaKey) {
-                        let sMag = Math.max(Math.abs(sx), Math.abs(sy));
-                        sx = (sx < 0 ? -1 : 1) * sMag; sy = (sy < 0 ? -1 : 1) * sMag;
+                        let sMag = Math.max(Math.abs(sx), Math.abs(sy)); sx = (sx < 0 ? -1 : 1) * sMag; sy = (sy < 0 ? -1 : 1) * sMag;
                     }
                     dx = 0; dy = 0; 
                 }
@@ -1647,14 +1648,27 @@ const app = {
         }
         e.target.value = '';
     },
-    
-    recalcImportedPath(layer) {
-        if (!layer.originalPoints) return;
-        let rad = layer.rot * Math.PI / 180; let cosA = Math.cos(rad); let sinA = Math.sin(rad);
-        layer.points = layer.originalPoints.map(pt => {
-            let x = pt.x; let y = pt.y; if (layer.flipH) x = -x; if (layer.flipV) y = -y; x *= layer.scale; y *= layer.scale;
-            return { x: x * cosA - y * sinA + layer.x, y: x * sinA + y * cosA + layer.y };
+
+    toggleFlip(axis) {
+        if (this.selectedIds.length === 0) return;
+        this.saveState();
+        let toTransform = [];
+        const findChildren = (arr) => {
+            arr.forEach(l => {
+                if (this.selectedIds.includes(l.id)) {
+                    if (l.type === 'folder') toTransform.push(...this.getFlatLayers(l.layers, true, false));
+                    else toTransform.push(l);
+                } else if (l.type === 'folder' && l.layers) findChildren(l.layers);
+            });
+        };
+        findChildren(this.layers);
+        toTransform = [...new Set(toTransform)];
+
+        toTransform.forEach(l => {
+            if (!l.effectiveLocked) this.transformLayerData(l, 0, 0, axis === 'H' ? -1 : 1, axis === 'V' ? -1 : 1);
         });
+
+        this.invalidateSim(); this.draw(); this.autoSave();
     },
 
     updateTransform() {
@@ -1662,16 +1676,6 @@ const app = {
         if(sel && (sel.layer.type === 'image' || sel.layer.type === 'imported_path')) {
             this.saveState();
             sel.layer.rot = parseInt(document.getElementById('img-rot').value); document.getElementById('val-rot').innerText = sel.layer.rot + "°";
-            if (sel.layer.type === 'imported_path') { this.recalcImportedPath(sel.layer); this.invalidateSim(); }
-            this.draw(); this.autoSave();
-        }
-    },
-
-    toggleFlip(axis) {
-        let sel = this.findLayer(this.selectedIds[0]);
-        if(sel && (sel.layer.type === 'image' || sel.layer.type === 'imported_path')) {
-            this.saveState();
-            if(axis === 'H') sel.layer.flipH = !sel.layer.flipH; else sel.layer.flipV = !sel.layer.flipV;
             if (sel.layer.type === 'imported_path') { this.recalcImportedPath(sel.layer); this.invalidateSim(); }
             this.draw(); this.autoSave();
         }
