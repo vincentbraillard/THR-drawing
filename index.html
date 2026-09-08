@@ -212,16 +212,12 @@
                 <fieldset id="fs-transform" disabled style="background:#fff;">
                     <legend>📐 Transformer la sélection</legend>
                     <div style="text-align:center; font-size:12px; color:#1565c0; font-weight:bold; margin-bottom:15px; background: #e3f2fd; padding:10px; border-radius: 6px;">
-                        💡 Utilisez l'outil "🖐️ Sélection" pour déplacer et redimensionner le calque <b>ou le groupe</b> sur la table. <br><br><b>Maintenez SHIFT ou CTRL pour conserver les proportions.</b>
+                        💡 Utilisez l'outil "🖐️ Sélection" pour déplacer, tourner et redimensionner le calque <b>ou le groupe</b> sur la table. <br><br><b>Maintenez SHIFT ou CTRL pour conserver les proportions ou créer des angles stricts (15°).</b>
                     </div>
                     <label>Miroir Global :</label>
                     <div style="display:flex; gap:5px; margin-bottom:10px;">
                         <button class="btn" style="flex:1" onclick="app.toggleFlip('H')">↔️ Horiz.</button>
                         <button class="btn" style="flex:1" onclick="app.toggleFlip('V')">↕️ Vert.</button>
-                    </div>
-                    <div id="div-rot" style="display:none;">
-                        <div class="row"><label>🔄 Rotation :</label> <span class="val-badge" id="val-rot">0°</span></div>
-                        <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('img-rot', -1)">➖</button><input type="range" id="img-rot" min="-180" max="180" value="0" oninput="app.updateTransform()"><button class="btn btn-icon" onclick="app.stepSlider('img-rot', 1)">➕</button></div>
                     </div>
                     <div id="div-opacity" style="display:none; margin-top:15px; border-top:1px solid #eee; padding-top:10px;">
                         <div class="row"><label>🌗 Opacité (Image) :</label></div>
@@ -267,7 +263,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v3.4 (Zero-Deformation Transfo)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v3.5 (Rotation visuelle)</span>
     </div>
 
 <script>
@@ -423,10 +419,18 @@ const app = {
             for (let j = 0; j < charPts.length; j++) rawCharPts.push({ x: charOffsetX + charPts[j][0] * layer.charW, y: startY - charPts[j][1] * layer.charH });
             pts.push(...this.resamplePath(rawCharPts, 2.0));
         }
+
+        if (layer.rot) {
+            let rad = layer.rot * Math.PI / 180; let cosA = Math.cos(rad); let sinA = Math.sin(rad);
+            for (let i = 0; i < pts.length; i++) {
+                let nx = pts[i].x - layer.x; let ny = pts[i].y - layer.y;
+                pts[i].x = layer.x + nx * cosA - ny * sinA; pts[i].y = layer.y + nx * sinA + ny * cosA;
+            }
+        }
         return pts;
     },
 
-    // --- TRANSFORMATION GLOBALE SANS DÉFORMATION ---
+    // --- TRANSFORMATION GLOBALE (MOVE, SCALE, ROTATE) ---
     getLayerBBox(l) {
         if (!l) return null; 
         if (l.type === 'folder') {
@@ -459,70 +463,73 @@ const app = {
         }
     },
 
-    applyAbsoluteTransform(orig, curr, dx, dy, sx, sy, cx, cy) {
+    applyAbsoluteTransform(orig, curr, dx, dy, sx, sy, cx, cy, angle = 0) {
         if (Math.abs(sx) < 0.05) sx = sx < 0 ? -0.05 : 0.05;
         if (Math.abs(sy) < 0.05) sy = sy < 0 ? -0.05 : 0.05;
+
+        let cosA = Math.cos(angle); let sinA = Math.sin(angle);
 
         if (curr.type === 'folder') {
             if (curr.layers && orig.layers) {
                 for (let i = 0; i < curr.layers.length; i++) {
-                    this.applyAbsoluteTransform(orig.layers[i], curr.layers[i], dx, dy, sx, sy, cx, cy);
+                    this.applyAbsoluteTransform(orig.layers[i], curr.layers[i], dx, dy, sx, sy, cx, cy, angle);
                 }
             }
             return;
         }
 
         if (curr.type === 'image' || curr.type === 'imported_path') {
-            curr.x = cx + (orig.x - cx) * sx + dx; curr.y = cy + (orig.y - cy) * sy + dy; curr.scale = orig.scale * Math.max(Math.abs(sx), Math.abs(sy));
+            let nx = (orig.x - cx) * sx; let ny = (orig.y - cy) * sy;
+            curr.x = cx + nx * cosA - ny * sinA + dx;
+            curr.y = cy + nx * sinA + ny * cosA + dy;
+            curr.scale = orig.scale * Math.max(Math.abs(sx), Math.abs(sy));
+            curr.rot = (orig.rot || 0) + angle * (180 / Math.PI);
             if (curr.type === 'imported_path') this.recalcImportedPath(curr);
             return;
         }
 
         if (curr.type === 'text') {
-            curr.x = cx + (orig.x - cx) * sx + dx; curr.y = cy + (orig.y - cy) * sy + dy;
-            curr.charW = Math.max(5, orig.charW * Math.abs(sx)); curr.charH = Math.max(5, orig.charH * Math.abs(sy)); curr.spacing = orig.spacing * Math.abs(sx);
+            let nx = (orig.x - cx) * sx; let ny = (orig.y - cy) * sy;
+            curr.x = cx + nx * cosA - ny * sinA + dx;
+            curr.y = cy + nx * sinA + ny * cosA + dy;
+            curr.charW = Math.max(5, orig.charW * Math.abs(sx)); 
+            curr.charH = Math.max(5, orig.charH * Math.abs(sy)); 
+            curr.spacing = orig.spacing * Math.abs(sx);
+            curr.rot = (orig.rot || 0) + angle * (180 / Math.PI);
+            curr.points = this.generateTextPoints(curr);
+            return;
         }
 
         const tf = (oPts, cPts) => {
             if (!oPts || !cPts || oPts.length !== cPts.length) return;
-            for (let i = 0; i < oPts.length; i++) { cPts[i].x = cx + (oPts[i].x - cx) * sx + dx; cPts[i].y = cy + (oPts[i].y - cy) * sy + dy; }
+            for (let i = 0; i < oPts.length; i++) { 
+                let nx = (oPts[i].x - cx) * sx; let ny = (oPts[i].y - cy) * sy;
+                cPts[i].x = cx + nx * cosA - ny * sinA + dx; 
+                cPts[i].y = cy + nx * sinA + ny * cosA + dy; 
+            }
         };
 
-        if (orig.points) tf(orig.points, curr.points); if (orig.boundary) tf(orig.boundary, curr.boundary);
-        if (orig.guideCurve) tf(orig.guideCurve, curr.guideCurve); if (orig.line1) tf(orig.line1, curr.line1); if (orig.line2) tf(orig.line2, curr.line2);
+        if (orig.points) tf(orig.points, curr.points); 
+        if (orig.boundary) tf(orig.boundary, curr.boundary);
+        if (orig.guideCurve) tf(orig.guideCurve, curr.guideCurve); 
+        if (orig.line1) tf(orig.line1, curr.line1); 
+        if (orig.line2) tf(orig.line2, curr.line2);
+
+        if (curr.type === 'zigzag' && (curr.zigzagType === 'angle' || curr.zigzagType === 'spiral' || curr.zigzagType === 'guide')) {
+            curr.angle = ((orig.angle || 0) + angle * (180 / Math.PI)) % 360;
+            // No auto-regenerate here so we don't wipe out 'liquify' deformations
+        }
     },
 
     transformLayerData(l, dx, dy, sx, sy, cx = null, cy = null) {
-        if (l.type === 'folder') {
-            let bbox = this.getLayerBBox(l); if (!bbox) return;
-            let folderCx = cx !== null ? cx : (bbox.minX + bbox.maxX) / 2; let folderCy = cy !== null ? cy : (bbox.minY + bbox.maxY) / 2;
-            if (l.layers) l.layers.forEach(child => this.transformLayerData(child, dx, dy, sx, sy, folderCx, folderCy));
-            return;
-        }
-        if (l.type === 'image' || l.type === 'imported_path') {
-            if (cx !== null && cy !== null) { let nx = l.x - cx; let ny = l.y - cy; l.x = (nx * sx) + cx + dx; l.y = (ny * sy) + cy - dy; } else { l.x += dx; l.y -= dy; }
-            if (sx === -1) l.flipH = !l.flipH; else if (sx !== 1) l.scale *= Math.abs(sx);
-            if (sy === -1) l.flipV = !l.flipV; else if (sy !== 1) l.scale *= Math.abs(sy);
-            if (l.type === 'imported_path') this.recalcImportedPath(l);
-            return;
-        }
-        if (l.type === 'text') {
-            if (cx !== null && cy !== null) { let nx = l.x - cx; let ny = l.y - cy; l.x = (nx * sx) + cx + dx; l.y = (ny * sy) + cy - dy; } else { l.x += dx; l.y -= dy; }
-            if (sx !== 1 && sx !== -1) l.charW = Math.max(5, l.charW * Math.abs(sx)); if (sy !== 1 && sy !== -1) l.charH = Math.max(5, l.charH * Math.abs(sy)); if (sx !== 1 && sx !== -1) l.spacing = l.spacing * Math.abs(sx);
-        }
-
-        let pts = []; if (l.points) pts.push(...l.points); if (l.boundary) pts.push(...l.boundary); if (l.guideCurve) pts.push(...l.guideCurve); if (l.line1) pts.push(...l.line1); if (l.line2) pts.push(...l.line2);
-        if (pts.length === 0) return;
-        
+        let orig = this.deepCopyLayerWithImages(l);
         let center_x = cx, center_y = cy;
         if (center_x === null || center_y === null) {
-            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-            pts.forEach(p => { if(p.x < minX) minX = p.x; if(p.x > maxX) maxX = p.x; if(p.y < minY) minY = p.y; if(p.y > maxY) maxY = p.y; });
-            if (minX === Infinity) return; center_x = (minX + maxX) / 2; center_y = (minY + maxY) / 2;
+            let bbox = this.getLayerBBox(l);
+            if (bbox) { center_x = (bbox.minX + bbox.maxX) / 2; center_y = (bbox.minY + bbox.maxY) / 2; } 
+            else { center_x = 0; center_y = 0; }
         }
-
-        const tArr = (arr) => { if (!arr) return; for (let i=0; i<arr.length; i++) { arr[i].x = ((arr[i].x - center_x) * sx) + center_x + dx; arr[i].y = ((arr[i].y - center_y) * sy) + center_y - dy; } };
-        tArr(l.points); tArr(l.boundary); tArr(l.guideCurve); tArr(l.line1); tArr(l.line2);
+        this.applyAbsoluteTransform(orig, l, dx, dy, sx, sy, center_x, center_y, 0);
     },
 
     deepCopyLayerWithImages(layer) {
@@ -611,7 +618,10 @@ const app = {
                     let bbox = this.getLayerBBox(sel);
                     if (bbox) {
                         let margin = 15 / this.ui.zoom; let hitMode = null;
-                        if (Math.hypot(ptScene.x - bbox.minX, ptScene.y - bbox.minY) < margin) hitMode = 'scale_nw';
+                        let cx = (bbox.minX + bbox.maxX) / 2; let handleY = bbox.minY - 25 / this.ui.zoom;
+
+                        if (Math.hypot(ptScene.x - cx, ptScene.y - handleY) < margin) hitMode = 'rotate';
+                        else if (Math.hypot(ptScene.x - bbox.minX, ptScene.y - bbox.minY) < margin) hitMode = 'scale_nw';
                         else if (Math.hypot(ptScene.x - bbox.maxX, ptScene.y - bbox.minY) < margin) hitMode = 'scale_ne';
                         else if (Math.hypot(ptScene.x - bbox.minX, ptScene.y - bbox.maxY) < margin) hitMode = 'scale_sw';
                         else if (Math.hypot(ptScene.x - bbox.maxX, ptScene.y - bbox.maxY) < margin) hitMode = 'scale_se';
@@ -620,7 +630,8 @@ const app = {
                         if (hitMode) {
                             this.saveState(); let origLayer = this.deepCopyLayerWithImages(sel);
                             this.ui.activeTransform = { mode: hitMode, startX: ptScene.x, startY: ptScene.y, origBBox: bbox, origLayer: origLayer };
-                            wrapper.style.cursor = hitMode === 'move' ? 'move' : 'nwse-resize'; hitTransform = true;
+                            if (hitMode === 'move') wrapper.style.cursor = 'move'; else if (hitMode === 'rotate') wrapper.style.cursor = 'crosshair'; else wrapper.style.cursor = 'nwse-resize'; 
+                            hitTransform = true;
                         }
                     }
                 }
@@ -669,9 +680,21 @@ const app = {
             }
 
             if (this.ui.activeTransform) {
-                let tf = this.ui.activeTransform; let dx = ptScene.x - tf.startX; let dy = ptScene.y - tf.startY; let sx = 1, sy = 1, cx = 0, cy = 0;
-                if (tf.mode !== 'move') {
-                    let ob = tf.origBBox; let mw = ob.maxX - ob.minX; let mh = ob.maxY - ob.minY;
+                let tf = this.ui.activeTransform; let dx = ptScene.x - tf.startX; let dy = ptScene.y - tf.startY; let sx = 1, sy = 1, cx = 0, cy = 0, angle = 0;
+                let ob = tf.origBBox; cx = (ob.minX + ob.maxX) / 2; cy = (ob.minY + ob.maxY) / 2;
+
+                if (tf.mode === 'rotate') {
+                    let startAngle = Math.atan2(tf.startY - cy, tf.startX - cx);
+                    let currentAngle = Math.atan2(ptScene.y - cy, ptScene.x - cx);
+                    angle = currentAngle - startAngle;
+                    
+                    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                        let snap = 15 * Math.PI / 180;
+                        angle = Math.round(angle / snap) * snap;
+                    }
+                    dx = 0; dy = 0;
+                } else if (tf.mode !== 'move') {
+                    let mw = ob.maxX - ob.minX; let mh = ob.maxY - ob.minY;
                     if (mw < 1) mw = 1; if (mh < 1) mh = 1;
                     if (tf.mode === 'scale_nw') { cx = ob.maxX; cy = ob.maxY; sx = (ob.maxX - ptScene.x) / mw; sy = (ob.maxY - ptScene.y) / mh; } 
                     else if (tf.mode === 'scale_ne') { cx = ob.minX; cy = ob.maxY; sx = (ptScene.x - ob.minX) / mw; sy = (ob.maxY - ptScene.y) / mh; } 
@@ -684,7 +707,7 @@ const app = {
                     dx = 0; dy = 0; 
                 }
                 let sel = this.findLayer(this.selectedIds[0]).layer;
-                this.applyAbsoluteTransform(tf.origLayer, sel, dx, dy, sx, sy, cx, cy);
+                this.applyAbsoluteTransform(tf.origLayer, sel, dx, dy, sx, sy, cx, cy, angle);
                 this.draw(); return;
             }
 
@@ -1202,6 +1225,14 @@ const app = {
                 let totalW = l.charCount * l.charW + Math.max(0, l.charCount - 1) * l.spacing;
                 let startX = l.x - (totalW / 2); let startY = l.y + (l.charH / 2);
                 this.ctx.save();
+                
+                // Si le texte a été rotaté, on aligne la transformation du canvas sur son angle
+                if (l.rot) {
+                    this.ctx.translate(l.x, l.y);
+                    this.ctx.rotate(l.rot * Math.PI / 180);
+                    this.ctx.translate(-l.x, -l.y);
+                }
+
                 for (let j = 0; j < l.charCount; j++) {
                     let bx = startX + j * (l.charW + l.spacing); let by = startY - l.charH;
                     this.ctx.beginPath(); this.ctx.rect(bx, by, l.charW, l.charH);
@@ -1289,17 +1320,39 @@ const app = {
             this.ctx.strokeStyle = "rgba(0, 120, 255, 0.6)"; this.ctx.lineWidth = this.ui.penWidth; this.ctx.setLineDash([5, 5]); this.ctx.stroke(); this.ctx.setLineDash([]);
         }
 
+        // MÀJ v3.5 : DESSIN DE LA BOX DE TRANSFORMATION AVEC POIGNÉE DE ROTATION
         if (this.ui.tool === 'select' && this.selectedIds.length === 1) {
             let selInfo = this.findLayer(this.selectedIds[0]);
             if (selInfo && !selInfo.layer.effectiveLocked) {
                 let bbox = this.getLayerBBox(selInfo.layer);
                 if (bbox) {
+                    this.ctx.save();
                     this.ctx.strokeStyle = '#0078D7'; this.ctx.lineWidth = 1.5 / this.ui.zoom; this.ctx.setLineDash([5, 5]);
-                    this.ctx.strokeRect(bbox.minX, bbox.minY, bbox.maxX - bbox.minX, bbox.maxY - bbox.minY);
+                    
+                    let mw = bbox.maxX - bbox.minX;
+                    let mh = bbox.maxY - bbox.minY;
+                    let cx = bbox.minX + mw/2;
+
+                    this.ctx.strokeRect(bbox.minX, bbox.minY, mw, mh);
                     this.ctx.setLineDash([]); this.ctx.fillStyle = '#ffffff';
+                    
                     let s = 10 / this.ui.zoom;
                     let drawHandle = (x, y) => { this.ctx.fillRect(x - s/2, y - s/2, s, s); this.ctx.strokeRect(x - s/2, y - s/2, s, s); };
                     drawHandle(bbox.minX, bbox.minY); drawHandle(bbox.maxX, bbox.minY); drawHandle(bbox.minX, bbox.maxY); drawHandle(bbox.maxX, bbox.maxY);
+                    
+                    // Poignée de rotation (en haut au centre)
+                    let handleY = bbox.minY - 25 / this.ui.zoom;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(cx, bbox.minY);
+                    this.ctx.lineTo(cx, handleY);
+                    this.ctx.stroke();
+                    
+                    this.ctx.beginPath();
+                    this.ctx.arc(cx, handleY, s/2, 0, Math.PI*2);
+                    this.ctx.fillStyle = '#0078D7';
+                    this.ctx.fill();
+                    this.ctx.stroke();
+                    this.ctx.restore();
                 }
             }
         }
