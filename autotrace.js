@@ -316,12 +316,12 @@
         .at-header h2 { margin:0; font-size:16px; }
         .at-close { border:none; background:#f2f2f2; border-radius:8px; width:32px; height:32px; font-size:16px; cursor:pointer; }
         .at-body { display:flex; gap:18px; padding:18px; flex-wrap:wrap; }
-        .at-col-left { flex:1 1 380px; min-width:320px; }
+        .at-col-left { flex:1 1 380px; min-width:280px; max-width:420px; }
         .at-col-right { flex:1 1 300px; min-width:280px; }
         .at-drop { border:2px dashed #bbb; border-radius:10px; padding:22px; text-align:center; color:#777; cursor:pointer; font-size:13px; }
         .at-drop:hover { border-color:#0078D7; color:#0078D7; }
-        .at-preview-wrap { position:relative; margin-top:12px; border-radius:10px; overflow:hidden; background:#e5e5e5; border:1px solid #ddd; }
-        #at-preview-canvas { display:block; width:100%; touch-action:none; cursor:grab; }
+        .at-preview-wrap { position:relative; margin-top:12px; border-radius:10px; overflow:hidden; background:#e5e5e5; border:1px solid #ddd; width:100%; max-width:400px; aspect-ratio:1/1; }
+        #at-preview-canvas { display:block; width:100%; height:100%; max-width:100%; max-height:100%; touch-action:none; cursor:grab; }
         .at-preview-hint { font-size:11px; color:#888; margin-top:6px; text-align:center; }
         .at-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; font-size:13px; }
         .at-row-slider { display:flex; align-items:center; gap:6px; margin-bottom:12px; }
@@ -552,8 +552,23 @@
 
     function renderPreview() {
         if (!state.srcImage) return;
+        layoutPreviewCanvas();
         const canvas = els.previewCanvas; const ctx = canvas.getContext('2d');
         drawTransformed(ctx, canvas.width, canvas.height, false);
+    }
+
+    // Filet de sécurité : fixe explicitement la taille CSS (en px) du canvas d'aperçu à
+    // partir de son conteneur, au lieu de compter uniquement sur `aspect-ratio` / le
+    // dimensionnement intrinsèque d'un <canvas> (peu fiable selon les navigateurs), pour
+    // garantir que l'aperçu ne déborde jamais hors de sa zone quelle que soit la taille
+    // de l'image importée.
+    function layoutPreviewCanvas() {
+        const wrap = els.previewWrap;
+        const box = wrap.getBoundingClientRect();
+        let size = Math.min(box.width || 340, 400);
+        if (size < 100) size = Math.min(340, window.innerWidth - 60); // repli si le layout n'est pas encore prêt
+        els.previewCanvas.style.width = size + 'px';
+        els.previewCanvas.style.height = size + 'px';
     }
 
     function wirePreviewInteraction() {
@@ -810,11 +825,18 @@
         if (!window.app) { alert("L'application principale n'est pas prête."); return; }
         if (!state.built) buildModal();
         els.backdrop.style.display = 'flex';
+        // Le conteneur vient d'apparaître : sa taille réelle n'est connue qu'après layout,
+        // donc on recale le canvas juste après (et à chaque redimensionnement de fenêtre).
+        requestAnimationFrame(() => { layoutPreviewCanvas(); renderPreview(); });
+        window.addEventListener('resize', onWindowResizeWhileOpen);
     };
+
+    function onWindowResizeWhileOpen() { layoutPreviewCanvas(); renderPreview(); }
 
     AutoTrace.close = function () {
         if (state.busy) { if (!confirm('Une génération est en cours, annuler et fermer ?')) return; state.cancelRequested = true; }
         if (els.backdrop) els.backdrop.style.display = 'none';
+        window.removeEventListener('resize', onWindowResizeWhileOpen);
     };
 
     window.AutoTrace = AutoTrace;
