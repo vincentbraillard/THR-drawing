@@ -321,6 +321,11 @@
         .at-drop { border:2px dashed #bbb; border-radius:10px; padding:22px; text-align:center; color:#777; cursor:pointer; font-size:13px; }
         .at-drop:hover { border-color:#0078D7; color:#0078D7; }
         .at-preview-wrap { position:relative; margin-top:12px; border-radius:10px; overflow:hidden; background:#e5e5e5; border:1px solid #ddd; width:100%; max-width:400px; aspect-ratio:1/1; }
+        /* IMPORTANT : la page hôte (index.html) définit une règle globale "canvas { position:absolute;
+           top:0; left:0; }" pour SON propre canvas de dessin. Sans réinitialisation explicite ici, cette
+           règle s'appliquerait aussi à nos canvases (ils sont dans le même document) et les ferait sortir
+           du flux normal pour se plaquer en plein écran, cachant boutons et curseurs en dessous. */
+        #autotrace-modal canvas { position: static !important; top: auto !important; left: auto !important; }
         #at-preview-canvas { display:block; width:100%; height:100%; max-width:100%; max-height:100%; touch-action:none; cursor:grab; }
         .at-preview-hint { font-size:11px; color:#888; margin-top:6px; text-align:center; }
         .at-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; font-size:13px; }
