@@ -1,357 +1,19 @@
 /* ============================================================================
-   AUTOTRACE.JS — Outil "Auto-Trace" pour l'Éditeur de Tracés Sunae (v4.1+)
+   AUTOTRACE.JS — Outil "Auto-Trace" pour l'Éditeur de Tracés Sunae (v5.0+)
    ----------------------------------------------------------------------------
-   Convertit une image importée en un tracé vectoriel continu (calque
-   'imported_path'), dans l'esprit de SandTrace : silhouette / seuil / contours,
-   avec réglages de détail, flou, lissage, et une pré-transformation (zoom,
-   rotation, recadrage, miroir) de l'image avant tracé.
+   Convertit une image en un tracé vectoriel continu (calque 'imported_path'),
+   à la manière de finitecurve.com : un semis de points pondéré par l'obscurité
+   de l'image (stippling), relié par une tournée optimisée (type "TSP-art") —
+   une seule ligne continue, sans reconstruction de contours ni recollage de
+   fragments, donc pas de traits parasites qui traversent le dessin.
 
-   Fichier volontairement séparé de index.html pour ne pas l'alourdir. Il ne
-   dépend que de l'objet global `app` déjà exposé par index.html (window.app),
-   et n'est utilisé qu'au moment où l'utilisateur ouvre l'outil (AutoTrace.open()).
-
-   Algorithmes utilisés (implémentation "from scratch", sans dépendance externe
-   type OpenCV) :
-     - Niveaux de gris + flou boîte (séparable) pour lisser le bruit.
-     - Détection de contours par gradient de Sobel (seuil simple — c'est une
-       version simplifiée d'un détecteur façon Canny, sans suppression des
-       non-maxima ni hystérésis, pour rester léger et 100% JS).
-     - Composantes connexes (4-connexité) pour isoler la forme principale en
-       mode Silhouette.
-     - Extraction de contours fermés par "marching squares" (avec un cadre
-       de padding pour garantir que tous les contours se referment).
-     - Simplification Douglas-Peucker + lissage Chaikin.
-     - Assemblage des contours en un seul tracé continu par plus-proche-voisin
-       glouton (minimise les déplacements "à vide" entre les formes).
-   Le pipeline complet a été testé unitairement en Node.js avant intégration
-   (grille synthétique, formes avec trous, deux composantes, DP/Chaikin,
-   assemblage) — voir le CHANGELOG pour le détail des vérifications.
+   Dépend de tsp_core.js (chargé avant ce fichier) pour le moteur de calcul
+   (stippling pondéré + construction gloutonne + 2-opt), et de l'objet global
+   `app` (window.app) déjà exposé par index.html.
    ============================================================================ */
 
 (function () {
     'use strict';
-
-    // ============================== ALGOS PURS ==============================
-    // (identiques à ceux validés indépendamment sous Node — voir CHANGELOG)
-
-    const Core = {};
-
-    Core.makePaddedGrid = function (w, h, sampleFn) {
-        const pw = w + 2, ph = h + 2;
-        const grid = new Uint8Array(pw * ph);
-        for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) grid[(y + 1) * pw + (x + 1)] = sampleFn(x, y) ? 1 : 0;
-        }
-        return { grid, pw, ph };
-    };
-
-    Core.connectedComponents = function (grid, pw, ph) {
-        const labels = new Int32Array(pw * ph).fill(-1);
-        const comps = [];
-        let nextLabel = 0;
-        const stack = [];
-        for (let start = 0; start < pw * ph; start++) {
-            if (grid[start] !== 1 || labels[start] !== -1) continue;
-            let area = 0;
-            stack.length = 0; stack.push(start); labels[start] = nextLabel;
-            while (stack.length) {
-                const idx = stack.pop();
-                const x = idx % pw, y = (idx / pw) | 0;
-                area++;
-                const neighbors = [idx - 1, idx + 1, idx - pw, idx + pw];
-                for (const n of neighbors) {
-                    if (n < 0 || n >= pw * ph) continue;
-                    if ((n === idx - 1 || n === idx + 1) && ((n / pw) | 0) !== y) continue;
-                    if (grid[n] === 1 && labels[n] === -1) { labels[n] = nextLabel; stack.push(n); }
-                }
-            }
-            comps.push({ label: nextLabel, area });
-            nextLabel++;
-        }
-        return { labels, comps };
-    };
-
-    Core.keepLargestComponents = function (grid, pw, ph, keep) {
-        const { labels, comps } = Core.connectedComponents(grid, pw, ph);
-        if (comps.length <= keep) return grid;
-        const sorted = [...comps].sort((a, b) => b.area - a.area);
-        const keepSet = new Set(sorted.slice(0, keep).map(c => c.label));
-        const out = new Uint8Array(pw * ph);
-        for (let i = 0; i < grid.length; i++) if (grid[i] === 1 && keepSet.has(labels[i])) out[i] = 1;
-        return out;
-    };
-
-    Core.traceContours = function (grid, pw, ph) {
-        const segments = [];
-        const at = (x, y) => grid[y * pw + x];
-        for (let y = 0; y < ph - 1; y++) {
-            for (let x = 0; x < pw - 1; x++) {
-                const tl = at(x, y), tr = at(x + 1, y), bl = at(x, y + 1), br = at(x + 1, y + 1);
-                const c = tl * 8 + tr * 4 + br * 2 + bl * 1;
-                if (c === 0 || c === 15) continue;
-                const top = { x: x + 0.5, y: y }, bottom = { x: x + 0.5, y: y + 1 };
-                const left = { x: x, y: y + 0.5 }, right = { x: x + 1, y: y + 0.5 };
-                switch (c) {
-                    case 1: segments.push({ a: left, b: bottom }); break;
-                    case 2: segments.push({ a: bottom, b: right }); break;
-                    case 3: segments.push({ a: left, b: right }); break;
-                    case 4: segments.push({ a: top, b: right }); break;
-                    case 5: segments.push({ a: left, b: top }); segments.push({ a: bottom, b: right }); break;
-                    case 6: segments.push({ a: top, b: bottom }); break;
-                    case 7: segments.push({ a: left, b: top }); break;
-                    case 8: segments.push({ a: top, b: left }); break;
-                    case 9: segments.push({ a: top, b: bottom }); break;
-                    case 10: segments.push({ a: top, b: right }); segments.push({ a: left, b: bottom }); break;
-                    case 11: segments.push({ a: top, b: right }); break;
-                    case 12: segments.push({ a: right, b: left }); break;
-                    case 13: segments.push({ a: right, b: bottom }); break;
-                    case 14: segments.push({ a: bottom, b: left }); break;
-                }
-            }
-        }
-        const key = (p) => p.x + ',' + p.y;
-        const bucket = new Map();
-        segments.forEach((s, i) => {
-            [['a', s.a], ['b', s.b]].forEach(([which, p]) => {
-                const k = key(p); if (!bucket.has(k)) bucket.set(k, []); bucket.get(k).push({ i, which });
-            });
-        });
-        const used = new Uint8Array(segments.length);
-        const contours = [];
-        for (let i = 0; i < segments.length; i++) {
-            if (used[i]) continue;
-            used[i] = 1;
-            const loop = [segments[i].a, segments[i].b];
-            let guard = 0;
-            while (guard++ < segments.length * 2) {
-                const tail = loop[loop.length - 1];
-                const candidates = bucket.get(key(tail)) || [];
-                let next = null;
-                for (const cand of candidates) { if (!used[cand.i]) { next = cand; break; } }
-                if (!next) break;
-                used[next.i] = 1;
-                const seg = segments[next.i];
-                const nextPoint = next.which === 'a' ? seg.b : seg.a;
-                if (Math.abs(nextPoint.x - tail.x) > 1e-9 || Math.abs(nextPoint.y - tail.y) > 1e-9) loop.push(nextPoint);
-                if (Math.abs(nextPoint.x - loop[0].x) < 1e-9 && Math.abs(nextPoint.y - loop[0].y) < 1e-9) break;
-            }
-            if (loop.length >= 4) contours.push(loop);
-        }
-        return contours;
-    };
-
-    Core.simplifyDP = function (points, tolerance) {
-        if (points.length < 3 || tolerance <= 0) return points.slice();
-        const sqTolerance = tolerance * tolerance;
-        const sqDist = (p, a, b) => {
-            let x = a.x, y = a.y, dx = b.x - x, dy = b.y - y;
-            if (dx !== 0 || dy !== 0) {
-                const t = ((p.x - x) * dx + (p.y - y) * dy) / (dx * dx + dy * dy);
-                if (t > 1) { x = b.x; y = b.y; } else if (t > 0) { x += dx * t; y += dy * t; }
-            }
-            dx = p.x - x; dy = p.y - y; return dx * dx + dy * dy;
-        };
-        const simplifyRec = (pts, first, last, out) => {
-            let maxDist = sqTolerance, index = -1;
-            for (let i = first + 1; i < last; i++) {
-                const d = sqDist(pts[i], pts[first], pts[last]);
-                if (d > maxDist) { index = i; maxDist = d; }
-            }
-            if (index > -1) {
-                if (index - first > 1) simplifyRec(pts, first, index, out);
-                out.push(pts[index]);
-                if (last - index > 1) simplifyRec(pts, index, last, out);
-            }
-        };
-        const out = [points[0]];
-        simplifyRec(points, 0, points.length - 1, out);
-        out.push(points[points.length - 1]);
-        return out;
-    };
-
-    Core.chaikinSmooth = function (points, iterations, closed) {
-        if (closed === undefined) closed = true;
-        let pts = points;
-        for (let it = 0; it < iterations; it++) {
-            const out = []; const n = pts.length;
-            const last = closed ? n : n - 1;
-            if (!closed) out.push(pts[0]);
-            for (let i = 0; i < last; i++) {
-                const p0 = pts[i], p1 = pts[(i + 1) % n];
-                out.push({ x: p0.x * 0.75 + p1.x * 0.25, y: p0.y * 0.75 + p1.y * 0.25 });
-                out.push({ x: p0.x * 0.25 + p1.x * 0.75, y: p0.y * 0.25 + p1.y * 0.75 });
-            }
-            if (!closed) out.push(pts[n - 1]);
-            pts = out;
-        }
-        return pts;
-    };
-
-    // Amincit un masque binaire (avec padding) jusqu'à un squelette de 1 pixel de large
-    // (algorithme de Zhang-Suen, standard et bien documenté). Utilisé par le mode
-    // "Trait fin" pour obtenir la LIGNE CENTRALE de chaque trait de dessin au lieu de
-    // suivre son contour (ce qui donnerait deux lignes quasi parallèles par trait).
-    Core.zhangSuenThin = function (grid, pw, ph) {
-        const img = new Uint8Array(grid);
-        const at = (x, y) => (x < 0 || y < 0 || x >= pw || y >= ph) ? 0 : img[y * pw + x];
-        let changing = true;
-        while (changing) {
-            changing = false;
-            for (let step = 0; step < 2; step++) {
-                const toRemove = [];
-                for (let y = 0; y < ph; y++) {
-                    for (let x = 0; x < pw; x++) {
-                        if (!at(x, y)) continue;
-                        const P2 = at(x, y - 1), P3 = at(x + 1, y - 1), P4 = at(x + 1, y), P5 = at(x + 1, y + 1);
-                        const P6 = at(x, y + 1), P7 = at(x - 1, y + 1), P8 = at(x - 1, y), P9 = at(x - 1, y - 1);
-                        const B = P2 + P3 + P4 + P5 + P6 + P7 + P8 + P9;
-                        if (B < 2 || B > 6) continue;
-                        const seq = [P2, P3, P4, P5, P6, P7, P8, P9, P2];
-                        let A = 0;
-                        for (let i = 0; i < 8; i++) if (seq[i] === 0 && seq[i + 1] === 1) A++;
-                        if (A !== 1) continue;
-                        let c1, c2;
-                        if (step === 0) { c1 = P2 * P4 * P6; c2 = P4 * P6 * P8; }
-                        else { c1 = P2 * P4 * P8; c2 = P2 * P6 * P8; }
-                        if (c1 !== 0 || c2 !== 0) continue;
-                        toRemove.push(y * pw + x);
-                    }
-                }
-                if (toRemove.length) { changing = true; toRemove.forEach(idx => { img[idx] = 0; }); }
-            }
-        }
-        return img;
-    };
-
-    // Dilatation 3x3 simple (utilisée pour "solidifier" un masque avant amincissement :
-    // referme les petits trous/traits à peine discontinus).
-    Core.dilateOnce = function (grid, pw, ph) {
-        const out = new Uint8Array(grid.length);
-        for (let y = 0; y < ph; y++) {
-            for (let x = 0; x < pw; x++) {
-                let v = 0;
-                for (let dy = -1; dy <= 1 && !v; dy++) for (let dx = -1; dx <= 1 && !v; dx++) {
-                    const nx = x + dx, ny = y + dy;
-                    if (nx >= 0 && ny >= 0 && nx < pw && ny < ph && grid[ny * pw + nx]) v = 1;
-                }
-                out[y * pw + x] = v;
-            }
-        }
-        return out;
-    };
-
-    // Transforme un squelette 1px en une liste de lignes centrales (polylignes OUVERTES
-    // ou fermées). Parcourt chaque connexion (arête) du graphe de pixels une seule fois ;
-    // aux croisements (jonctions), continue dans la direction la plus rectiligne plutôt que
-    // de s'arrêter — un trait qui traverse un autre reste une seule ligne continue, comme
-    // le fait SandTrace (walk() dans son SandArt.py, vérifié avant de reproduire l'approche).
-    Core.extractCenterlines = function (skelGrid, pw, ph, minLen) {
-        const pts = new Set();
-        for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) if (skelGrid[y * pw + x]) pts.add(x + ',' + y);
-        if (pts.size === 0) return [];
-
-        const offsets = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
-        const neighbours = (key) => {
-            const ci = key.indexOf(','); const x = +key.slice(0, ci), y = +key.slice(ci + 1);
-            const out = [];
-            for (const [dx, dy] of offsets) { const k = (x + dx) + ',' + (y + dy); if (pts.has(k)) out.push(k); }
-            return out;
-        };
-        const deg = new Map(); for (const p of pts) deg.set(p, neighbours(p).length);
-        const seen = new Set();
-        const edgeKey = (a, b) => a < b ? a + '|' + b : b + '|' + a;
-
-        const walk = (start, first) => {
-            const line = [start, first];
-            seen.add(edgeKey(start, first));
-            let prev = start, cur = first;
-            while (true) {
-                const cands = neighbours(cur).filter(n => !seen.has(edgeKey(cur, n)));
-                if (cands.length === 0) break;
-                let nxt;
-                if (cands.length === 1) nxt = cands[0];
-                else {
-                    const pci = prev.indexOf(','), cci = cur.indexOf(',');
-                    const px = +prev.slice(0, pci), py = +prev.slice(pci + 1);
-                    const cx = +cur.slice(0, cci), cy = +cur.slice(cci + 1);
-                    const idx = cx - px, idy = cy - py; const inorm = Math.hypot(idx, idy) || 1;
-                    let best = null, bestDot = -2;
-                    for (const n of cands) {
-                        const nci = n.indexOf(','); const nx = +n.slice(0, nci), ny = +n.slice(nci + 1);
-                        const odx = nx - cx, ody = ny - cy; const onorm = Math.hypot(odx, ody) || 1;
-                        const dot = (idx * odx + idy * ody) / (inorm * onorm);
-                        if (dot > bestDot) { bestDot = dot; best = n; }
-                    }
-                    nxt = best;
-                }
-                seen.add(edgeKey(cur, nxt));
-                line.push(nxt);
-                prev = cur; cur = nxt;
-            }
-            return line;
-        };
-
-        const polylines = [];
-        // 1) lignes ouvertes (démarrent aux extrémités) 2) reliquats aux jonctions 3) boucles fermées
-        for (const sel of [(d) => d === 1, (d) => d >= 3, (d) => d === 2]) {
-            for (const p of pts) {
-                if (!sel(deg.get(p))) continue;
-                for (const n of neighbours(p)) if (!seen.has(edgeKey(p, n))) polylines.push(walk(p, n));
-            }
-        }
-
-        const result = [];
-        for (const line of polylines) {
-            if (line.length < 2) continue;
-            const coords = line.map(k => { const ci = k.indexOf(','); return { x: +k.slice(0, ci), y: +k.slice(ci + 1) }; });
-            let len = 0; for (let i = 1; i < coords.length; i++) len += Math.hypot(coords[i].x - coords[i - 1].x, coords[i].y - coords[i - 1].y);
-            if (len >= minLen) {
-                const closed = (coords[0].x === coords[coords.length - 1].x && coords[0].y === coords[coords.length - 1].y);
-                result.push({ points: coords, closed });
-            }
-        }
-        return result;
-    };
-
-    // Assemble une liste de tracés (polylignes fermées OU ouvertes, mélangées) en un seul
-    // tracé continu, par plus-proche-voisin glouton. Une polyligne fermée peut être entrée
-    // n'importe où sur sa boucle ; une polyligne OUVERTE ne peut être abordée que par l'une
-    // de ses deux extrémités (impossible de "couper" au milieu d'un trait).
-    Core.stitchContours = function (contours, startPoint) {
-        if (contours.length === 0) return [];
-        const remaining = contours.map(c => Array.isArray(c) ? { points: c.slice(), closed: true } : { points: c.points.slice(), closed: !!c.closed });
-        const dist2 = (a, b) => { const dx = a.x - b.x, dy = a.y - b.y; return dx * dx + dy * dy; };
-        let cursor = startPoint || { x: 0, y: 0 };
-        const finalPath = [];
-        while (remaining.length) {
-            let bestIdx = -1, bestOffset = 0, bestDist = Infinity, bestReversed = false;
-            for (let ci = 0; ci < remaining.length; ci++) {
-                const it = remaining[ci];
-                if (it.closed) {
-                    for (let oi = 0; oi < it.points.length; oi++) {
-                        const d = dist2(cursor, it.points[oi]);
-                        if (d < bestDist) { bestDist = d; bestIdx = ci; bestOffset = oi; bestReversed = false; }
-                    }
-                } else {
-                    const dStart = dist2(cursor, it.points[0]);
-                    const dEnd = dist2(cursor, it.points[it.points.length - 1]);
-                    if (dStart < bestDist) { bestDist = dStart; bestIdx = ci; bestReversed = false; }
-                    if (dEnd < bestDist) { bestDist = dEnd; bestIdx = ci; bestReversed = true; }
-                }
-            }
-            const it = remaining.splice(bestIdx, 1)[0];
-            let seq;
-            if (it.closed) {
-                seq = it.points.slice(bestOffset).concat(it.points.slice(0, bestOffset));
-                seq.push(seq[0]);
-            } else {
-                seq = bestReversed ? it.points.slice().reverse() : it.points.slice();
-            }
-            finalPath.push(...seq);
-            cursor = seq[seq.length - 1];
-        }
-        return finalPath;
-    };
 
     function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
@@ -383,20 +45,25 @@
         return out;
     }
 
-    function sobelMagnitude(gray, w, h) {
-        const mag = new Float32Array(w * h);
-        const gx = [-1, 0, 1, -2, 0, 2, -1, 0, 1], gy = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
-        let maxMag = 1;
-        for (let y = 1; y < h - 1; y++) {
-            for (let x = 1; x < w - 1; x++) {
-                let sx = 0, sy = 0, k = 0;
-                for (let ky = -1; ky <= 1; ky++) for (let kx = -1; kx <= 1; kx++, k++) {
-                    const v = gray[(y + ky) * w + (x + kx)]; sx += v * gx[k]; sy += v * gy[k];
-                }
-                const m = Math.hypot(sx, sy); mag[y * w + x] = m; if (m > maxMag) maxMag = m;
+    // Construit la carte de densité (0..1) à partir du gris flouté : un pixel plus sombre
+    // que le seuil reçoit une densité qui croît jusqu'à 1 vers le noir pur ; au-dessus du
+    // seuil (fond), densité ~0. La marge extérieure (bordure/cadre à ignorer) est mise à 0.
+    function buildDensity(gray, w, h, opts) {
+        const blurred = boxBlur(gray, w, h, opts.blurRadius);
+        const density = new Float32Array(w * h);
+        const marginPx = Math.round(Math.min(w, h) * (opts.marginFrac || 0));
+        const gamma = 1.4; // accentue le contraste entre zones claires et sombres
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                if (marginPx > 0 && (x < marginPx || y < marginPx || x >= w - marginPx || y >= h - marginPx)) continue;
+                let v = blurred[y * w + x];
+                if (opts.invert) v = 255 - v;
+                let d = clamp((opts.threshold - v) / Math.max(1, opts.threshold), 0, 1);
+                d = Math.pow(d, gamma);
+                density[y * w + x] = d;
             }
         }
-        return { mag, maxMag };
+        return density;
     }
 
     function mapPixelPathToScene(path, targetSize, mirrorH) {
@@ -409,46 +76,23 @@
         return path.map(p => ({ x: (mirrorH ? -1 : 1) * (p.x - cx) * scale, y: (p.y - cy) * scale }));
     }
 
-    // Construit la grille binaire selon le mode choisi (seuil / silhouette / contours).
-    function buildBinaryGrid(gray, w, h, opts) {
-        const blurred = boxBlur(gray, w, h, opts.blurRadius);
-        if (opts.mode === 'edges') {
-            const { mag, maxMag } = sobelMagnitude(blurred, w, h);
-            const cutoff = (1 - opts.edgeSensitivity / 100) * maxMag * 0.5;
-            return Core.makePaddedGrid(w, h, (x, y) => mag[y * w + x] > cutoff);
-        }
-        // seuil / silhouette
-        return Core.makePaddedGrid(w, h, (x, y) => {
-            const dark = blurred[y * w + x] < opts.threshold;
-            return opts.invert ? !dark : dark;
-        });
-    }
-
     // ============================ ÉTAT & PARAMÈTRES ==========================
 
     const state = {
         built: false,
         srcImage: null, srcName: '',
         tx: { zoom: 1.0, rotDeg: 0, panX: 0, panY: 0, flipH: false, flipV: false },
-        mode: 'threshold', // 'threshold' | 'silhouette' | 'edges'
         params: {
-            resolution: 500, blurRadius: 1, threshold: 128, invert: false,
-            edgeSensitivity: 55, keepLargestOnly: true, detail: 55, chaikinIters: 1,
+            resolution: 420, blurRadius: 1, threshold: 150, invert: false,
+            marginFrac: 0.0, pointCount: 1500, quality: 20,
             mirrorFinal: false,
         },
+        pickMode: null, // null | 'start' | 'end'
+        startPointPreview: null, // {x,y} en pixels bitmap du canvas d'aperçu (0..previewCanvas.width)
+        endPointPreview: null,
         cancelRequested: false, busy: false,
         thumbTimer: null,
     };
-
-    function detailToParams(detail) {
-        // detail: 0 (grossier) .. 100 (fin). Contrôle à la fois la tolérance de
-        // simplification et le nombre minimal de points pour garder un petit contour.
-        const t = clamp(detail, 0, 100) / 100;
-        return {
-            dpTolerance: 3.0 - t * 2.7,       // 3.0 -> 0.3
-            minContourPoints: Math.round(50 - t * 42), // 50 -> 8
-        };
-    }
 
     // ================================ STYLES =================================
 
@@ -467,12 +111,12 @@
         .at-drop { border:2px dashed #bbb; border-radius:10px; padding:22px; text-align:center; color:#777; cursor:pointer; font-size:13px; }
         .at-drop:hover { border-color:#0078D7; color:#0078D7; }
         .at-preview-wrap { position:relative; margin-top:12px; border-radius:10px; overflow:hidden; background:#e5e5e5; border:1px solid #ddd; width:100%; max-width:400px; aspect-ratio:1/1; }
-        /* IMPORTANT : la page hôte (index.html) définit une règle globale "canvas { position:absolute;
-           top:0; left:0; }" pour SON propre canvas de dessin. Sans réinitialisation explicite ici, cette
-           règle s'appliquerait aussi à nos canvases (ils sont dans le même document) et les ferait sortir
-           du flux normal pour se plaquer en plein écran, cachant boutons et curseurs en dessous. */
+        /* La page hôte définit "canvas { position:absolute; top:0; left:0; }" pour SON canvas — on
+           neutralise cet héritage pour tous les canvases de cet outil (cf. CHANGELOG v4.1.2). */
         #autotrace-modal canvas { position: static !important; top: auto !important; left: auto !important; }
-        #at-preview-canvas { display:block; width:100%; height:100%; max-width:100%; max-height:100%; touch-action:none; cursor:grab; }
+        #at-preview-canvas { display:block; width:100%; height:100%; max-width:100%; max-height:100%; touch-action:none; }
+        #at-preview-canvas.at-cursor-grab { cursor:grab; }
+        #at-preview-canvas.at-cursor-pick { cursor:crosshair; }
         .at-preview-hint { font-size:11px; color:#888; margin-top:6px; text-align:center; }
         .at-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; font-size:13px; }
         .at-row-slider { display:flex; align-items:center; gap:6px; margin-bottom:12px; }
@@ -480,16 +124,14 @@
         .at-badge { font-size:12px; background:#eef4fc; color:#0078D7; padding:2px 8px; border-radius:10px; font-weight:bold; min-width:42px; text-align:center; }
         .at-fieldset { border:1px solid #e2e2e2; border-radius:8px; padding:10px 12px; margin-bottom:14px; }
         .at-fieldset legend { font-size:12px; font-weight:bold; color:#444; padding:0 4px; }
-        .at-modes { display:flex; gap:8px; margin-bottom:14px; }
-        .at-mode-card { flex:1; border:2px solid #ddd; border-radius:8px; padding:6px; cursor:pointer; text-align:center; background:#fafafa; }
-        .at-mode-card.active { border-color:#0078D7; background:#eef4fc; }
-        .at-mode-card canvas { width:100%; aspect-ratio:1/1; background:#fff; border-radius:4px; display:block; }
-        .at-mode-card div.at-mode-label { font-size:11px; margin-top:4px; font-weight:bold; color:#333; }
         .at-checkbox-row { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; margin-bottom:8px; }
         .at-btn { padding:9px 14px; border-radius:8px; border:1px solid #ccc; background:#fff; cursor:pointer; font-weight:bold; font-size:13px; }
+        .at-btn.active { background:#0078D7; color:#fff; border-color:#0078D7; }
         .at-btn-primary { background:#0078D7; color:#fff; border-color:#0078D7; width:100%; padding:12px; font-size:14px; }
         .at-btn-primary:disabled { opacity:0.5; cursor:not-allowed; }
         .at-btn-row { display:flex; gap:8px; margin-top:6px; }
+        .at-point-row { display:flex; gap:6px; margin-bottom:12px; }
+        .at-point-row .at-btn { flex:1; font-size:12px; padding:8px 6px; }
         .at-progress-wrap { display:none; margin-top:14px; }
         .at-progress-track { background:#eee; border-radius:8px; height:14px; overflow:hidden; }
         .at-progress-fill { background:#0078D7; height:100%; width:0%; transition:width .15s; }
@@ -505,7 +147,7 @@
 
     // ================================ DOM UI ==================================
 
-    let els = {}; // cache des références DOM
+    let els = {};
 
     function buildModal() {
         injectStyles();
@@ -514,7 +156,7 @@
         backdrop.innerHTML = `
         <div id="autotrace-modal">
             <div class="at-header">
-                <h2>🧵 Auto-Trace — Image → Tracé</h2>
+                <h2>🧵 Auto-Trace — Image → Tracé TSP</h2>
                 <button class="at-close" id="at-btn-close">✕</button>
             </div>
             <div class="at-body">
@@ -522,9 +164,17 @@
                     <input type="file" id="at-file-input" accept="image/png, image/jpeg, image/webp" style="display:none;">
                     <div class="at-drop" id="at-drop-zone">📂 Cliquez pour choisir une image<br><span style="font-size:11px;">(ou glissez-déposez un fichier ici)</span></div>
                     <div class="at-preview-wrap" id="at-preview-wrap" style="display:none;">
-                        <canvas id="at-preview-canvas" width="360" height="360"></canvas>
+                        <canvas id="at-preview-canvas" width="360" height="360" class="at-cursor-grab"></canvas>
                     </div>
-                    <div class="at-preview-hint" id="at-preview-hint" style="display:none;">Glissez pour cadrer l'image, molette pour zoomer.</div>
+                    <div class="at-preview-hint" id="at-preview-hint" style="display:none;">Glissez pour cadrer, molette pour zoomer.</div>
+
+                    <div id="at-point-controls" style="display:none; margin-top:10px;">
+                        <div class="at-point-row">
+                            <button class="at-btn" id="at-btn-pick-start">📍 Point de départ</button>
+                            <button class="at-btn" id="at-btn-pick-end">🏁 Point d'arrivée</button>
+                            <button class="at-btn" id="at-btn-clear-points">✕</button>
+                        </div>
+                    </div>
 
                     <div id="at-transform-controls" style="display:none; margin-top:10px;">
                         <div class="at-row"><label>🔍 Zoom :</label><span class="at-badge" id="at-val-zoom">100%</span></div>
@@ -540,41 +190,32 @@
                 </div>
 
                 <div class="at-col-right">
-                    <div class="at-modes" id="at-modes" style="display:none;">
-                        <div class="at-mode-card active" data-mode="threshold"><canvas width="90" height="90"></canvas><div class="at-mode-label">Seuil (contours)</div></div>
-                        <div class="at-mode-card" data-mode="silhouette"><canvas width="90" height="90"></canvas><div class="at-mode-label">Silhouette</div></div>
-                        <div class="at-mode-card" data-mode="edges"><canvas width="90" height="90"></canvas><div class="at-mode-label">Contours fins</div></div>
+                    <div class="at-preview-wrap" id="at-stipple-wrap" style="display:none; max-width:100%; aspect-ratio:1/1; margin-bottom:14px;">
+                        <canvas id="at-stipple-canvas" width="300" height="300"></canvas>
                     </div>
 
                     <fieldset class="at-fieldset">
-                        <legend>⚙️ Réglages</legend>
+                        <legend>⚙️ Réglages (façon finitecurve)</legend>
 
-                        <div id="at-row-threshold">
-                            <div class="at-row"><label>🌗 Seuil de luminosité :</label><span class="at-badge" id="at-val-threshold">128</span></div>
-                            <div class="at-row-slider"><input type="range" id="at-threshold" min="0" max="255" value="128"></div>
-                        </div>
+                        <div class="at-row"><label>⚫ Nombre de points :</label><span class="at-badge" id="at-val-points">1500</span></div>
+                        <div class="at-row-slider"><input type="range" id="at-points" min="150" max="5000" step="50" value="1500"></div>
 
-                        <div id="at-row-edges" style="display:none;">
-                            <div class="at-row"><label>📶 Sensibilité des contours :</label><span class="at-badge" id="at-val-edgesens">55</span></div>
-                            <div class="at-row-slider"><input type="range" id="at-edgesens" min="1" max="100" value="55"></div>
-                        </div>
+                        <div class="at-row"><label>🌗 Seuil (fond à ignorer) :</label><span class="at-badge" id="at-val-threshold">150</span></div>
+                        <div class="at-row-slider"><input type="range" id="at-threshold" min="10" max="255" value="150"></div>
 
                         <label class="at-checkbox-row"><input type="checkbox" id="at-invert"> 🌓 Inverser (sujet clair sur fond sombre)</label>
-                        <div id="at-row-keeplargest">
-                            <label class="at-checkbox-row"><input type="checkbox" id="at-keeplargest" checked> 🎯 Garder uniquement la forme principale</label>
-                        </div>
 
                         <div class="at-row"><label>🧽 Flou (réduit le bruit) :</label><span class="at-badge" id="at-val-blur">1</span></div>
                         <div class="at-row-slider"><input type="range" id="at-blur" min="0" max="6" value="1"></div>
 
-                        <div class="at-row"><label>🔬 Détail :</label><span class="at-badge" id="at-val-detail">55</span></div>
-                        <div class="at-row-slider"><input type="range" id="at-detail" min="0" max="100" value="55"></div>
+                        <div class="at-row"><label>🖼️ Marge à ignorer (cadre/bord) :</label><span class="at-badge" id="at-val-margin">0%</span></div>
+                        <div class="at-row-slider"><input type="range" id="at-margin" min="0" max="15" value="0"></div>
 
-                        <div class="at-row"><label>〰️ Lissage du tracé :</label><span class="at-badge" id="at-val-chaikin">1</span></div>
-                        <div class="at-row-slider"><input type="range" id="at-chaikin" min="0" max="4" value="1"></div>
+                        <div class="at-row"><label>🧮 Qualité (optimisation) :</label><span class="at-badge" id="at-val-quality">20</span></div>
+                        <div class="at-row-slider"><input type="range" id="at-quality" min="0" max="40" value="20"></div>
 
-                        <div class="at-row"><label>🖥️ Résolution de travail :</label><span class="at-badge" id="at-val-res">500px</span></div>
-                        <div class="at-row-slider"><input type="range" id="at-res" min="200" max="900" step="50" value="500"></div>
+                        <div class="at-row"><label>🖥️ Résolution de travail :</label><span class="at-badge" id="at-val-res">420px</span></div>
+                        <div class="at-row-slider"><input type="range" id="at-res" min="200" max="700" step="20" value="420"></div>
 
                         <label class="at-checkbox-row"><input type="checkbox" id="at-mirror-final"> 🪞 Miroir du tracé final</label>
                     </fieldset>
@@ -601,21 +242,23 @@
             previewWrap: backdrop.querySelector('#at-preview-wrap'),
             previewCanvas: backdrop.querySelector('#at-preview-canvas'),
             previewHint: backdrop.querySelector('#at-preview-hint'),
+            pointControls: backdrop.querySelector('#at-point-controls'),
+            btnPickStart: backdrop.querySelector('#at-btn-pick-start'),
+            btnPickEnd: backdrop.querySelector('#at-btn-pick-end'),
+            btnClearPoints: backdrop.querySelector('#at-btn-clear-points'),
             transformControls: backdrop.querySelector('#at-transform-controls'),
             zoom: backdrop.querySelector('#at-zoom'), valZoom: backdrop.querySelector('#at-val-zoom'),
             imgrot: backdrop.querySelector('#at-imgrot'), valImgrot: backdrop.querySelector('#at-val-imgrot'),
             flipH: backdrop.querySelector('#at-flip-h'), flipV: backdrop.querySelector('#at-flip-v'),
             btnRecenter: backdrop.querySelector('#at-btn-recenter'),
-            modes: backdrop.querySelector('#at-modes'),
-            rowThreshold: backdrop.querySelector('#at-row-threshold'),
-            rowEdges: backdrop.querySelector('#at-row-edges'),
-            rowKeepLargest: backdrop.querySelector('#at-row-keeplargest'),
+            stippleWrap: backdrop.querySelector('#at-stipple-wrap'),
+            stippleCanvas: backdrop.querySelector('#at-stipple-canvas'),
+            points: backdrop.querySelector('#at-points'), valPoints: backdrop.querySelector('#at-val-points'),
             threshold: backdrop.querySelector('#at-threshold'), valThreshold: backdrop.querySelector('#at-val-threshold'),
-            edgesens: backdrop.querySelector('#at-edgesens'), valEdgesens: backdrop.querySelector('#at-val-edgesens'),
-            invert: backdrop.querySelector('#at-invert'), keeplargest: backdrop.querySelector('#at-keeplargest'),
+            invert: backdrop.querySelector('#at-invert'),
             blur: backdrop.querySelector('#at-blur'), valBlur: backdrop.querySelector('#at-val-blur'),
-            detail: backdrop.querySelector('#at-detail'), valDetail: backdrop.querySelector('#at-val-detail'),
-            chaikin: backdrop.querySelector('#at-chaikin'), valChaikin: backdrop.querySelector('#at-val-chaikin'),
+            margin: backdrop.querySelector('#at-margin'), valMargin: backdrop.querySelector('#at-val-margin'),
+            quality: backdrop.querySelector('#at-quality'), valQuality: backdrop.querySelector('#at-val-quality'),
             res: backdrop.querySelector('#at-res'), valRes: backdrop.querySelector('#at-val-res'),
             mirrorFinal: backdrop.querySelector('#at-mirror-final'),
             btnGenerate: backdrop.querySelector('#at-btn-generate'),
@@ -631,9 +274,7 @@
         state.built = true;
     }
 
-    function showMsg(text, kind) {
-        els.msg.textContent = text; els.msg.className = 'at-msg ' + (kind || 'ok');
-    }
+    function showMsg(text, kind) { els.msg.textContent = text; els.msg.className = 'at-msg ' + (kind || 'ok'); }
     function clearMsg() { els.msg.className = 'at-msg'; els.msg.textContent = ''; }
 
     // -------------------------- Chargement de l'image --------------------------
@@ -646,12 +287,14 @@
             img.onload = () => {
                 state.srcImage = img; state.srcName = file.name;
                 state.tx = { zoom: 1.0, rotDeg: 0, panX: 0, panY: 0, flipH: false, flipV: false };
+                state.startPointPreview = null; state.endPointPreview = null; state.pickMode = null;
                 els.dropZone.style.display = 'none';
                 els.previewWrap.style.display = 'block'; els.previewHint.style.display = 'block';
-                els.transformControls.style.display = 'block'; els.modes.style.display = 'flex';
+                els.transformControls.style.display = 'block'; els.pointControls.style.display = 'block';
+                els.stippleWrap.style.display = 'block';
                 els.btnGenerate.disabled = false;
                 autoSuggestThreshold();
-                renderPreview(); scheduleThumbnails();
+                renderPreview(); scheduleStipplePreview();
             };
             img.onerror = () => showMsg("Impossible de lire cette image.", 'err');
             img.src = ev.target.result;
@@ -660,21 +303,18 @@
     }
 
     function autoSuggestThreshold() {
-        // Moyenne de luminosité sur une version miniature -> seuil de départ raisonnable.
         const tmp = document.createElement('canvas'); const s = 60; tmp.width = s; tmp.height = s;
         const tctx = tmp.getContext('2d'); tctx.drawImage(state.srcImage, 0, 0, s, s);
         const data = tctx.getImageData(0, 0, s, s).data;
         let sum = 0; for (let i = 0; i < data.length; i += 4) sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
         const avg = Math.round(sum / (s * s));
-        state.params.threshold = clamp(avg, 10, 245);
+        // seuil de départ légèrement au-dessus de la moyenne, pour capter le sujet sans le fond
+        state.params.threshold = clamp(avg + 20, 40, 250);
         els.threshold.value = state.params.threshold; els.valThreshold.textContent = state.params.threshold;
     }
 
     // ------------------------- Rendu de l'aperçu (canvas) -----------------------
 
-    // Dessine l'image transformée (zoom/rotation/pan/miroir) sur un canvas de travail
-    // donné, centrée, avec un cadre de fond neutre. Réutilisé pour l'aperçu ET pour
-    // générer les pixels envoyés au pipeline (mêmes réglages, juste une résolution différente).
     function drawTransformed(ctx, cw, ch, forExport) {
         ctx.save();
         ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cw, ch);
@@ -689,15 +329,23 @@
         ctx.restore();
 
         if (!forExport) {
-            // Aperçu de la forme du plateau (cadre de référence, purement indicatif)
             ctx.save(); ctx.strokeStyle = 'rgba(0,120,215,0.6)'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
             const shape = (window.app && window.app.settings) ? window.app.settings.shape : 'round';
-            if (shape === 'rect') {
-                const margin = 10; ctx.strokeRect(margin, cw * 0.2, cw - margin * 2, ch - cw * 0.4);
-            } else {
-                ctx.beginPath(); ctx.arc(cw / 2, ch / 2, Math.min(cw, ch) / 2 - 6, 0, Math.PI * 2); ctx.stroke();
-            }
+            if (shape === 'rect') { const margin = 10; ctx.strokeRect(margin, cw * 0.2, cw - margin * 2, ch - cw * 0.4); }
+            else { ctx.beginPath(); ctx.arc(cw / 2, ch / 2, Math.min(cw, ch) / 2 - 6, 0, Math.PI * 2); ctx.stroke(); }
             ctx.restore();
+
+            // Marqueurs des points de départ/arrivée choisis par l'utilisateur.
+            const drawMarker = (p, color, label) => {
+                if (!p) return;
+                ctx.save(); ctx.fillStyle = color; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(label, p.x, p.y);
+                ctx.restore();
+            };
+            drawMarker(state.startPointPreview, '#2e7d32', 'D');
+            drawMarker(state.endPointPreview, '#c62828', 'A');
         }
     }
 
@@ -708,18 +356,21 @@
         drawTransformed(ctx, canvas.width, canvas.height, false);
     }
 
-    // Filet de sécurité : fixe explicitement la taille CSS (en px) du canvas d'aperçu à
-    // partir de son conteneur, au lieu de compter uniquement sur `aspect-ratio` / le
-    // dimensionnement intrinsèque d'un <canvas> (peu fiable selon les navigateurs), pour
-    // garantir que l'aperçu ne déborde jamais hors de sa zone quelle que soit la taille
-    // de l'image importée.
     function layoutPreviewCanvas() {
         const wrap = els.previewWrap;
         const box = wrap.getBoundingClientRect();
         let size = Math.min(box.width || 340, 400);
-        if (size < 100) size = Math.min(340, window.innerWidth - 60); // repli si le layout n'est pas encore prêt
+        if (size < 100) size = Math.min(340, window.innerWidth - 60);
         els.previewCanvas.style.width = size + 'px';
         els.previewCanvas.style.height = size + 'px';
+    }
+
+    // Convertit une position client (souris/tactile) en coordonnées PIXEL BITMAP du
+    // canvas d'aperçu (0..previewCanvas.width), quelle que soit sa taille CSS affichée.
+    function clientToPreviewBitmap(clientX, clientY) {
+        const rect = els.previewCanvas.getBoundingClientRect();
+        const scaleX = els.previewCanvas.width / rect.width, scaleY = els.previewCanvas.height / rect.height;
+        return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
     }
 
     function wirePreviewInteraction() {
@@ -727,6 +378,13 @@
         let dragging = false, lastX = 0, lastY = 0;
         canvas.addEventListener('pointerdown', (e) => {
             if (!state.srcImage) return;
+            if (state.pickMode) {
+                const p = clientToPreviewBitmap(e.clientX, e.clientY);
+                if (state.pickMode === 'start') state.startPointPreview = p; else state.endPointPreview = p;
+                setPickMode(null);
+                renderPreview();
+                return;
+            }
             dragging = true; lastX = e.clientX; lastY = e.clientY; canvas.setPointerCapture(e.pointerId); canvas.style.cursor = 'grabbing';
         });
         canvas.addEventListener('pointermove', (e) => {
@@ -735,75 +393,62 @@
             lastX = e.clientX; lastY = e.clientY;
             renderPreview();
         });
-        const endDrag = () => { if (dragging) { dragging = false; canvas.style.cursor = 'grab'; scheduleThumbnails(); } };
+        const endDrag = () => { if (dragging) { dragging = false; canvas.style.cursor = ''; scheduleStipplePreview(); } };
         canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag); canvas.addEventListener('pointerleave', endDrag);
         canvas.addEventListener('wheel', (e) => {
             if (!state.srcImage) return;
             e.preventDefault();
             const newZoom = clamp(state.tx.zoom * (e.deltaY > 0 ? 0.92 : 1.08), 0.2, 4.0);
             state.tx.zoom = newZoom; els.zoom.value = Math.round(newZoom * 100); els.valZoom.textContent = Math.round(newZoom * 100) + '%';
-            renderPreview(); scheduleThumbnails();
+            renderPreview(); scheduleStipplePreview();
         }, { passive: false });
     }
 
-    // ------------------------------ Miniatures modes -----------------------------
-
-    function scheduleThumbnails() {
-        clearTimeout(state.thumbTimer);
-        state.thumbTimer = setTimeout(computeThumbnails, 260);
+    function setPickMode(mode) {
+        state.pickMode = mode;
+        els.btnPickStart.classList.toggle('active', mode === 'start');
+        els.btnPickEnd.classList.toggle('active', mode === 'end');
+        els.previewCanvas.classList.toggle('at-cursor-pick', !!mode);
+        els.previewCanvas.classList.toggle('at-cursor-grab', !mode);
     }
 
-    function computeThumbnails() {
-        if (!state.srcImage) return;
-        const S = 90;
+    // ------------------------------ Aperçu du semis de points --------------------------
+
+    function scheduleStipplePreview() {
+        clearTimeout(state.thumbTimer);
+        state.thumbTimer = setTimeout(computeStipplePreview, 260);
+    }
+
+    function computeStipplePreview() {
+        if (!state.srcImage || !window.TSPCore) return;
+        const S = 220;
+        const cv = els.stippleCanvas; cv.width = S; cv.height = S;
+        const cctx = cv.getContext('2d');
         const tmp = document.createElement('canvas'); tmp.width = S; tmp.height = S;
         const tctx = tmp.getContext('2d'); drawTransformed(tctx, S, S, true);
         const data = tctx.getImageData(0, 0, S, S).data;
         const gray = toGrayscale(data, S, S);
-        const det = detailToParams(state.params.detail);
-
-        const modeConfigs = [
-            { mode: 'threshold', card: 0 },
-            { mode: 'silhouette', card: 1 },
-            { mode: 'edges', card: 2 },
-        ];
-        modeConfigs.forEach(({ mode, card }) => {
-            const cardEl = els.modes.children[card]; const cv = cardEl.querySelector('canvas');
-            const cctx = cv.getContext('2d'); cctx.clearRect(0, 0, S, S); cctx.fillStyle = '#fff'; cctx.fillRect(0, 0, S, S);
-            try {
-                const opts = {
-                    mode, blurRadius: state.params.blurRadius, threshold: state.params.threshold, invert: state.params.invert,
-                    edgeSensitivity: state.params.edgeSensitivity, keepLargestOnly: state.params.keepLargestOnly,
-                    dpTolerance: det.dpTolerance, minContourPoints: Math.max(4, Math.round(det.minContourPoints / 3)), chaikinIters: 0,
-                };
-                let { grid, pw, ph } = buildBinaryGrid(gray, S, S, opts);
-                if (mode === 'silhouette' && opts.keepLargestOnly) grid = Core.keepLargestComponents(grid, pw, ph, 1);
-                const contours = Core.traceContours(grid, pw, ph).filter(c => c.length >= opts.minContourPoints);
-                cctx.strokeStyle = '#000'; cctx.lineWidth = 1;
-                contours.forEach(c => {
-                    cctx.beginPath(); cctx.moveTo(c[0].x, c[0].y);
-                    for (let i = 1; i < c.length; i++) cctx.lineTo(c[i].x, c[i].y);
-                    cctx.stroke();
-                });
-            } catch (err) { /* aperçu best-effort uniquement */ }
+        const density = buildDensity(gray, S, S, {
+            blurRadius: state.params.blurRadius, threshold: state.params.threshold,
+            invert: state.params.invert, marginFrac: state.params.marginFrac,
         });
+        const previewCount = Math.min(900, Math.round(state.params.pointCount * (S * S) / (state.params.resolution * state.params.resolution)));
+        const pts = window.TSPCore.stipple(density, S, S, Math.max(80, previewCount), 2, Math.random);
+        cctx.fillStyle = '#fff'; cctx.fillRect(0, 0, S, S);
+        cctx.fillStyle = '#111';
+        pts.forEach(p => { cctx.beginPath(); cctx.arc(p.x, p.y, 1.1, 0, Math.PI * 2); cctx.fill(); });
     }
 
     // ------------------------------ Progression async ----------------------------
 
     function yieldUI() { return new Promise(r => setTimeout(r, 0)); }
-
-    function setProgress(pct, label) {
-        els.progressFill.style.width = clamp(pct, 0, 100) + '%';
-        els.progressLabel.textContent = label;
-    }
-
+    function setProgress(pct, label) { els.progressFill.style.width = clamp(pct, 0, 100) + '%'; els.progressLabel.textContent = label; }
     function checkCancel() { if (state.cancelRequested) throw new Error('__AUTOTRACE_CANCELLED__'); }
 
     // --------------------------------- Génération ---------------------------------
 
     async function generate() {
-        if (!state.srcImage || state.busy) return;
+        if (!state.srcImage || state.busy || !window.TSPCore) return;
         state.busy = true; state.cancelRequested = false;
         clearMsg();
         els.btnGenerate.disabled = true; els.btnCancel.style.display = 'block';
@@ -824,66 +469,52 @@
             drawTransformed(wctx, w, h, true);
             const imageData = wctx.getImageData(0, 0, w, h);
 
-            setProgress(12, 'Analyse (niveaux de gris, flou)…'); await yieldUI(); checkCancel();
+            setProgress(10, 'Analyse (niveaux de gris, flou)…'); await yieldUI(); checkCancel();
             const gray = toGrayscale(imageData.data, w, h);
-            const blurred = boxBlur(gray, w, h, state.params.blurRadius);
+            const density = buildDensity(gray, w, h, {
+                blurRadius: state.params.blurRadius, threshold: state.params.threshold,
+                invert: state.params.invert, marginFrac: state.params.marginFrac,
+            });
 
-            setProgress(25, 'Détection des contours…'); await yieldUI(); checkCancel();
-            const det = detailToParams(state.params.detail);
-            const opts = {
-                mode: state.mode, blurRadius: 0 /* déjà flouté ci-dessus */, threshold: state.params.threshold,
-                invert: state.params.invert, edgeSensitivity: state.params.edgeSensitivity,
-                keepLargestOnly: state.params.keepLargestOnly, dpTolerance: det.dpTolerance,
-                minContourPoints: det.minContourPoints, chaikinIters: state.params.chaikinIters,
-            };
-            let { grid, pw, ph } = buildBinaryGrid(blurred, w, h, opts);
+            setProgress(20, 'Placement des points (stippling pondéré)…'); await yieldUI(); checkCancel();
+            const rng = Math.random;
+            const pts = window.TSPCore.stipple(density, w, h, state.params.pointCount, 4, rng);
+            if (pts.length < 2) throw new Error('NO_POINTS');
             await yieldUI(); checkCancel();
 
-            setProgress(45, 'Isolation de la forme principale…');
-            if (state.mode === 'silhouette' && opts.keepLargestOnly) grid = Core.keepLargestComponents(grid, pw, ph, 1);
-            await yieldUI(); checkCancel();
-
-            setProgress(55, 'Extraction des contours (marching squares)…');
-            let contours = Core.traceContours(grid, pw, ph);
-            await yieldUI(); checkCancel();
-
-            setProgress(65, 'Filtrage du bruit…');
-            contours = contours.filter(c => c.length >= opts.minContourPoints);
-            if (contours.length === 0) throw new Error('NO_CONTOURS');
-            await yieldUI(); checkCancel();
-
-            setProgress(75, 'Simplification & lissage…');
-            const smoothed = [];
-            for (let i = 0; i < contours.length; i++) {
-                let c = Core.simplifyDP(contours[i], opts.dpTolerance);
-                c = Core.chaikinSmooth(c, opts.chaikinIters);
-                smoothed.push(c);
-                if (i % 20 === 0) { await yieldUI(); checkCancel(); }
+            setProgress(45, 'Construction du trajet (plus proche voisin)…'); await yieldUI(); checkCancel();
+            let startIdx = null, endIdx = null;
+            if (state.startPointPreview) {
+                const wp = previewBitmapToWorkSpace(state.startPointPreview, w, h);
+                startIdx = nearestPointIndex(pts, wp);
             }
-
-            setProgress(88, 'Optimisation du trajet (assemblage)…'); await yieldUI(); checkCancel();
-            let stitched = Core.stitchContours(smoothed, { x: 0, y: 0 });
-
-            // Garde-fou : trop de points ralentirait la simulation/l'export -> une passe
-            // de simplification globale supplémentaire si nécessaire.
-            if (stitched.length > 14000) {
-                stitched = Core.simplifyDP(stitched, opts.dpTolerance * 1.6);
+            if (state.endPointPreview) {
+                const wp = previewBitmapToWorkSpace(state.endPointPreview, w, h);
+                endIdx = nearestPointIndex(pts, wp);
+                if (endIdx === startIdx) endIdx = null;
             }
+            const tour = window.TSPCore.greedyTour(pts, startIdx, endIdx);
+            await yieldUI(); checkCancel();
 
-            setProgress(96, "Mise à l'échelle sur le plateau…"); await yieldUI(); checkCancel();
+            setProgress(65, 'Optimisation du trajet (2-opt)…'); await yieldUI(); checkCancel();
+            const knn = window.TSPCore.buildKNN(pts, 8);
+            await yieldUI(); checkCancel();
+            const optimized = window.TSPCore.twoOpt(pts, tour, knn, state.params.quality);
+            const finalPath = optimized.map(i => pts[i]);
+
+            setProgress(92, "Mise à l'échelle sur le plateau…"); await yieldUI(); checkCancel();
             const app = window.app;
             const shape = (app && app.settings) ? app.settings.shape : 'round';
             const targetSize = shape === 'rect' ? 420 : 380;
-            const scenePoints = mapPixelPathToScene(stitched, targetSize, state.params.mirrorFinal);
+            const scenePoints = mapPixelPathToScene(finalPath, targetSize, state.params.mirrorFinal);
 
-            setProgress(100, 'Terminé !');
-            await yieldUI();
+            setProgress(100, 'Terminé !'); await yieldUI();
 
             if (app && typeof app.addLayer === 'function') {
                 app.autoTraceCount = (app.autoTraceCount || 1);
                 app.addLayer({
                     type: 'imported_path',
-                    name: `🧵 AutoTrace ${app.autoTraceCount++}`,
+                    name: `🧵 AutoTrace TSP ${app.autoTraceCount++}`,
                     originalPoints: scenePoints, points: [...scenePoints],
                     x: 0, y: 0, scaleX: 1.0, scaleY: 1.0, opacity: 1.0, rot: 0,
                     color: app.ui ? app.ui.color : '#000000', width: 1.0,
@@ -893,15 +524,11 @@
                 if (typeof app.autoSave === 'function') app.autoSave();
             }
 
-            showMsg(`✅ Tracé ajouté (${scenePoints.length} points, ${smoothed.length} contour(s)). Vous pouvez maintenant le repositionner avec l'outil Sélection.`, 'ok');
+            showMsg(`✅ Tracé ajouté (${scenePoints.length} points). Vous pouvez maintenant le repositionner avec l'outil Sélection.`, 'ok');
         } catch (err) {
-            if (err && err.message === '__AUTOTRACE_CANCELLED__') {
-                showMsg('Génération annulée.', 'err');
-            } else if (err && err.message === 'NO_CONTOURS') {
-                showMsg("Aucun contour détecté avec ces réglages — essayez d'ajuster le seuil, la sensibilité, ou le détail.", 'err');
-            } else {
-                console.error(err); showMsg('Une erreur est survenue pendant la génération.', 'err');
-            }
+            if (err && err.message === '__AUTOTRACE_CANCELLED__') showMsg('Génération annulée.', 'err');
+            else if (err && err.message === 'NO_POINTS') showMsg('Aucun point détecté — essayez de baisser le seuil ou la marge.', 'err');
+            else { console.error(err); showMsg('Une erreur est survenue pendant la génération.', 'err'); }
         } finally {
             state.busy = false;
             els.btnGenerate.disabled = false; els.btnCancel.style.display = 'none';
@@ -909,13 +536,24 @@
         }
     }
 
-    // --------------------------------- Câblage UI ---------------------------------
-
-    function updateModeVisibility() {
-        els.rowThreshold.style.display = (state.mode === 'threshold' || state.mode === 'silhouette') ? 'block' : 'none';
-        els.rowEdges.style.display = (state.mode === 'edges') ? 'block' : 'none';
-        els.rowKeepLargest.style.display = (state.mode === 'silhouette') ? 'block' : 'none';
+    // Convertit un point choisi en coordonnées "pixel bitmap de l'aperçu" (0..previewCanvas.width,
+    // toujours carré) vers l'espace du canvas de travail final (w x h, pas nécessairement carré) —
+    // même convention que panScaleX/Y dans drawTransformed (mise à l'échelle par axe).
+    function previewBitmapToWorkSpace(p, w, h) {
+        const ps = els.previewCanvas.width;
+        return { x: (p.x / ps) * w, y: (p.y / ps) * h };
     }
+
+    function nearestPointIndex(pts, target) {
+        let best = 0, bestD = Infinity;
+        for (let i = 0; i < pts.length; i++) {
+            const dx = pts[i].x - target.x, dy = pts[i].y - target.y; const d = dx * dx + dy * dy;
+            if (d < bestD) { bestD = d; best = i; }
+        }
+        return best;
+    }
+
+    // --------------------------------- Câblage UI ---------------------------------
 
     function wireEvents() {
         els.dropZone.addEventListener('click', () => els.fileInput.click());
@@ -926,37 +564,33 @@
 
         wirePreviewInteraction();
 
+        els.btnPickStart.addEventListener('click', () => setPickMode(state.pickMode === 'start' ? null : 'start'));
+        els.btnPickEnd.addEventListener('click', () => setPickMode(state.pickMode === 'end' ? null : 'end'));
+        els.btnClearPoints.addEventListener('click', () => { state.startPointPreview = null; state.endPointPreview = null; setPickMode(null); renderPreview(); });
+
         els.zoom.addEventListener('input', () => { state.tx.zoom = els.zoom.value / 100; els.valZoom.textContent = els.zoom.value + '%'; renderPreview(); });
-        els.zoom.addEventListener('change', scheduleThumbnails);
+        els.zoom.addEventListener('change', scheduleStipplePreview);
         els.imgrot.addEventListener('input', () => { state.tx.rotDeg = parseInt(els.imgrot.value); els.valImgrot.textContent = els.imgrot.value + '°'; renderPreview(); });
-        els.imgrot.addEventListener('change', scheduleThumbnails);
-        els.flipH.addEventListener('change', () => { state.tx.flipH = els.flipH.checked; renderPreview(); scheduleThumbnails(); });
-        els.flipV.addEventListener('change', () => { state.tx.flipV = els.flipV.checked; renderPreview(); scheduleThumbnails(); });
+        els.imgrot.addEventListener('change', scheduleStipplePreview);
+        els.flipH.addEventListener('change', () => { state.tx.flipH = els.flipH.checked; renderPreview(); scheduleStipplePreview(); });
+        els.flipV.addEventListener('change', () => { state.tx.flipV = els.flipV.checked; renderPreview(); scheduleStipplePreview(); });
         els.btnRecenter.addEventListener('click', () => {
             state.tx = { zoom: 1.0, rotDeg: 0, panX: 0, panY: 0, flipH: false, flipV: false };
             els.zoom.value = 100; els.valZoom.textContent = '100%'; els.imgrot.value = 0; els.valImgrot.textContent = '0°';
             els.flipH.checked = false; els.flipV.checked = false;
-            renderPreview(); scheduleThumbnails();
+            renderPreview(); scheduleStipplePreview();
         });
 
-        Array.from(els.modes.children).forEach((card) => {
-            card.addEventListener('click', () => {
-                Array.from(els.modes.children).forEach(c => c.classList.remove('active'));
-                card.classList.add('active'); state.mode = card.dataset.mode; updateModeVisibility();
-            });
-        });
-
+        els.points.addEventListener('input', () => { state.params.pointCount = parseInt(els.points.value); els.valPoints.textContent = state.params.pointCount; });
+        els.points.addEventListener('change', scheduleStipplePreview);
         els.threshold.addEventListener('input', () => { state.params.threshold = parseInt(els.threshold.value); els.valThreshold.textContent = state.params.threshold; });
-        els.threshold.addEventListener('change', scheduleThumbnails);
-        els.edgesens.addEventListener('input', () => { state.params.edgeSensitivity = parseInt(els.edgesens.value); els.valEdgesens.textContent = state.params.edgeSensitivity; });
-        els.edgesens.addEventListener('change', scheduleThumbnails);
-        els.invert.addEventListener('change', () => { state.params.invert = els.invert.checked; scheduleThumbnails(); });
-        els.keeplargest.addEventListener('change', () => { state.params.keepLargestOnly = els.keeplargest.checked; scheduleThumbnails(); });
+        els.threshold.addEventListener('change', scheduleStipplePreview);
+        els.invert.addEventListener('change', () => { state.params.invert = els.invert.checked; scheduleStipplePreview(); });
         els.blur.addEventListener('input', () => { state.params.blurRadius = parseInt(els.blur.value); els.valBlur.textContent = state.params.blurRadius; });
-        els.blur.addEventListener('change', scheduleThumbnails);
-        els.detail.addEventListener('input', () => { state.params.detail = parseInt(els.detail.value); els.valDetail.textContent = state.params.detail; });
-        els.detail.addEventListener('change', scheduleThumbnails);
-        els.chaikin.addEventListener('input', () => { state.params.chaikinIters = parseInt(els.chaikin.value); els.valChaikin.textContent = state.params.chaikinIters; });
+        els.blur.addEventListener('change', scheduleStipplePreview);
+        els.margin.addEventListener('input', () => { state.params.marginFrac = parseInt(els.margin.value) / 100; els.valMargin.textContent = els.margin.value + '%'; });
+        els.margin.addEventListener('change', scheduleStipplePreview);
+        els.quality.addEventListener('input', () => { state.params.quality = parseInt(els.quality.value); els.valQuality.textContent = state.params.quality; });
         els.res.addEventListener('input', () => { state.params.resolution = parseInt(els.res.value); els.valRes.textContent = state.params.resolution + 'px'; });
         els.mirrorFinal.addEventListener('change', () => { state.params.mirrorFinal = els.mirrorFinal.checked; });
 
@@ -964,8 +598,6 @@
         els.btnCancel.addEventListener('click', () => { state.cancelRequested = true; });
         els.btnClose.addEventListener('click', AutoTrace.close);
         els.backdrop.addEventListener('click', (e) => { if (e.target === els.backdrop && !state.busy) AutoTrace.close(); });
-
-        updateModeVisibility();
     }
 
     // ================================= API PUBLIQUE ================================
@@ -974,10 +606,9 @@
 
     AutoTrace.open = function () {
         if (!window.app) { alert("L'application principale n'est pas prête."); return; }
+        if (!window.TSPCore) { alert("Le moteur TSP (tsp_core.js) n'est pas chargé."); return; }
         if (!state.built) buildModal();
         els.backdrop.style.display = 'flex';
-        // Le conteneur vient d'apparaître : sa taille réelle n'est connue qu'après layout,
-        // donc on recale le canvas juste après (et à chaque redimensionnement de fenêtre).
         requestAnimationFrame(() => { layoutPreviewCanvas(); renderPreview(); });
         window.addEventListener('resize', onWindowResizeWhileOpen);
     };
@@ -991,4 +622,289 @@
     };
 
     window.AutoTrace = AutoTrace;
+
+    /* ========================================================================
+       TSP FILL — remplissage d'une forme déjà présente sur la table par un
+       tracé continu façon TSP-art (même moteur que Auto-Trace : tsp_core.js).
+       Fonctionne sur le calque actuellement sélectionné (doit être une forme
+       fermée : dessinée avec l'outil Mur, Remplissage/Zigzag, ou tout tracé
+       fermé). Ceci évite de modifier la machine à états des outils de dessin
+       du canevas principal (déjà corrigée avec soin — voir CHANGELOG v4.0) :
+       on part d'une forme que l'utilisateur a DÉJÀ dessinée avec les outils
+       existants, plutôt que d'ajouter un mode de dessin supplémentaire.
+       ======================================================================== */
+
+    function pointInPolygon(x, y, poly) {
+        let inside = false;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+            const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
+    }
+
+    function getSelectedBoundary() {
+        const app = window.app;
+        if (!app || !app.selectedIds || app.selectedIds.length !== 1) return null;
+        const info = app.findLayer(app.selectedIds[0]);
+        if (!info) return null;
+        const l = info.layer;
+        const poly = (l.boundary && l.boundary.length >= 3) ? l.boundary : (l.points && l.points.length >= 3 ? l.points : null);
+        if (!poly) return null;
+        return { points: poly, name: l.name || 'la forme sélectionnée' };
+    }
+
+    const tfState = {
+        built: false, boundary: null,
+        params: { pointCount: 900, quality: 20, resolution: 260 },
+        pickMode: null, startPt: null, endPt: null, // en coordonnées SCÈNE (mêmes unités que la table)
+        cancelRequested: false, busy: false,
+    };
+    let tfEls = {};
+
+    function tfInjectStyles() {
+        if (document.getElementById('tspfill-styles')) return;
+        const css = `
+        #tspfill-backdrop { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9000; display:flex; align-items:center; justify-content:center; }
+        #tspfill-modal { background:#fff; width:min(560px, 96vw); max-height:92vh; overflow-y:auto; border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,0.3); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+        #tspfill-modal * { box-sizing:border-box; }
+        .tf-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid #eee; }
+        .tf-header h2 { margin:0; font-size:16px; }
+        .tf-close { border:none; background:#f2f2f2; border-radius:8px; width:32px; height:32px; font-size:16px; cursor:pointer; }
+        .tf-body { padding:18px; }
+        .tf-preview-wrap { position:relative; border-radius:10px; overflow:hidden; background:#f5f5f5; border:1px solid #ddd; width:100%; max-width:400px; aspect-ratio:1/1; margin:0 auto 14px; }
+        #tspfill-modal canvas { position:static !important; top:auto !important; left:auto !important; }
+        #tf-canvas { display:block; width:100%; height:100%; }
+        #tf-canvas.tf-cursor-pick { cursor:crosshair; }
+        .tf-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; font-size:13px; }
+        .tf-row-slider { display:flex; align-items:center; gap:6px; margin-bottom:12px; }
+        .tf-row-slider input[type=range] { flex:1; }
+        .tf-badge { font-size:12px; background:#eef4fc; color:#0078D7; padding:2px 8px; border-radius:10px; font-weight:bold; min-width:42px; text-align:center; }
+        .tf-point-row { display:flex; gap:6px; margin-bottom:14px; }
+        .tf-btn { padding:9px 14px; border-radius:8px; border:1px solid #ccc; background:#fff; cursor:pointer; font-weight:bold; font-size:13px; flex:1; }
+        .tf-btn.active { background:#0078D7; color:#fff; border-color:#0078D7; }
+        .tf-btn-primary { background:#0078D7; color:#fff; border-color:#0078D7; width:100%; padding:12px; font-size:14px; }
+        .tf-btn-primary:disabled { opacity:0.5; cursor:not-allowed; }
+        .tf-progress-wrap { display:none; margin-top:14px; }
+        .tf-progress-track { background:#eee; border-radius:8px; height:14px; overflow:hidden; }
+        .tf-progress-fill { background:#0078D7; height:100%; width:0%; transition:width .15s; }
+        .tf-progress-label { font-size:12px; color:#555; margin-top:6px; text-align:center; }
+        .tf-msg { font-size:12px; border-radius:8px; padding:8px 10px; margin-top:10px; display:none; }
+        .tf-msg.ok { display:block; background:#e8f5e9; color:#2e7d32; }
+        .tf-msg.err { display:block; background:#ffebee; color:#c62828; }
+        .tf-msg.info { display:block; background:#e3f2fd; color:#1565c0; }
+        `;
+        const style = document.createElement('style');
+        style.id = 'tspfill-styles'; style.textContent = css;
+        document.head.appendChild(style);
+    }
+
+    function tfBuildModal() {
+        tfInjectStyles();
+        const backdrop = document.createElement('div');
+        backdrop.id = 'tspfill-backdrop'; backdrop.style.display = 'none';
+        backdrop.innerHTML = `
+        <div id="tspfill-modal">
+            <div class="tf-header"><h2>🎯 TSP Fill — remplissage par points</h2><button class="tf-close" id="tf-btn-close">✕</button></div>
+            <div class="tf-body">
+                <div class="tf-preview-wrap"><canvas id="tf-canvas" width="360" height="360"></canvas></div>
+                <div class="tf-point-row">
+                    <button class="tf-btn" id="tf-btn-pick-start">📍 Point de départ</button>
+                    <button class="tf-btn" id="tf-btn-pick-end">🏁 Point d'arrivée</button>
+                    <button class="tf-btn" id="tf-btn-clear-points" style="flex:0 0 44px;">✕</button>
+                </div>
+                <div class="tf-row"><label>⚫ Nombre de points :</label><span class="tf-badge" id="tf-val-points">900</span></div>
+                <div class="tf-row-slider"><input type="range" id="tf-points" min="100" max="4000" step="50" value="900"></div>
+                <div class="tf-row"><label>🧮 Qualité (optimisation) :</label><span class="tf-badge" id="tf-val-quality">20</span></div>
+                <div class="tf-row-slider"><input type="range" id="tf-quality" min="0" max="40" value="20"></div>
+                <button class="tf-btn tf-btn-primary" id="tf-btn-generate">✨ Générer le remplissage</button>
+                <div class="tf-progress-wrap" id="tf-progress-wrap">
+                    <div class="tf-progress-track"><div class="tf-progress-fill" id="tf-progress-fill"></div></div>
+                    <div class="tf-progress-label" id="tf-progress-label">Préparation…</div>
+                </div>
+                <div class="tf-msg" id="tf-msg"></div>
+            </div>
+        </div>`;
+        document.body.appendChild(backdrop);
+        tfEls = {
+            backdrop,
+            canvas: backdrop.querySelector('#tf-canvas'),
+            btnPickStart: backdrop.querySelector('#tf-btn-pick-start'),
+            btnPickEnd: backdrop.querySelector('#tf-btn-pick-end'),
+            btnClearPoints: backdrop.querySelector('#tf-btn-clear-points'),
+            points: backdrop.querySelector('#tf-points'), valPoints: backdrop.querySelector('#tf-val-points'),
+            quality: backdrop.querySelector('#tf-quality'), valQuality: backdrop.querySelector('#tf-val-quality'),
+            btnGenerate: backdrop.querySelector('#tf-btn-generate'),
+            progressWrap: backdrop.querySelector('#tf-progress-wrap'),
+            progressFill: backdrop.querySelector('#tf-progress-fill'),
+            progressLabel: backdrop.querySelector('#tf-progress-label'),
+            msg: backdrop.querySelector('#tf-msg'),
+            btnClose: backdrop.querySelector('#tf-btn-close'),
+        };
+        tfWireEvents();
+        tfState.built = true;
+    }
+
+    function tfShowMsg(text, kind) { tfEls.msg.textContent = text; tfEls.msg.className = 'tf-msg ' + (kind || 'ok'); }
+
+    // Calcule la transformation "scène -> aperçu carré" (bbox du polygone + marge).
+    function tfGetSceneToCanvasFit() {
+        const poly = tfState.boundary.points;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        poly.forEach(p => { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; });
+        const w = Math.max(1e-6, maxX - minX), h = Math.max(1e-6, maxY - minY);
+        const pad = Math.max(w, h) * 0.08;
+        return { minX: minX - pad, minY: minY - pad, span: Math.max(w, h) + pad * 2 };
+    }
+
+    function tfRenderPreview() {
+        if (!tfState.boundary) return;
+        const canvas = tfEls.canvas; const ctx = canvas.getContext('2d');
+        const cw = canvas.width, ch = canvas.height;
+        ctx.clearRect(0, 0, cw, ch); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cw, ch);
+        const fit = tfGetSceneToCanvasFit();
+        const toCanvas = (p) => ({ x: (p.x - fit.minX) / fit.span * cw, y: (p.y - fit.minY) / fit.span * ch });
+        const poly = tfState.boundary.points.map(toCanvas);
+        ctx.beginPath(); ctx.moveTo(poly[0].x, poly[0].y);
+        for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(0,120,215,0.08)'; ctx.fill();
+        ctx.strokeStyle = '#0078D7'; ctx.lineWidth = 2; ctx.stroke();
+
+        const drawMarker = (pScene, color, label) => {
+            if (!pScene) return;
+            const p = toCanvas(pScene);
+            ctx.save(); ctx.fillStyle = color; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(p.x, p.y, 9, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(label, p.x, p.y);
+            ctx.restore();
+        };
+        drawMarker(tfState.startPt, '#2e7d32', 'D');
+        drawMarker(tfState.endPt, '#c62828', 'A');
+    }
+
+    function tfSetPickMode(mode) {
+        tfState.pickMode = mode;
+        tfEls.btnPickStart.classList.toggle('active', mode === 'start');
+        tfEls.btnPickEnd.classList.toggle('active', mode === 'end');
+        tfEls.canvas.classList.toggle('tf-cursor-pick', !!mode);
+    }
+
+    function tfCanvasClickToScene(clientX, clientY) {
+        const canvas = tfEls.canvas; const rect = canvas.getBoundingClientRect();
+        const cx = (clientX - rect.left) / rect.width * canvas.width;
+        const cy = (clientY - rect.top) / rect.height * canvas.height;
+        const fit = tfGetSceneToCanvasFit();
+        return { x: fit.minX + (cx / canvas.width) * fit.span, y: fit.minY + (cy / canvas.height) * fit.span };
+    }
+
+    function tfYield() { return new Promise(r => setTimeout(r, 0)); }
+    function tfSetProgress(pct, label) { tfEls.progressFill.style.width = clamp(pct, 0, 100) + '%'; tfEls.progressLabel.textContent = label; }
+    function tfCheckCancel() { if (tfState.cancelRequested) throw new Error('__TSPFILL_CANCELLED__'); }
+
+    async function tfGenerate() {
+        if (!tfState.boundary || tfState.busy || !window.TSPCore) return;
+        tfState.busy = true; tfState.cancelRequested = false;
+        tfEls.btnGenerate.disabled = true; tfEls.progressWrap.style.display = 'block';
+        tfSetProgress(5, 'Préparation de la zone…');
+        try {
+            await tfYield(); tfCheckCancel();
+            const fit = tfGetSceneToCanvasFit();
+            const res = tfState.params.resolution;
+            const poly = tfState.boundary.points;
+
+            const density = new Float32Array(res * res);
+            for (let y = 0; y < res; y++) {
+                for (let x = 0; x < res; x++) {
+                    const sx = fit.minX + (x / res) * fit.span, sy = fit.minY + (y / res) * fit.span;
+                    density[y * res + x] = pointInPolygon(sx, sy, poly) ? 1 : 0;
+                }
+            }
+            tfSetProgress(20, 'Placement des points…'); await tfYield(); tfCheckCancel();
+            const pts = window.TSPCore.stipple(density, res, res, tfState.params.pointCount, 3, Math.random);
+            if (pts.length < 2) throw new Error('NO_POINTS');
+
+            tfSetProgress(45, 'Construction du trajet…'); await tfYield(); tfCheckCancel();
+            const sceneToRaster = (p) => ({ x: (p.x - fit.minX) / fit.span * res, y: (p.y - fit.minY) / fit.span * res });
+            let startIdx = null, endIdx = null;
+            if (tfState.startPt) startIdx = nearestPointIndex(pts, sceneToRaster(tfState.startPt));
+            if (tfState.endPt) { endIdx = nearestPointIndex(pts, sceneToRaster(tfState.endPt)); if (endIdx === startIdx) endIdx = null; }
+            const tour = window.TSPCore.greedyTour(pts, startIdx, endIdx);
+            await tfYield(); tfCheckCancel();
+
+            tfSetProgress(65, 'Optimisation (2-opt)…'); await tfYield(); tfCheckCancel();
+            const knn = window.TSPCore.buildKNN(pts, 8);
+            await tfYield(); tfCheckCancel();
+            const optimized = window.TSPCore.twoOpt(pts, tour, knn, tfState.params.quality);
+
+            tfSetProgress(90, 'Conversion en coordonnées scène…'); await tfYield(); tfCheckCancel();
+            const scenePoints = optimized.map(i => ({ x: fit.minX + (pts[i].x / res) * fit.span, y: fit.minY + (pts[i].y / res) * fit.span }));
+
+            tfSetProgress(100, 'Terminé !'); await tfYield();
+            const app = window.app;
+            if (app && typeof app.addLayer === 'function') {
+                app.autoTraceCount = (app.autoTraceCount || 1);
+                app.addLayer({
+                    type: 'imported_path', name: `🎯 TSP Fill ${app.autoTraceCount++}`,
+                    originalPoints: scenePoints, points: [...scenePoints],
+                    x: 0, y: 0, scaleX: 1.0, scaleY: 1.0, opacity: 1.0, rot: 0,
+                    color: app.ui ? app.ui.color : '#000000', width: 1.0,
+                });
+                if (typeof app.invalidateSim === 'function') app.invalidateSim();
+                if (typeof app.draw === 'function') app.draw();
+                if (typeof app.autoSave === 'function') app.autoSave();
+            }
+            tfShowMsg(`✅ Remplissage ajouté (${scenePoints.length} points).`, 'ok');
+        } catch (err) {
+            if (err && err.message === '__TSPFILL_CANCELLED__') tfShowMsg('Annulé.', 'err');
+            else if (err && err.message === 'NO_POINTS') tfShowMsg('Aucun point placé — la forme est peut-être trop petite.', 'err');
+            else { console.error(err); tfShowMsg('Une erreur est survenue.', 'err'); }
+        } finally {
+            tfState.busy = false; tfEls.btnGenerate.disabled = false;
+            setTimeout(() => { tfEls.progressWrap.style.display = 'none'; }, 600);
+        }
+    }
+
+    function tfWireEvents() {
+        tfEls.canvas.addEventListener('pointerdown', (e) => {
+            if (!tfState.pickMode) return;
+            const p = tfCanvasClickToScene(e.clientX, e.clientY);
+            if (tfState.pickMode === 'start') tfState.startPt = p; else tfState.endPt = p;
+            tfSetPickMode(null); tfRenderPreview();
+        });
+        tfEls.btnPickStart.addEventListener('click', () => tfSetPickMode(tfState.pickMode === 'start' ? null : 'start'));
+        tfEls.btnPickEnd.addEventListener('click', () => tfSetPickMode(tfState.pickMode === 'end' ? null : 'end'));
+        tfEls.btnClearPoints.addEventListener('click', () => { tfState.startPt = null; tfState.endPt = null; tfSetPickMode(null); tfRenderPreview(); });
+        tfEls.points.addEventListener('input', () => { tfState.params.pointCount = parseInt(tfEls.points.value); tfEls.valPoints.textContent = tfState.params.pointCount; });
+        tfEls.quality.addEventListener('input', () => { tfState.params.quality = parseInt(tfEls.quality.value); tfEls.valQuality.textContent = tfState.params.quality; });
+        tfEls.btnGenerate.addEventListener('click', tfGenerate);
+        tfEls.btnClose.addEventListener('click', TSPFill.close);
+        tfEls.backdrop.addEventListener('click', (e) => { if (e.target === tfEls.backdrop && !tfState.busy) TSPFill.close(); });
+    }
+
+    const TSPFill = {};
+
+    TSPFill.open = function () {
+        if (!window.app) { alert("L'application principale n'est pas prête."); return; }
+        if (!window.TSPCore) { alert("Le moteur TSP (tsp_core.js) n'est pas chargé."); return; }
+        const boundary = getSelectedBoundary();
+        if (!boundary) {
+            alert("Sélectionnez d'abord un calque formant une forme fermée (dessinée avec l'outil Mur ou Remplissage, ou un tracé fermé), puis relancez TSP Fill.");
+            return;
+        }
+        tfState.boundary = boundary; tfState.startPt = null; tfState.endPt = null; tfState.pickMode = null;
+        if (!tfState.built) tfBuildModal();
+        tfEls.msg.className = 'tf-msg'; tfEls.progressWrap.style.display = 'none';
+        tfEls.backdrop.style.display = 'flex';
+        requestAnimationFrame(tfRenderPreview);
+    };
+
+    TSPFill.close = function () {
+        if (tfState.busy) { if (!confirm('Une génération est en cours, annuler et fermer ?')) return; tfState.cancelRequested = true; }
+        if (tfEls.backdrop) tfEls.backdrop.style.display = 'none';
+    };
+
+    window.TSPFill = TSPFill;
 })();
