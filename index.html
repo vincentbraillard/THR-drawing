@@ -212,15 +212,19 @@
                 <fieldset id="fs-transform" disabled style="background:#fff;">
                     <legend>📐 Transformer la sélection</legend>
                     <div style="text-align:center; font-size:12px; color:#1565c0; font-weight:bold; margin-bottom:15px; background: #e3f2fd; padding:10px; border-radius: 6px;">
-                        💡 Utilisez l'outil "🖐️ Sélection" pour déplacer, tourner et redimensionner le calque <b>ou le groupe</b> sur la table. <br><br><b>Maintenez SHIFT ou CTRL pour conserver les proportions ou créer des angles stricts (15°).</b>
+                        💡 Utilisez l'outil "🖐️ Sélection" pour déplacer, tourner et redimensionner le calque <b>ou le groupe</b> sur la table (poignées d'angle = redimensionner, glisser au-delà du centre = miroir). <br><br><b>Maintenez SHIFT ou CTRL pour conserver les proportions ou créer des angles stricts (15°).</b>
                     </div>
                     <label>Miroir Global :</label>
                     <div style="display:flex; gap:5px; margin-bottom:10px;">
                         <button class="btn" style="flex:1" onclick="app.toggleFlip('H')">↔️ Horiz.</button>
                         <button class="btn" style="flex:1" onclick="app.toggleFlip('V')">↕️ Vert.</button>
                     </div>
+                    <div id="div-rotation" style="display:none; margin-top:10px;">
+                        <div class="row"><label>🔄 Rotation précise :</label> <span class="val-badge" id="val-img-rot">0°</span></div>
+                        <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('img-rot', -1)">➖</button><input type="range" id="img-rot" min="-180" max="180" value="0" oninput="app.updateTransform()"><button class="btn btn-icon" onclick="app.stepSlider('img-rot', 1)">➕</button></div>
+                    </div>
                     <div id="div-opacity" style="display:none; margin-top:15px; border-top:1px solid #eee; padding-top:10px;">
-                        <div class="row"><label>🌗 Opacité (Image) :</label></div>
+                        <div class="row"><label>🌗 Opacité :</label></div>
                         <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('img-opacity', -5)">➖</button><input type="range" id="img-opacity" min="0" max="100" value="100" oninput="app.updateOpacityLive()"><button class="btn btn-icon" onclick="app.stepSlider('img-opacity', 5)">➕</button></div>
                     </div>
                 </fieldset>
@@ -263,7 +267,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v3.5 (Rotation visuelle)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v4.0 (Transformation unifiée)</span>
     </div>
 
 <script>
@@ -408,15 +412,23 @@ const app = {
         let startX = layer.x - totalW / 2; let startY = layer.y + layer.charH / 2; 
         if (Object.keys(this.sunaeAlphabet).length === 0) return pts;
 
+        // v4.0 : miroir horizontal (ordre + glyphes) et vertical (glyphes) via toggleFlip.
+        let order = []; for (let i = 0; i < layer.charCount; i++) order.push(i);
+        if (layer.flipH) order.reverse();
+
         for (let i = 0; i < layer.charCount; i++) {
-            let char = layer.chars[i] || ' '; let charPts = this.sunaeAlphabet[char] || this.sunaeAlphabet[' '];
+            let char = layer.chars[order[i]] || ' '; let charPts = this.sunaeAlphabet[char] || this.sunaeAlphabet[' '];
             let charOffsetX = startX + i * (layer.charW + layer.spacing);
             if (i > 0) {
                 let prevOffsetX = startX + (i-1) * (layer.charW + layer.spacing) + layer.charW;
                 pts.push(...this.discretizeLine({x: prevOffsetX, y: startY}, {x: charOffsetX, y: startY}, 2.0));
             }
             let rawCharPts = [];
-            for (let j = 0; j < charPts.length; j++) rawCharPts.push({ x: charOffsetX + charPts[j][0] * layer.charW, y: startY - charPts[j][1] * layer.charH });
+            for (let j = 0; j < charPts.length; j++) {
+                let u = layer.flipH ? (1 - charPts[j][0]) : charPts[j][0];
+                let v = layer.flipV ? -charPts[j][1] : charPts[j][1];
+                rawCharPts.push({ x: charOffsetX + u * layer.charW, y: startY - v * layer.charH });
+            }
             pts.push(...this.resamplePath(rawCharPts, 2.0));
         }
 
@@ -430,7 +442,57 @@ const app = {
         return pts;
     },
 
-    // --- TRANSFORMATION GLOBALE (MOVE, SCALE, ROTATE) ---
+    // --- TRANSFORMATION GLOBALE (MOVE, SCALE, ROTATE, MIROIR) ---
+    // v4.0 : les calques 'image', 'imported_path' et 'text' ont un contour orienté (OBB) qui suit
+    // fidèlement leur rotation, ce qui permet un redimensionnement et un miroir fiables via les poignées,
+    // même après rotation. Les autres types (dessin libre, remplissage, etc.) restent gérés via leur
+    // nuage de points transformé directement (déjà correct quel que soit l'angle courant).
+
+    // Étendue LOCALE (non tournée, non mise à l'échelle) d'un calque à pivot central, utilisée comme
+    // référence fixe pour le calcul de l'OBB. Le pivot (0,0) local correspond toujours à (l.x, l.y) monde.
+    getLocalExtents(l) {
+        if (l.type === 'image' && l.img) {
+            let hw = l.img.width / 2, hh = l.img.height / 2;
+            return { minX: -hw, minY: -hh, maxX: hw, maxY: hh };
+        }
+        if (l.type === 'imported_path' && l.originalPoints && l.originalPoints.length > 0) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (let p of l.originalPoints) { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; }
+            if (minX === Infinity) return null;
+            return { minX, minY, maxX, maxY };
+        }
+        if (l.type === 'text' && l.charCount) {
+            let totalW = l.charCount * l.charW + Math.max(0, l.charCount - 1) * l.spacing;
+            return { minX: -totalW / 2, minY: -l.charH / 2, maxX: totalW / 2, maxY: l.charH / 2 };
+        }
+        return null;
+    },
+
+    // Facteurs d'échelle actuels le long des axes locaux (avant rotation) pour un calque OBB.
+    getCurrentLocalScale(l) {
+        if (l.type === 'image' || l.type === 'imported_path') return { sx: l.scaleX !== undefined ? l.scaleX : 1, sy: l.scaleY !== undefined ? l.scaleY : 1 };
+        return { sx: 1, sy: 1 }; // 'text' encode déjà sa taille réelle dans charW/charH, pas de facteur séparé
+    },
+
+    // Retourne l'OBB complet (centre, angle, coins locaux et coins monde) d'un calque, ou null si ce
+    // type de calque n'a pas de pivot/rotation propre (dans ce cas on retombe sur l'AABB classique).
+    getLayerOBB(l) {
+        if (!l) return null;
+        let ext = this.getLocalExtents(l); if (!ext) return null;
+        let { sx, sy } = this.getCurrentLocalScale(l);
+        let rot = (l.rot || 0) * Math.PI / 180; let cosA = Math.cos(rot), sinA = Math.sin(rot);
+        let cornersLocal = {
+            nw: { x: ext.minX * sx, y: ext.minY * sy }, ne: { x: ext.maxX * sx, y: ext.minY * sy },
+            se: { x: ext.maxX * sx, y: ext.maxY * sy }, sw: { x: ext.minX * sx, y: ext.maxY * sy },
+        };
+        let toWorld = (p) => ({ x: l.x + p.x * cosA - p.y * sinA, y: l.y + p.x * sinA + p.y * cosA });
+        return {
+            cx: l.x, cy: l.y, rot, cosA, sinA,
+            cornersLocal, rawExt: ext,
+            cornersWorld: { nw: toWorld(cornersLocal.nw), ne: toWorld(cornersLocal.ne), se: toWorld(cornersLocal.se), sw: toWorld(cornersLocal.sw) },
+        };
+    },
+
     getLayerBBox(l) {
         if (!l) return null; 
         if (l.type === 'folder') {
@@ -448,19 +510,67 @@ const app = {
             }
             return minX === Infinity ? null : { minX, minY, maxX, maxY };
         }
-        
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        if (l.type === 'image' && l.img) {
-            let w = l.img.width * l.scale; let h = l.img.height * l.scale;
-            return { minX: l.x - w/2, minY: l.y - h/2, maxX: l.x + w/2, maxY: l.y + h/2 };
-        } else {
-            let pts = [];
-            if (l.points && l.points.length > 0) pts.push(...l.points);
-            else if (l.boundary && l.boundary.length > 0) pts.push(...l.boundary);
-            if (pts.length === 0) return null;
-            pts.forEach(p => { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; });
-            return minX === Infinity ? null : { minX, minY, maxX, maxY };
+
+        let obb = this.getLayerOBB(l);
+        if (obb) {
+            let xs = [obb.cornersWorld.nw.x, obb.cornersWorld.ne.x, obb.cornersWorld.se.x, obb.cornersWorld.sw.x];
+            let ys = [obb.cornersWorld.nw.y, obb.cornersWorld.ne.y, obb.cornersWorld.se.y, obb.cornersWorld.sw.y];
+            return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
         }
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        let pts = [];
+        if (l.points && l.points.length > 0) pts.push(...l.points);
+        else if (l.boundary && l.boundary.length > 0) pts.push(...l.boundary);
+        if (pts.length === 0) return null;
+        pts.forEach(p => { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; });
+        return minX === Infinity ? null : { minX, minY, maxX, maxY };
+    },
+
+    // Recalcule l'ensemble des points visibles/exportés d'un tracé importé (.thr) à partir de ses points
+    // originaux et de sa transformation courante (x, y, rot, scaleX, scaleY). Le pivot est l'origine locale
+    // (0,0), identique à celui utilisé pour le rendu (translate -> rotate -> scale), donc cohérent avec
+    // l'OBB ci-dessus et avec le rendu à l'écran.
+    recalcImportedPath(l) {
+        if (!l.originalPoints) return;
+        let rad = (l.rot || 0) * Math.PI / 180; let cosA = Math.cos(rad), sinA = Math.sin(rad);
+        let sx = l.scaleX !== undefined ? l.scaleX : 1; let sy = l.scaleY !== undefined ? l.scaleY : 1;
+        l.points = l.originalPoints.map(p => {
+            let px = p.x * sx, py = p.y * sy;
+            return { x: l.x + px * cosA - py * sinA, y: l.y + px * sinA + py * cosA };
+        });
+    },
+
+    // Calcule la nouvelle échelle/position absolue d'un calque OBB lorsqu'on fait glisser une poignée
+    // d'angle, en gardant le coin OPPOSÉ parfaitement fixe dans l'espace monde (quel que soit l'angle
+    // courant du calque). Un glissement au-delà du centre inverse naturellement le signe -> miroir.
+    computeOBBScaleDrag(origLayer, mode, ptScene) {
+        let ext = this.getLocalExtents(origLayer); if (!ext) return null;
+        let { sx: curScaleX, sy: curScaleY } = this.getCurrentLocalScale(origLayer);
+        let corners = { nw: { x: ext.minX, y: ext.minY }, ne: { x: ext.maxX, y: ext.minY }, se: { x: ext.maxX, y: ext.maxY }, sw: { x: ext.minX, y: ext.maxY } };
+        let map = { scale_nw: ['nw', 'se'], scale_ne: ['ne', 'sw'], scale_sw: ['sw', 'ne'], scale_se: ['se', 'nw'] };
+        let [dragKey, anchorKey] = map[mode]; let dragLocal = corners[dragKey], anchorLocal = corners[anchorKey];
+        let rot = (origLayer.rot || 0) * Math.PI / 180; let cosA = Math.cos(rot), sinA = Math.sin(rot);
+
+        let worldAnchor = {
+            x: origLayer.x + (anchorLocal.x * curScaleX) * cosA - (anchorLocal.y * curScaleY) * sinA,
+            y: origLayer.y + (anchorLocal.x * curScaleX) * sinA + (anchorLocal.y * curScaleY) * cosA,
+        };
+        let ddx = ptScene.x - worldAnchor.x, ddy = ptScene.y - worldAnchor.y;
+        let dLocalX = ddx * cosA + ddy * sinA;   // rotation inverse (R(-rot)) du delta monde vers l'espace local
+        let dLocalY = -ddx * sinA + ddy * cosA;
+
+        let denomX = dragLocal.x - anchorLocal.x, denomY = dragLocal.y - anchorLocal.y;
+        if (Math.abs(denomX) < 1e-6) denomX = denomX < 0 ? -1e-6 : 1e-6;
+        if (Math.abs(denomY) < 1e-6) denomY = denomY < 0 ? -1e-6 : 1e-6;
+
+        let newScaleX = dLocalX / denomX, newScaleY = dLocalY / denomY;
+        if (Math.abs(newScaleX) < 0.02) newScaleX = newScaleX < 0 ? -0.02 : 0.02;
+        if (Math.abs(newScaleY) < 0.02) newScaleY = newScaleY < 0 ? -0.02 : 0.02;
+
+        let newX = worldAnchor.x - (anchorLocal.x * newScaleX * cosA - anchorLocal.y * newScaleY * sinA);
+        let newY = worldAnchor.y - (anchorLocal.x * newScaleX * sinA + anchorLocal.y * newScaleY * cosA);
+        return { newScaleX, newScaleY, newX, newY };
     },
 
     applyAbsoluteTransform(orig, curr, dx, dy, sx, sy, cx, cy, angle = 0) {
@@ -479,10 +589,17 @@ const app = {
         }
 
         if (curr.type === 'image' || curr.type === 'imported_path') {
+            // v4.0 : échelle non-uniforme scaleX/scaleY (le signe porte le miroir), au lieu d'un simple
+            // 'scale' + flipH/flipV qui écrasait le signe (bug empêchant tout miroir via poignée/bouton).
+            let origScaleX = orig.scaleX !== undefined ? orig.scaleX : (orig.scale !== undefined ? orig.scale * (orig.flipH ? -1 : 1) : 1);
+            let origScaleY = orig.scaleY !== undefined ? orig.scaleY : (orig.scale !== undefined ? orig.scale * (orig.flipV ? -1 : 1) : 1);
             let nx = (orig.x - cx) * sx; let ny = (orig.y - cy) * sy;
             curr.x = cx + nx * cosA - ny * sinA + dx;
             curr.y = cy + nx * sinA + ny * cosA + dy;
-            curr.scale = orig.scale * Math.max(Math.abs(sx), Math.abs(sy));
+            curr.scaleX = origScaleX * sx; curr.scaleY = origScaleY * sy;
+            if (Math.abs(curr.scaleX) < 0.02) curr.scaleX = curr.scaleX < 0 ? -0.02 : 0.02;
+            if (Math.abs(curr.scaleY) < 0.02) curr.scaleY = curr.scaleY < 0 ? -0.02 : 0.02;
+            delete curr.scale; delete curr.flipH; delete curr.flipV;
             curr.rot = (orig.rot || 0) + angle * (180 / Math.PI);
             if (curr.type === 'imported_path') this.recalcImportedPath(curr);
             return;
@@ -492,6 +609,10 @@ const app = {
             let nx = (orig.x - cx) * sx; let ny = (orig.y - cy) * sy;
             curr.x = cx + nx * cosA - ny * sinA + dx;
             curr.y = cy + nx * sinA + ny * cosA + dy;
+            // Le texte ne supporte pas une largeur/hauteur de case négative (glyphes non-miroitables) :
+            // un glissement au-delà du centre inverse plutôt les drapeaux flipH/flipV (ordre + placement).
+            if (sx < 0) curr.flipH = !(orig.flipH); else curr.flipH = !!orig.flipH;
+            if (sy < 0) curr.flipV = !(orig.flipV); else curr.flipV = !!orig.flipV;
             curr.charW = Math.max(5, orig.charW * Math.abs(sx)); 
             curr.charH = Math.max(5, orig.charH * Math.abs(sy)); 
             curr.spacing = orig.spacing * Math.abs(sx);
@@ -595,7 +716,7 @@ const app = {
                         let startX = l.x - (totalW / 2); let startY = l.y + (l.charH / 2);
                         for (let j = 0; j < l.charCount; j++) {
                             let bx = startX + j * (l.charW + l.spacing); let by = startY - l.charH;
-                            if (ptScene.x >= bx && ptScene.x <= bx + l.charW && ptScene.y >= by && ptScene.y <= by + l.charH) { clickedSlot = j; clickedLayer = l; break; }
+                            if (ptScene.x >= bx && ptScene.x <= bx + l.charW && ptScene.y >= by && ptScene.y <= by + l.charH) { clickedSlot = l.flipH ? (l.charCount - 1 - j) : j; clickedLayer = l; break; }
                         }
                     }
                     if (clickedSlot !== null) break;
@@ -615,23 +736,49 @@ const app = {
             if (this.ui.tool === 'select') {
                 let selInfo = this.selectedIds.length === 1 ? this.findLayer(this.selectedIds[0]) : null; let sel = selInfo ? selInfo.layer : null; let hitTransform = false;
                 if (sel && !sel.effectiveLocked) {
-                    let bbox = this.getLayerBBox(sel);
-                    if (bbox) {
-                        let margin = 15 / this.ui.zoom; let hitMode = null;
-                        let cx = (bbox.minX + bbox.maxX) / 2; let handleY = bbox.minY - 25 / this.ui.zoom;
+                    let obb = this.getLayerOBB(sel);
+                    let margin = 15 / this.ui.zoom; let hitMode = null;
 
-                        if (Math.hypot(ptScene.x - cx, ptScene.y - handleY) < margin) hitMode = 'rotate';
-                        else if (Math.hypot(ptScene.x - bbox.minX, ptScene.y - bbox.minY) < margin) hitMode = 'scale_nw';
-                        else if (Math.hypot(ptScene.x - bbox.maxX, ptScene.y - bbox.minY) < margin) hitMode = 'scale_ne';
-                        else if (Math.hypot(ptScene.x - bbox.minX, ptScene.y - bbox.maxY) < margin) hitMode = 'scale_sw';
-                        else if (Math.hypot(ptScene.x - bbox.maxX, ptScene.y - bbox.maxY) < margin) hitMode = 'scale_se';
-                        else if (ptScene.x >= bbox.minX && ptScene.x <= bbox.maxX && ptScene.y >= bbox.minY && ptScene.y <= bbox.maxY) hitMode = 'move';
+                    if (obb) {
+                        // Test dans le repère LOCAL du calque (rotation inversée) : les poignées suivent
+                        // fidèlement l'angle courant, même après une rotation préalable.
+                        let dx = ptScene.x - obb.cx, dy = ptScene.y - obb.cy;
+                        let lx = dx * obb.cosA + dy * obb.sinA; let ly = -dx * obb.sinA + dy * obb.cosA;
+                        let c = obb.cornersLocal; let minLX = Math.min(c.nw.x, c.se.x), maxLX = Math.max(c.nw.x, c.se.x);
+                        let minLY = Math.min(c.nw.y, c.se.y), maxLY = Math.max(c.nw.y, c.se.y);
+                        let cxL = (minLX + maxLX) / 2; let handleLY = minLY - 25 / this.ui.zoom;
+
+                        if (Math.hypot(lx - cxL, ly - handleLY) < margin) hitMode = 'rotate';
+                        else if (Math.hypot(lx - c.nw.x, ly - c.nw.y) < margin) hitMode = 'scale_nw';
+                        else if (Math.hypot(lx - c.ne.x, ly - c.ne.y) < margin) hitMode = 'scale_ne';
+                        else if (Math.hypot(lx - c.sw.x, ly - c.sw.y) < margin) hitMode = 'scale_sw';
+                        else if (Math.hypot(lx - c.se.x, ly - c.se.y) < margin) hitMode = 'scale_se';
+                        else if (lx >= minLX && lx <= maxLX && ly >= minLY && ly <= maxLY) hitMode = 'move';
 
                         if (hitMode) {
                             this.saveState(); let origLayer = this.deepCopyLayerWithImages(sel);
-                            this.ui.activeTransform = { mode: hitMode, startX: ptScene.x, startY: ptScene.y, origBBox: bbox, origLayer: origLayer };
-                            if (hitMode === 'move') wrapper.style.cursor = 'move'; else if (hitMode === 'rotate') wrapper.style.cursor = 'crosshair'; else wrapper.style.cursor = 'nwse-resize'; 
+                            this.ui.activeTransform = { mode: hitMode, startX: ptScene.x, startY: ptScene.y, origLayer: origLayer, isOBB: true };
+                            if (hitMode === 'move') wrapper.style.cursor = 'move'; else if (hitMode === 'rotate') wrapper.style.cursor = 'crosshair'; else wrapper.style.cursor = 'nwse-resize';
                             hitTransform = true;
+                        }
+                    } else {
+                        let bbox = this.getLayerBBox(sel);
+                        if (bbox) {
+                            let cx = (bbox.minX + bbox.maxX) / 2; let handleY = bbox.minY - 25 / this.ui.zoom;
+
+                            if (Math.hypot(ptScene.x - cx, ptScene.y - handleY) < margin) hitMode = 'rotate';
+                            else if (Math.hypot(ptScene.x - bbox.minX, ptScene.y - bbox.minY) < margin) hitMode = 'scale_nw';
+                            else if (Math.hypot(ptScene.x - bbox.maxX, ptScene.y - bbox.minY) < margin) hitMode = 'scale_ne';
+                            else if (Math.hypot(ptScene.x - bbox.minX, ptScene.y - bbox.maxY) < margin) hitMode = 'scale_sw';
+                            else if (Math.hypot(ptScene.x - bbox.maxX, ptScene.y - bbox.maxY) < margin) hitMode = 'scale_se';
+                            else if (ptScene.x >= bbox.minX && ptScene.x <= bbox.maxX && ptScene.y >= bbox.minY && ptScene.y <= bbox.maxY) hitMode = 'move';
+
+                            if (hitMode) {
+                                this.saveState(); let origLayer = this.deepCopyLayerWithImages(sel);
+                                this.ui.activeTransform = { mode: hitMode, startX: ptScene.x, startY: ptScene.y, origBBox: bbox, origLayer: origLayer, isOBB: false };
+                                if (hitMode === 'move') wrapper.style.cursor = 'move'; else if (hitMode === 'rotate') wrapper.style.cursor = 'crosshair'; else wrapper.style.cursor = 'nwse-resize';
+                                hitTransform = true;
+                            }
                         }
                     }
                 }
@@ -680,10 +827,40 @@ const app = {
             }
 
             if (this.ui.activeTransform) {
-                let tf = this.ui.activeTransform; let dx = ptScene.x - tf.startX; let dy = ptScene.y - tf.startY; let sx = 1, sy = 1, cx = 0, cy = 0, angle = 0;
-                let ob = tf.origBBox; cx = (ob.minX + ob.maxX) / 2; cy = (ob.minY + ob.maxY) / 2;
+                let tf = this.ui.activeTransform; let sel = this.findLayer(this.selectedIds[0]).layer;
+
+                if (tf.isOBB && tf.mode.startsWith('scale_')) {
+                    // Redimensionnement dans le repère local de l'objet : le coin opposé reste fixe à
+                    // l'écran quel que soit l'angle du calque, et un glissement au-delà du centre bascule
+                    // naturellement en miroir (signe négatif de scaleX/scaleY).
+                    let res = this.computeOBBScaleDrag(tf.origLayer, tf.mode, ptScene);
+                    if (res) {
+                        if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                            let sMag = Math.max(Math.abs(res.newScaleX), Math.abs(res.newScaleY));
+                            res.newScaleX = (res.newScaleX < 0 ? -1 : 1) * sMag; res.newScaleY = (res.newScaleY < 0 ? -1 : 1) * sMag;
+                        }
+                        if (sel.type === 'text') {
+                            let orig = tf.origLayer;
+                            sel.charW = Math.max(5, orig.charW * Math.abs(res.newScaleX));
+                            sel.charH = Math.max(5, orig.charH * Math.abs(res.newScaleY));
+                            sel.spacing = orig.spacing * Math.abs(res.newScaleX);
+                            if (res.newScaleX < 0) sel.flipH = !orig.flipH; else sel.flipH = !!orig.flipH;
+                            if (res.newScaleY < 0) sel.flipV = !orig.flipV; else sel.flipV = !!orig.flipV;
+                            sel.x = res.newX; sel.y = res.newY;
+                            sel.points = this.generateTextPoints(sel);
+                        } else {
+                            sel.scaleX = res.newScaleX; sel.scaleY = res.newScaleY; sel.x = res.newX; sel.y = res.newY;
+                            if (sel.type === 'imported_path') this.recalcImportedPath(sel);
+                        }
+                    }
+                    this.draw(); return;
+                }
+
+                let dx = ptScene.x - tf.startX; let dy = ptScene.y - tf.startY; let sx = 1, sy = 1, cx = 0, cy = 0, angle = 0;
 
                 if (tf.mode === 'rotate') {
+                    cx = tf.isOBB ? tf.origLayer.x : (tf.origBBox.minX + tf.origBBox.maxX) / 2;
+                    cy = tf.isOBB ? tf.origLayer.y : (tf.origBBox.minY + tf.origBBox.maxY) / 2;
                     let startAngle = Math.atan2(tf.startY - cy, tf.startX - cx);
                     let currentAngle = Math.atan2(ptScene.y - cy, ptScene.x - cx);
                     angle = currentAngle - startAngle;
@@ -694,6 +871,9 @@ const app = {
                     }
                     dx = 0; dy = 0;
                 } else if (tf.mode !== 'move') {
+                    // Types non-OBB (dessin libre, remplissage, etc.) : mise à l'échelle classique par
+                    // boîte englobante axis-aligned (déjà correcte car recalculée sur le nuage de points courant).
+                    let ob = tf.origBBox; cx = (ob.minX + ob.maxX) / 2; cy = (ob.minY + ob.maxY) / 2;
                     let mw = ob.maxX - ob.minX; let mh = ob.maxY - ob.minY;
                     if (mw < 1) mw = 1; if (mh < 1) mh = 1;
                     if (tf.mode === 'scale_nw') { cx = ob.maxX; cy = ob.maxY; sx = (ob.maxX - ptScene.x) / mw; sy = (ob.maxY - ptScene.y) / mh; } 
@@ -706,7 +886,6 @@ const app = {
                     }
                     dx = 0; dy = 0; 
                 }
-                let sel = this.findLayer(this.selectedIds[0]).layer;
                 this.applyAbsoluteTransform(tf.origLayer, sel, dx, dy, sx, sy, cx, cy, angle);
                 this.draw(); return;
             }
@@ -825,7 +1004,7 @@ const app = {
         let oCtx = offC.getContext('2d'); oCtx.translate(W/2, H/2);
         
         for (let l of images) {
-            oCtx.save(); oCtx.translate(l.x, l.y); oCtx.rotate(l.rot * Math.PI / 180); oCtx.scale(l.scale * (l.flipH ? -1 : 1), l.scale * (l.flipV ? -1 : 1));
+            oCtx.save(); oCtx.translate(l.x, l.y); oCtx.rotate(l.rot * Math.PI / 180); oCtx.scale(l.scaleX !== undefined ? l.scaleX : 1, l.scaleY !== undefined ? l.scaleY : 1);
             oCtx.globalAlpha = l.opacity !== undefined ? l.opacity : 1.0; oCtx.drawImage(l.img, -l.img.width/2, -l.img.height/2); oCtx.restore();
         }
         
@@ -1234,11 +1413,12 @@ const app = {
                 }
 
                 for (let j = 0; j < l.charCount; j++) {
+                    let charIdx = l.flipH ? (l.charCount - 1 - j) : j; // v4.0 : respecte l'ordre visuel après miroir horizontal
                     let bx = startX + j * (l.charW + l.spacing); let by = startY - l.charH;
                     this.ctx.beginPath(); this.ctx.rect(bx, by, l.charW, l.charH);
                     if (isSel) {
                         this.ctx.strokeStyle = "rgba(0, 120, 255, 0.8)"; this.ctx.setLineDash([4, 4]); this.ctx.lineWidth = 1.5 / this.ui.zoom; this.ctx.stroke();
-                        this.ctx.fillStyle = l.chars[j] ? "rgba(0, 200, 100, 0.1)" : "rgba(0, 120, 255, 0.1)"; this.ctx.fill();
+                        this.ctx.fillStyle = l.chars[charIdx] ? "rgba(0, 200, 100, 0.1)" : "rgba(0, 120, 255, 0.1)"; this.ctx.fill();
                     } else {
                         this.ctx.strokeStyle = "rgba(150, 150, 150, 0.4)"; this.ctx.setLineDash([2, 4]); this.ctx.lineWidth = 1 / this.ui.zoom; this.ctx.stroke();
                     }
@@ -1247,12 +1427,13 @@ const app = {
             }
 
             if (l.type === 'image' && l.img) {
-                this.ctx.save(); this.ctx.translate(l.x, l.y); this.ctx.rotate(l.rot * Math.PI / 180); this.ctx.scale(l.scale * (l.flipH ? -1 : 1), l.scale * (l.flipV ? -1 : 1));
+                this.ctx.save(); this.ctx.translate(l.x, l.y); this.ctx.rotate(l.rot * Math.PI / 180); this.ctx.scale(l.scaleX !== undefined ? l.scaleX : 1, l.scaleY !== undefined ? l.scaleY : 1);
                 this.ctx.globalAlpha = l.opacity !== undefined ? l.opacity : 1.0;
                 if (showHalo && this.selectedIds.includes(l.id)) { this.ctx.shadowColor = "rgba(255, 215, 0, 0.6)"; this.ctx.shadowBlur = 15 / this.ui.zoom; }
                 this.ctx.drawImage(l.img, -l.img.width/2, -l.img.height/2); this.ctx.restore();
             } else if (l.points && l.points.length > 1) {
                 this.ctx.save();
+                if (l.opacity !== undefined) this.ctx.globalAlpha = l.opacity; // v4.0 : opacité désormais respectée pour les tracés (pas seulement les images)
                 let isCurrentLayerSelected = this.selectedIds.includes(l.id);
                 if (l.id === activeSelId && l.type === 'zigzag' && l.boundary && this.ui.tool !== 'liquify') {
                     this.ctx.beginPath(); this.ctx.moveTo(l.boundary[0].x, l.boundary[0].y);
@@ -1320,39 +1501,57 @@ const app = {
             this.ctx.strokeStyle = "rgba(0, 120, 255, 0.6)"; this.ctx.lineWidth = this.ui.penWidth; this.ctx.setLineDash([5, 5]); this.ctx.stroke(); this.ctx.setLineDash([]);
         }
 
-        // MÀJ v3.5 : DESSIN DE LA BOX DE TRANSFORMATION AVEC POIGNÉE DE ROTATION
+        // v4.0 : DESSIN DE LA BOX DE TRANSFORMATION AVEC POIGNÉE DE ROTATION (suit l'angle réel de l'objet
+        // pour les calques image / tracé importé / texte, via leur OBB — sinon boîte classique axis-aligned)
         if (this.ui.tool === 'select' && this.selectedIds.length === 1) {
             let selInfo = this.findLayer(this.selectedIds[0]);
             if (selInfo && !selInfo.layer.effectiveLocked) {
-                let bbox = this.getLayerBBox(selInfo.layer);
-                if (bbox) {
-                    this.ctx.save();
-                    this.ctx.strokeStyle = '#0078D7'; this.ctx.lineWidth = 1.5 / this.ui.zoom; this.ctx.setLineDash([5, 5]);
-                    
-                    let mw = bbox.maxX - bbox.minX;
-                    let mh = bbox.maxY - bbox.minY;
-                    let cx = bbox.minX + mw/2;
+                let obb = this.getLayerOBB(selInfo.layer);
+                let s = 10 / this.ui.zoom;
+                let drawHandle = (x, y) => { this.ctx.fillRect(x - s/2, y - s/2, s, s); this.ctx.strokeRect(x - s/2, y - s/2, s, s); };
 
-                    this.ctx.strokeRect(bbox.minX, bbox.minY, mw, mh);
+                if (obb) {
+                    this.ctx.save();
+                    this.ctx.translate(obb.cx, obb.cy); this.ctx.rotate(obb.rot);
+                    this.ctx.strokeStyle = '#0078D7'; this.ctx.lineWidth = 1.5 / this.ui.zoom; this.ctx.setLineDash([5, 5]);
+                    let c = obb.cornersLocal; let minLX = Math.min(c.nw.x, c.se.x), maxLX = Math.max(c.nw.x, c.se.x);
+                    let minLY = Math.min(c.nw.y, c.se.y), maxLY = Math.max(c.nw.y, c.se.y);
+                    this.ctx.strokeRect(minLX, minLY, maxLX - minLX, maxLY - minLY);
                     this.ctx.setLineDash([]); this.ctx.fillStyle = '#ffffff';
-                    
-                    let s = 10 / this.ui.zoom;
-                    let drawHandle = (x, y) => { this.ctx.fillRect(x - s/2, y - s/2, s, s); this.ctx.strokeRect(x - s/2, y - s/2, s, s); };
-                    drawHandle(bbox.minX, bbox.minY); drawHandle(bbox.maxX, bbox.minY); drawHandle(bbox.minX, bbox.maxY); drawHandle(bbox.maxX, bbox.maxY);
-                    
-                    // Poignée de rotation (en haut au centre)
-                    let handleY = bbox.minY - 25 / this.ui.zoom;
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(cx, bbox.minY);
-                    this.ctx.lineTo(cx, handleY);
-                    this.ctx.stroke();
-                    
-                    this.ctx.beginPath();
-                    this.ctx.arc(cx, handleY, s/2, 0, Math.PI*2);
-                    this.ctx.fillStyle = '#0078D7';
-                    this.ctx.fill();
-                    this.ctx.stroke();
+                    drawHandle(c.nw.x, c.nw.y); drawHandle(c.ne.x, c.ne.y); drawHandle(c.sw.x, c.sw.y); drawHandle(c.se.x, c.se.y);
+
+                    let cxL = (minLX + maxLX) / 2; let handleLY = minLY - 25 / this.ui.zoom;
+                    this.ctx.beginPath(); this.ctx.moveTo(cxL, minLY); this.ctx.lineTo(cxL, handleLY); this.ctx.stroke();
+                    this.ctx.beginPath(); this.ctx.arc(cxL, handleLY, s/2, 0, Math.PI*2); this.ctx.fillStyle = '#0078D7'; this.ctx.fill(); this.ctx.stroke();
                     this.ctx.restore();
+                } else {
+                    let bbox = this.getLayerBBox(selInfo.layer);
+                    if (bbox) {
+                        this.ctx.save();
+                        this.ctx.strokeStyle = '#0078D7'; this.ctx.lineWidth = 1.5 / this.ui.zoom; this.ctx.setLineDash([5, 5]);
+
+                        let mw = bbox.maxX - bbox.minX;
+                        let mh = bbox.maxY - bbox.minY;
+                        let cx = bbox.minX + mw/2;
+
+                        this.ctx.strokeRect(bbox.minX, bbox.minY, mw, mh);
+                        this.ctx.setLineDash([]); this.ctx.fillStyle = '#ffffff';
+
+                        drawHandle(bbox.minX, bbox.minY); drawHandle(bbox.maxX, bbox.minY); drawHandle(bbox.minX, bbox.maxY); drawHandle(bbox.maxX, bbox.maxY);
+
+                        let handleY = bbox.minY - 25 / this.ui.zoom;
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(cx, bbox.minY);
+                        this.ctx.lineTo(cx, handleY);
+                        this.ctx.stroke();
+
+                        this.ctx.beginPath();
+                        this.ctx.arc(cx, handleY, s/2, 0, Math.PI*2);
+                        this.ctx.fillStyle = '#0078D7';
+                        this.ctx.fill();
+                        this.ctx.stroke();
+                        this.ctx.restore();
+                    }
                 }
             }
         }
@@ -1554,9 +1753,10 @@ const app = {
             let allUnlocked = this.selectedIds.every(id => { let f = this.findLayer(id); return f && !f.layer.effectiveLocked; });
             fsTransform.disabled = !allUnlocked;
             
-            if (this.selectedIds.length === 1 && sel && sel.type === 'image') {
+            if (this.selectedIds.length === 1 && sel && (sel.type === 'image' || sel.type === 'imported_path')) {
                 document.getElementById('div-opacity').style.display = 'block'; document.getElementById('img-opacity').value = (sel.opacity !== undefined ? sel.opacity : 1.0) * 100;
-            } else { document.getElementById('div-opacity').style.display = 'none'; }
+                document.getElementById('div-rotation').style.display = 'block'; document.getElementById('img-rot').value = sel.rot || 0; document.getElementById('val-img-rot').innerText = (sel.rot || 0) + "°";
+            } else { document.getElementById('div-opacity').style.display = 'none'; document.getElementById('div-rotation').style.display = 'none'; }
         } else { fsTransform.disabled = true; document.getElementById('div-opacity').style.display = 'none'; }
 
         if (sel && sel.type === 'text') {
@@ -1700,7 +1900,7 @@ const app = {
         if (file) {
             const reader = new FileReader();
             reader.onload = (event) => {
-                const img = new Image(); img.onload = () => { this.addLayer({ type: 'image', img: img, src: event.target.result, x: 0, y: 0, scale: 1.0, opacity: 0.5, rot: 0, flipH: false, flipV: false }); }
+                const img = new Image(); img.onload = () => { this.addLayer({ type: 'image', img: img, src: event.target.result, x: 0, y: 0, scaleX: 1.0, scaleY: 1.0, opacity: 0.5, rot: 0 }); }
                 img.src = event.target.result;
             };
             reader.readAsDataURL(file);
@@ -1722,7 +1922,7 @@ const app = {
                     }
                 });
                 if (originalPoints.length > 0) {
-                    this.addLayer({ type: 'imported_path', name: `🗺️ Tracé ${this.importedCount++}`, originalPoints: originalPoints, points: [...originalPoints], x: 0, y: 0, scale: 1.0, opacity: 1.0, rot: 0, flipH: false, flipV: false, color: this.ui.color, width: 1.0 });
+                    this.addLayer({ type: 'imported_path', name: `🗺️ Tracé ${this.importedCount++}`, originalPoints: originalPoints, points: [...originalPoints], x: 0, y: 0, scaleX: 1.0, scaleY: 1.0, opacity: 1.0, rot: 0, color: this.ui.color, width: 1.0 });
                 } else alert("Ce fichier .thr semble vide ou invalide.");
             };
             reader.readAsText(file);
@@ -1756,15 +1956,15 @@ const app = {
         let sel = this.findLayer(this.selectedIds[0]);
         if(sel && (sel.layer.type === 'image' || sel.layer.type === 'imported_path')) {
             this.saveState();
-            sel.layer.rot = parseInt(document.getElementById('img-rot').value); document.getElementById('val-rot').innerText = sel.layer.rot + "°";
-            if (sel.layer.type === 'imported_path') { this.recalcImportedPath(sel.layer); this.invalidateSim(); }
-            this.draw(); this.autoSave();
+            sel.layer.rot = parseInt(document.getElementById('img-rot').value); document.getElementById('val-img-rot').innerText = sel.layer.rot + "°";
+            if (sel.layer.type === 'imported_path') this.recalcImportedPath(sel.layer);
+            this.invalidateSim(); this.draw(); this.autoSave();
         }
     },
 
     updateOpacityLive() {
         let sel = this.findLayer(this.selectedIds[0]);
-        if(sel && sel.layer.type === 'image') {
+        if(sel && (sel.layer.type === 'image' || sel.layer.type === 'imported_path')) {
             this.saveState();
             sel.layer.opacity = document.getElementById('img-opacity').value / 100.0;
             this.draw(); this.autoSave();
@@ -1804,6 +2004,12 @@ const app = {
 
             if (l.type === 'image') {
                 if (l.srcBase64 && !l.src) l.src = l.srcBase64; if (l.image_b64 && !l.src) l.src = "data:image/png;base64," + l.image_b64;
+            }
+            // v4.0 : migration de l'ancien modèle 'scale' + flipH/flipV vers scaleX/scaleY (le signe porte le miroir).
+            if ((l.type === 'image' || l.type === 'imported_path') && l.scaleX === undefined) {
+                let base = l.scale !== undefined ? l.scale : 1.0;
+                l.scaleX = base * (l.flipH ? -1 : 1); l.scaleY = base * (l.flipV ? -1 : 1);
+                delete l.scale; delete l.flipH; delete l.flipV;
             }
             if ((l.type === 'path' || l.type === 'pen' || l.type === 'imported_path' || l.type === 'zigzag' || l.type === 'interp' || l.type === 'text') && !l.color) l.color = "#000000";
             if ((l.type === 'path' || l.type === 'pen') && l.width === undefined) l.width = 1.5;
