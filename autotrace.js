@@ -169,40 +169,186 @@
         return out;
     };
 
-    Core.chaikinSmooth = function (points, iterations) {
+    Core.chaikinSmooth = function (points, iterations, closed) {
+        if (closed === undefined) closed = true;
         let pts = points;
         for (let it = 0; it < iterations; it++) {
             const out = []; const n = pts.length;
-            for (let i = 0; i < n; i++) {
+            const last = closed ? n : n - 1;
+            if (!closed) out.push(pts[0]);
+            for (let i = 0; i < last; i++) {
                 const p0 = pts[i], p1 = pts[(i + 1) % n];
                 out.push({ x: p0.x * 0.75 + p1.x * 0.25, y: p0.y * 0.75 + p1.y * 0.25 });
                 out.push({ x: p0.x * 0.25 + p1.x * 0.75, y: p0.y * 0.25 + p1.y * 0.75 });
             }
+            if (!closed) out.push(pts[n - 1]);
             pts = out;
         }
         return pts;
     };
 
+    // Amincit un masque binaire (avec padding) jusqu'à un squelette de 1 pixel de large
+    // (algorithme de Zhang-Suen, standard et bien documenté). Utilisé par le mode
+    // "Trait fin" pour obtenir la LIGNE CENTRALE de chaque trait de dessin au lieu de
+    // suivre son contour (ce qui donnerait deux lignes quasi parallèles par trait).
+    Core.zhangSuenThin = function (grid, pw, ph) {
+        const img = new Uint8Array(grid);
+        const at = (x, y) => (x < 0 || y < 0 || x >= pw || y >= ph) ? 0 : img[y * pw + x];
+        let changing = true;
+        while (changing) {
+            changing = false;
+            for (let step = 0; step < 2; step++) {
+                const toRemove = [];
+                for (let y = 0; y < ph; y++) {
+                    for (let x = 0; x < pw; x++) {
+                        if (!at(x, y)) continue;
+                        const P2 = at(x, y - 1), P3 = at(x + 1, y - 1), P4 = at(x + 1, y), P5 = at(x + 1, y + 1);
+                        const P6 = at(x, y + 1), P7 = at(x - 1, y + 1), P8 = at(x - 1, y), P9 = at(x - 1, y - 1);
+                        const B = P2 + P3 + P4 + P5 + P6 + P7 + P8 + P9;
+                        if (B < 2 || B > 6) continue;
+                        const seq = [P2, P3, P4, P5, P6, P7, P8, P9, P2];
+                        let A = 0;
+                        for (let i = 0; i < 8; i++) if (seq[i] === 0 && seq[i + 1] === 1) A++;
+                        if (A !== 1) continue;
+                        let c1, c2;
+                        if (step === 0) { c1 = P2 * P4 * P6; c2 = P4 * P6 * P8; }
+                        else { c1 = P2 * P4 * P8; c2 = P2 * P6 * P8; }
+                        if (c1 !== 0 || c2 !== 0) continue;
+                        toRemove.push(y * pw + x);
+                    }
+                }
+                if (toRemove.length) { changing = true; toRemove.forEach(idx => { img[idx] = 0; }); }
+            }
+        }
+        return img;
+    };
+
+    // Dilatation 3x3 simple (utilisée pour "solidifier" un masque avant amincissement :
+    // referme les petits trous/traits à peine discontinus).
+    Core.dilateOnce = function (grid, pw, ph) {
+        const out = new Uint8Array(grid.length);
+        for (let y = 0; y < ph; y++) {
+            for (let x = 0; x < pw; x++) {
+                let v = 0;
+                for (let dy = -1; dy <= 1 && !v; dy++) for (let dx = -1; dx <= 1 && !v; dx++) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && ny >= 0 && nx < pw && ny < ph && grid[ny * pw + nx]) v = 1;
+                }
+                out[y * pw + x] = v;
+            }
+        }
+        return out;
+    };
+
+    // Transforme un squelette 1px en une liste de lignes centrales (polylignes OUVERTES
+    // ou fermées). Parcourt chaque connexion (arête) du graphe de pixels une seule fois ;
+    // aux croisements (jonctions), continue dans la direction la plus rectiligne plutôt que
+    // de s'arrêter — un trait qui traverse un autre reste une seule ligne continue, comme
+    // le fait SandTrace (walk() dans son SandArt.py, vérifié avant de reproduire l'approche).
+    Core.extractCenterlines = function (skelGrid, pw, ph, minLen) {
+        const pts = new Set();
+        for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) if (skelGrid[y * pw + x]) pts.add(x + ',' + y);
+        if (pts.size === 0) return [];
+
+        const offsets = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
+        const neighbours = (key) => {
+            const ci = key.indexOf(','); const x = +key.slice(0, ci), y = +key.slice(ci + 1);
+            const out = [];
+            for (const [dx, dy] of offsets) { const k = (x + dx) + ',' + (y + dy); if (pts.has(k)) out.push(k); }
+            return out;
+        };
+        const deg = new Map(); for (const p of pts) deg.set(p, neighbours(p).length);
+        const seen = new Set();
+        const edgeKey = (a, b) => a < b ? a + '|' + b : b + '|' + a;
+
+        const walk = (start, first) => {
+            const line = [start, first];
+            seen.add(edgeKey(start, first));
+            let prev = start, cur = first;
+            while (true) {
+                const cands = neighbours(cur).filter(n => !seen.has(edgeKey(cur, n)));
+                if (cands.length === 0) break;
+                let nxt;
+                if (cands.length === 1) nxt = cands[0];
+                else {
+                    const pci = prev.indexOf(','), cci = cur.indexOf(',');
+                    const px = +prev.slice(0, pci), py = +prev.slice(pci + 1);
+                    const cx = +cur.slice(0, cci), cy = +cur.slice(cci + 1);
+                    const idx = cx - px, idy = cy - py; const inorm = Math.hypot(idx, idy) || 1;
+                    let best = null, bestDot = -2;
+                    for (const n of cands) {
+                        const nci = n.indexOf(','); const nx = +n.slice(0, nci), ny = +n.slice(nci + 1);
+                        const odx = nx - cx, ody = ny - cy; const onorm = Math.hypot(odx, ody) || 1;
+                        const dot = (idx * odx + idy * ody) / (inorm * onorm);
+                        if (dot > bestDot) { bestDot = dot; best = n; }
+                    }
+                    nxt = best;
+                }
+                seen.add(edgeKey(cur, nxt));
+                line.push(nxt);
+                prev = cur; cur = nxt;
+            }
+            return line;
+        };
+
+        const polylines = [];
+        // 1) lignes ouvertes (démarrent aux extrémités) 2) reliquats aux jonctions 3) boucles fermées
+        for (const sel of [(d) => d === 1, (d) => d >= 3, (d) => d === 2]) {
+            for (const p of pts) {
+                if (!sel(deg.get(p))) continue;
+                for (const n of neighbours(p)) if (!seen.has(edgeKey(p, n))) polylines.push(walk(p, n));
+            }
+        }
+
+        const result = [];
+        for (const line of polylines) {
+            if (line.length < 2) continue;
+            const coords = line.map(k => { const ci = k.indexOf(','); return { x: +k.slice(0, ci), y: +k.slice(ci + 1) }; });
+            let len = 0; for (let i = 1; i < coords.length; i++) len += Math.hypot(coords[i].x - coords[i - 1].x, coords[i].y - coords[i - 1].y);
+            if (len >= minLen) {
+                const closed = (coords[0].x === coords[coords.length - 1].x && coords[0].y === coords[coords.length - 1].y);
+                result.push({ points: coords, closed });
+            }
+        }
+        return result;
+    };
+
+    // Assemble une liste de tracés (polylignes fermées OU ouvertes, mélangées) en un seul
+    // tracé continu, par plus-proche-voisin glouton. Une polyligne fermée peut être entrée
+    // n'importe où sur sa boucle ; une polyligne OUVERTE ne peut être abordée que par l'une
+    // de ses deux extrémités (impossible de "couper" au milieu d'un trait).
     Core.stitchContours = function (contours, startPoint) {
         if (contours.length === 0) return [];
-        const remaining = contours.map(c => c.slice());
+        const remaining = contours.map(c => Array.isArray(c) ? { points: c.slice(), closed: true } : { points: c.points.slice(), closed: !!c.closed });
         const dist2 = (a, b) => { const dx = a.x - b.x, dy = a.y - b.y; return dx * dx + dy * dy; };
         let cursor = startPoint || { x: 0, y: 0 };
         const finalPath = [];
         while (remaining.length) {
-            let bestIdx = 0, bestOffset = 0, bestDist = Infinity;
+            let bestIdx = -1, bestOffset = 0, bestDist = Infinity, bestReversed = false;
             for (let ci = 0; ci < remaining.length; ci++) {
-                const loop = remaining[ci];
-                for (let oi = 0; oi < loop.length; oi++) {
-                    const d = dist2(cursor, loop[oi]);
-                    if (d < bestDist) { bestDist = d; bestIdx = ci; bestOffset = oi; }
+                const it = remaining[ci];
+                if (it.closed) {
+                    for (let oi = 0; oi < it.points.length; oi++) {
+                        const d = dist2(cursor, it.points[oi]);
+                        if (d < bestDist) { bestDist = d; bestIdx = ci; bestOffset = oi; bestReversed = false; }
+                    }
+                } else {
+                    const dStart = dist2(cursor, it.points[0]);
+                    const dEnd = dist2(cursor, it.points[it.points.length - 1]);
+                    if (dStart < bestDist) { bestDist = dStart; bestIdx = ci; bestReversed = false; }
+                    if (dEnd < bestDist) { bestDist = dEnd; bestIdx = ci; bestReversed = true; }
                 }
             }
-            const loop = remaining.splice(bestIdx, 1)[0];
-            const rotated = loop.slice(bestOffset).concat(loop.slice(0, bestOffset));
-            rotated.push(rotated[0]);
-            finalPath.push(...rotated);
-            cursor = rotated[rotated.length - 1];
+            const it = remaining.splice(bestIdx, 1)[0];
+            let seq;
+            if (it.closed) {
+                seq = it.points.slice(bestOffset).concat(it.points.slice(0, bestOffset));
+                seq.push(seq[0]);
+            } else {
+                seq = bestReversed ? it.points.slice().reverse() : it.points.slice();
+            }
+            finalPath.push(...seq);
+            cursor = seq[seq.length - 1];
         }
         return finalPath;
     };
