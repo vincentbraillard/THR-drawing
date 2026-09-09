@@ -1,11 +1,81 @@
-# Éditeur de Tracés Sunae — v4.0 (Transformation unifiée)
+# Éditeur de Tracés Sunae — Journal des modifications
+
+## v4.1 — Outil Auto-Trace (Image → Tracé vectoriel)
+
+Nouvel outil accessible depuis l'onglet **"📐 Transf."** → bouton **"🧵 Auto-Trace (Image → Tracé
+vectoriel)"**. Livré dans un fichier séparé, **`autotrace.js`**, pour ne pas alourdir `index.html`
+(déjà volumineux) — il s'active à la demande et ne dépend que de l'objet `app` déjà exposé par
+`index.html`.
+
+### Ce que ça fait
+
+1. **Importer une image** (glisser-déposer ou sélection de fichier).
+2. **La transformer avant tracé** : zoom (molette ou curseur), rotation, glisser pour cadrer/déplacer,
+   miroir horizontal/vertical — un cadre pointillé indique la forme du plateau (rond ou rectangulaire)
+   pour bien cadrer le sujet.
+3. **Choisir un mode**, avec un aperçu miniature en direct pour les 3 modes (mis à jour automatiquement
+   après chaque réglage, à la manière du comparatif de SandTrace) :
+   - **Seuil (contours)** — binarise l'image selon une luminosité seuil et trace tous les contours.
+   - **Silhouette** — comme "Seuil", mais ne garde que la forme principale (composante connexe la plus
+     grande), pour un contour propre sans bruit de fond.
+   - **Contours fins** — détection de bords par gradient de Sobel (une version simplifiée d'un
+     détecteur façon Canny, sans suppression des non-maxima ni hystérésis, pour rester 100% JS et léger).
+4. **Régler les curseurs** : seuil de luminosité / sensibilité des contours (selon le mode), flou (réduit
+   le bruit avant traitement), détail (précision du tracé), lissage du tracé (arrondit les angles),
+   résolution de travail (qualité vs vitesse), inversion, miroir final.
+5. **Générer** : une barre de progression détaille chaque étape (prétraitement → détection des contours →
+   nettoyage → simplification/lissage → assemblage du trajet → mise à l'échelle), avec un bouton
+   Annuler. Le résultat est ajouté comme **nouveau calque indépendant** (type tracé importé), prêt à être
+   repositionné/tourné/redimensionné/mis en miroir avec l'outil Sélection (grâce aux corrections de la
+   v4.0).
+
+### Comment ça marche (sans dépendance externe type OpenCV)
+
+- Niveaux de gris + flou boîte (séparable) pour réduire le bruit.
+- Grille binaire (seuil ou gradient de Sobel selon le mode), avec un cadre de remplissage qui garantit
+  que tous les contours se referment proprement.
+- **Composantes connexes** (4-connexité) pour isoler la forme principale en mode Silhouette.
+- **Contours fermés extraits par "marching squares"** — un algorithme standard de suivi de frontière
+  entre pixels "dedans/dehors".
+- **Simplification Douglas-Peucker** puis **lissage Chaikin** (subdivision qui arrondit les angles) sur
+  chaque contour.
+- **Assemblage en un seul tracé continu** par plus-proche-voisin glouton, pour minimiser les
+  déplacements "à vide" entre les formes détectées — dans le même esprit que ce que fait SandTrace.
+
+Tous ces algorithmes ont été **développés et testés indépendamment sous Node.js avant intégration** :
+grille synthétique (rectangle, anneau avec trou), détection de deux composantes distinctes, réduction
+Douglas-Peucker, expansion Chaikin, assemblage par proximité — puis **re-testés une seconde fois
+directement sur le code réellement présent dans `autotrace.js`** (extraction automatique du bloc de
+code embarqué, pas une copie séparée) pour garantir qu'aucune différence ne s'est glissée pendant
+l'intégration.
+
+### Différences assumées avec SandTrace (transparence)
+
+SandTrace (le projet fourni en référence) s'appuie sur un pipeline Python/OpenCV de ~2500 lignes
+(détection de contours OpenCV, squelettisation, recherche de plus court chemin par Dijkstra pour
+naviguer entre les formes). Le reproduire à l'identique en JavaScript pur, sans dépendance externe,
+dans un unique fichier, n'était pas réaliste. Cette implémentation reprend la **même logique en trois
+temps** (silhouette / seuil / contours fins, réglages de détail/lissage/miroir, réduction des
+déplacements à vide) avec des algorithmes plus simples mais éprouvés (marching squares + plus-proche-
+voisin glouton plutôt que squelettisation + Dijkstra). Pour l'immense majorité des logos, photos
+contrastées et dessins au trait, le résultat est très proche ; sur des photos très texturées avec
+beaucoup de petits détails séparés, SandTrace produira un trajet légèrement plus optimisé. Le curseur
+"Détail" et le mode "Silhouette" (qui ignore le bruit de fond) couvrent la plupart des cas pratiques.
+
+### Fichiers modifiés/ajoutés
+
+- **`autotrace.js`** (nouveau) — tout le module Auto-Trace.
+- **`index.html`** — 2 ajouts seulement : `<script src="autotrace.js"></script>`, et le bouton
+  "🧵 Auto-Trace" dans l'onglet Transf. (version affichée : v4.1).
+
+---
+
+## v4.0 — Transformation unifiée (rotation / redimensionnement / miroir)
 
 Cette version corrige le bug de transformation (rotation/redimensionnement/miroir) rapporté sur les
 calques image et tracé importé (.thr), et fait une passe générale de correction/amélioration.
-**Le module de remplissage TSP et l'intégration de SandTrace ne sont pas inclus dans cette version —
-ils arrivent dans une prochaine étape, comme convenu.**
 
-## 🐛 Bug principal corrigé : transformation des calques image / .thr
+### 🐛 Bug principal corrigé : transformation des calques image / .thr
 
 Trois bugs distincts s'additionnaient :
 
@@ -20,7 +90,7 @@ Trois bugs distincts s'additionnaient :
 3. **La boîte de sélection ignorait la rotation.** `getLayerBBox` calculait une boîte axis-aligned à
    partir de la largeur/hauteur *non tournées* de l'image, sans tenir compte de `rot`. Résultat : dès
    qu'un calque était tourné, les poignées de coin s'affichaient au mauvais endroit et le
-   redimensionnement produisait un résultat incohérent — c'est le symptôme exact que vous décriviez
+   redimensionnement produisait un résultat incohérent — c'est le symptôme exact décrit
    ("on peut tourner mais pas redimensionner").
 
 ### La correction
@@ -61,7 +131,7 @@ suit fidèlement leur rotation :
   les tracés .thr importés, et le rendu des calques vectoriels respecte enfin le champ `opacity` s'il
   est défini.
 
-## 🔍 Passe de revue générale
+### 🔍 Passe de revue générale
 
 - Script vérifié syntaxiquement valide (`node --check`).
 - Recherche systématique de tous les appels `this.xxx(...)` sans définition correspondante dans l'objet
@@ -72,8 +142,7 @@ suit fidèlement leur rotation :
   aucune référence orpheline détectée après correction.
 - Le calcul de transformation par ancre a été testé unitairement en dehors du navigateur (Node.js) sur
   4 scénarios géométriques différents avant d'être intégré, puis re-testé une seconde fois directement
-  sur le code réellement intégré dans `index.html` (import .thr non centré à l'origine → rotation →
-  redimensionnement-miroir → vérification que le point d'ancrage reste bien fixe à l'écran).
+  sur le code réellement intégré dans `index.html`.
 
 ### Limitation connue (mineure, sans impact pratique)
 
@@ -82,17 +151,15 @@ centre physique du plateau au moment de l'import — plutôt que le centre géom
 englobante du tracé. Pour la quasi-totalité des fichiers `.thr` (coordonnées polaires centrées sur le
 plateau par construction), les deux coïncident quasiment. Si un tracé importé est très excentré, le
 bouton miroir peut légèrement déplacer le centre visuel plutôt que de tourner parfaitement sur place —
-un simple ajustement de position après coup suffit à corriger. Le signaler si ça pose problème en
-pratique : c'est corrigeable, mais aurait demandé de changer la convention de coordonnées des fichiers
-`.thr` déjà sauvegardés, ce qui comportait un risque de migration plus élevé pour un gain marginal.
+un simple ajustement de position après coup suffit à corriger.
 
 ## 📁 Fichiers à copier dans votre dépôt
 
 - `index.html` — remplace le fichier existant à la racine du dépôt.
-- `alphabet.js` — inchangé, fourni pour référence (pas nécessaire de le recopier si déjà présent).
+- `autotrace.js` — nouveau fichier, à placer à côté de `index.html`.
+- `alphabet.js` — inchangé (fourni pour référence).
 
-## À venir (prochaine étape)
+## À venir (prochaine étape, sur demande)
 
 - Outil de remplissage par ligne continue façon TSP (finitecurve), avec contrainte de point de
   départ/arrivée et réglages de densité.
-- Intégration du module de conversion image → tracé de SandTrace, comme calque indépendant.
