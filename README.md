@@ -1,5 +1,58 @@
 # Éditeur de Tracés Sunae — Journal des modifications
 
+## v6.4 — Solveur multi-îlots (ponts sur les bords) + miroir fidèle à l'aperçu
+
+### 1 & 2. Les ponts entre formes séparées, et départ/arrivée par défaut sur le bord
+
+Après la v6.3 (zéro croisement géométrique), il restait des lignes droites reliant des zones vraiment
+disjointes du dessin (ex. les mèches séparées de la crinière du loup) — inévitable puisqu'il n'existe
+aucun point intermédiaire dans l'espace vide entre elles, mais ces ponts partaient et arrivaient
+souvent d'un point quelconque en plein milieu d'une forme plutôt que de son bord, ce qui les rendait
+plus visibles/génants que nécessaire.
+
+**Nouveau moteur `TSPCore.solveMultiIsland`** : détecte chaque région réellement séparée (composantes
+connexes de la carte de densité), résout la tournée de CHAQUE région indépendamment — avec un départ
+choisi automatiquement au point le plus excentré de son propre nuage (donc près du bord, jamais en
+plein milieu), puis enchaîne les régions par plus-proche-**extrémité** (le pont part donc toujours de
+la fin du trajet d'une région, déjà proche de son bord, vers le début du trajet de la suivante, lui
+aussi proche de son bord). Une passe finale de `removeCrossings` sur l'ensemble assemblé garantit
+toujours zéro croisement, y compris entre les ponts eux-mêmes.
+
+Le point de départ/arrivée imposé par l'utilisateur (TSP Fill) est maintenant transmis à ce moteur : la
+région qui le contient est identifiée, et démarre/termine sa PROPRE tournée interne exactement à ce
+point plutôt que d'être ajusté après coup (ce qui aurait pu casser la continuité du trajet).
+
+**Limite documentée** : si le point de départ ET le point d'arrivée imposés tombent tous les deux dans
+la même région alors que d'autres régions existent aussi dans le dessin, le point d'arrivée n'est pas
+garanti de tomber exactement en toute fin de trajet (cas rare, compromis accepté plutôt que de
+complexifier davantage l'algorithme pour un cas limite).
+
+**Vérifications effectuées** : testé sous Node sur une forme à 6 régions séparées (tête + 5 mèches) —
+0 croisement avant/après ajout de contraintes de départ/arrivée, dans la même région ou dans des
+régions différentes ; testé aussi sur une forme à région unique (cas le plus courant pour TSP Fill) et
+sur un cas extrême à 20 régions à densité maximale (5000 points, moins d'1,5 s).
+
+### 3. Le miroir de l'image n'était pas pris en compte au moment de l'échantillonnage
+
+Confirmé : le rendu utilisé pour construire la carte de densité dessinait toujours l'image brute, sans
+jamais appliquer le signe de `scaleX`/`scaleY` (miroir) ni une échelle non-uniforme éventuelle — seule
+la rotation était correctement ré-appliquée après coup (mathématiquement équivalent, donc invisible).
+Corrigé : le miroir est maintenant appliqué directement lors de l'échantillonnage des pixels, et la
+résolution de travail suit désormais la taille RÉELLEMENT AFFICHÉE de l'image (utile si l'image a été
+redimensionnée de façon non-uniforme). Le calque d'aperçu existant est aussi resynchronisé avec la
+position/rotation/miroir courante de l'image à chaque clic sur "Mettre à jour", au cas où l'image aurait
+été retransformée entre deux mises à jour.
+
+### Fichiers modifiés
+
+- `tsp_core.js` — nouvelles fonctions `connectedComponents` et `solveMultiIsland`.
+- `autotrace.js` — `updatePreview` utilise `solveMultiIsland`, échantillonnage des pixels avec miroir
+  appliqué, resynchronisation du calque d'aperçu à chaque mise à jour.
+- `index.html` — `generateTSPZigzagFill` utilise `solveMultiIsland`, message d'aide mis à jour (version
+  affichée : v6.4).
+
+---
+
 ## v6.3 — Élimination rigoureuse des croisements + workflow "Mettre à jour" / "Appliquer"
 
 ### 1 & 4. Traits qui traversent le dessin (Auto-Trace et TSP Fill)
