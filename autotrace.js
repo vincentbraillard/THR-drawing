@@ -174,10 +174,8 @@
         tcShowMsg(`Seuil suggéré : ${suggested} (méthode d'Otsu).`, 'ok');
     };
 
-    // Convertit l'image sélectionnée en tracé TSP, en conservant exactement sa position/
-    // rotation/échelle actuelles (le nouveau tracé est placé avec les mêmes x, y, rot,
-    // scaleX, scaleY que le calque image source — aucune ré-interprétation du cadrage n'est
-    // nécessaire puisque tout part des pixels bruts de l'image, dans son propre repère local).
+    // Convertit l'image sélectionnée en tracé TSP, en respectant sa position/rotation/échelle
+    // ACTUELLES (miroir compris — voir la note v6.4 plus bas sur l'échantillonnage des pixels).
     // "Mettre à jour" : (re)calcule le tracé et l'affiche directement sur le canevas principal,
     // SANS fermer/masquer le panneau de réglages — la sélection reste sur le calque image source,
     // pour que l'utilisateur puisse ajuster les curseurs et recalculer autant de fois qu'il veut.
@@ -205,42 +203,51 @@
             const pointCount = parseInt(els.points.value);
 
             const img = layer.img;
-            const aspect = img.width / img.height;
+            // v6.4 : on respecte maintenant la transformation ACTUELLE de l'image (miroir et
+            // échelle non-uniforme éventuelle) au moment même où on échantillonne les pixels,
+            // au lieu de toujours partir de l'image brute non transformée. La rotation, elle,
+            // est ré-appliquée sur le calque de résultat (mathématiquement équivalent et plus
+            // simple), mais le miroir (signe de scaleX/scaleY) doit être appliqué AVANT
+            // l'échantillonnage pour que l'aperçu corresponde exactement à ce qui est affiché.
+            const scaleX = layer.scaleX !== undefined ? layer.scaleX : 1;
+            const scaleY = layer.scaleY !== undefined ? layer.scaleY : 1;
+            const dispW = img.width * Math.abs(scaleX), dispH = img.height * Math.abs(scaleY);
+            const aspect = dispW / dispH;
             const w = aspect >= 1 ? resolution : Math.round(resolution * aspect);
             const h = aspect >= 1 ? Math.round(resolution / aspect) : resolution;
+            const pxToScene = dispW / w; // unités de scène par pixel de travail (cohérent en x et y)
 
             const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
             const ctx = cv.getContext('2d');
-            ctx.drawImage(img, 0, 0, w, h);
+            ctx.save();
+            ctx.translate(w / 2, h / 2);
+            ctx.scale(scaleX < 0 ? -1 : 1, scaleY < 0 ? -1 : 1); // miroir, appliqué ici
+            ctx.drawImage(img, -w / 2, -h / 2, w, h); // étiré pour remplir w×h (respecte une échelle non-uniforme)
+            ctx.restore();
             const imageData = ctx.getImageData(0, 0, w, h);
 
             tcSetProgress(20, 'Analyse (contraste, seuil de blanc)…'); await yieldUI();
             const density = buildDensityFromImageData(imageData, w, h, { blurRadius: 1, contrast, whiteCutoff });
 
-            tcSetProgress(35, 'Placement des points (stippling)…'); await yieldUI();
-            const pts = window.TSPCore.stipple(density, w, h, pointCount, 4, Math.random);
-            if (pts.length < 2) throw new Error('NO_POINTS');
-
-            tcSetProgress(55, 'Construction du trajet…'); await yieldUI();
-            const tour = window.TSPCore.greedyTour(pts, null, null);
-
-            tcSetProgress(70, 'Optimisation (2-opt)…'); await yieldUI();
-            const knn = window.TSPCore.buildKNN(pts, 12);
-            await yieldUI();
-            let optimized = window.TSPCore.twoOpt(pts, tour, knn, 35);
-
-            tcSetProgress(85, 'Élimination des croisements…'); await yieldUI();
-            optimized = window.TSPCore.removeCrossings(pts, optimized, 30);
+            tcSetProgress(35, 'Placement des points, îlots séparés, trajet…'); await yieldUI();
+            // v6.4 : solveMultiIsland détecte les zones réellement disjointes (ex. les mèches
+            // séparées d'une crinière) et les relie par plus-proche-EXTRÉMITÉ plutôt que par un
+            // point quelconque — les ponts partent donc naturellement d'un bord plutôt que du
+            // milieu d'une forme, et le départ/l'arrivée par défaut tombent aussi sur un bord
+            // (point le plus excentré de son îlot), pas en plein centre.
+            const solved = window.TSPCore.solveMultiIsland(density, w, h, pointCount, {});
+            if (solved.length < 2) throw new Error('NO_POINTS');
 
             tcSetProgress(92, 'Mise en place sur le calque…'); await yieldUI();
-            // Repère LOCAL centré, en unités pixel de l'image d'ORIGINE (mêmes conventions que
-            // getLocalExtents pour les calques 'image' : -largeur/2..largeur/2), pour que le
-            // nouveau tracé se cale exactement là où l'image était positionnée/tournée/redimensionnée.
-            const scale = img.width / w;
-            const scenePoints = optimized.map(i => ({
-                x: (pts[i].x - w / 2) * scale,
-                y: (pts[i].y - h / 2) * scale,
+            // Repère local DÉJÀ à l'échelle actuelle de l'image (miroir inclus, cf. plus haut) :
+            // le calque de résultat n'a donc plus qu'à porter le signe ±1 (déjà "consommé" dans le
+            // rendu du raster, donc scaleX/scaleY valent ±1 ici, jamais une magnitude différente de 1)
+            // et la rotation, qui elle est ré-appliquée telle quelle.
+            const scenePoints = solved.map(p => ({
+                x: (p.x - w / 2) * pxToScene,
+                y: (p.y - h / 2) * pxToScene,
             }));
+            const outScaleX = scaleX < 0 ? -1 : 1, outScaleY = scaleY < 0 ? -1 : 1;
 
             tcSetProgress(100, 'Terminé !'); await yieldUI();
 
@@ -251,13 +258,17 @@
             if (previewInfo) {
                 previewInfo.layer.originalPoints = scenePoints;
                 previewInfo.layer.points = [...scenePoints];
+                // Resynchronise aussi la position/rotation/miroir avec l'image source au cas où
+                // elle a été retransformée depuis la dernière mise à jour.
+                previewInfo.layer.x = layer.x; previewInfo.layer.y = layer.y; previewInfo.layer.rot = layer.rot || 0;
+                previewInfo.layer.scaleX = outScaleX; previewInfo.layer.scaleY = outScaleY;
             } else {
                 app.autoTraceCount = (app.autoTraceCount || 1);
                 app.addLayer({
                     type: 'imported_path', name: `🎯 TSP ${app.autoTraceCount++}`,
                     originalPoints: scenePoints, points: [...scenePoints],
                     x: layer.x, y: layer.y, rot: layer.rot || 0,
-                    scaleX: layer.scaleX !== undefined ? layer.scaleX : 1, scaleY: layer.scaleY !== undefined ? layer.scaleY : 1,
+                    scaleX: outScaleX, scaleY: outScaleY,
                     opacity: 1.0, color: app.ui ? app.ui.color : '#000000', width: 1.0,
                 });
                 layer._autoTracePreviewId = app.selectedIds[0]; // addLayer vient de le sélectionner
