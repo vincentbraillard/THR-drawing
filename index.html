@@ -125,7 +125,6 @@
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="liquify" onchange="app.changeTool()"> 💧 Déformation (Relief)</label>
                     <label style="display:flex; margin-bottom:8px;"><input type="radio" name="tool" value="interp" onchange="app.changeTool()"> 🧬 Interpolation (Morphing)</label>
                     <label style="display:flex; margin-bottom:15px;"><input type="radio" name="tool" value="wall" onchange="app.changeTool()"> 🧱 Mur (Exclusion)</label>
-                    <button class="btn" style="width:100%; font-weight:bold; background: #fff3e0; margin-bottom:15px;" onclick="TSPFill.open()">🎯 TSP Fill (remplir la sélection par points)</button>
                     <div style="position: relative; width: 100%;">
                         <input type="color" id="color-picker" value="#000000" style="position: absolute; top:0; left:0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 2;" onchange="app.changeColor()" oninput="app.changeColor()">
                         <button class="btn btn-primary" id="btn-color" style="width:100%; background:black; pointer-events: none; z-index: 1; position: relative;">🎨 Couleur du trait</button>
@@ -165,23 +164,35 @@
                             <div class="row-slider" style="margin-bottom:0;"><button class="btn btn-icon" onclick="app.stepSlider('wand-tol', -5)">➖</button><input type="range" id="wand-tol" min="0" max="100" value="30" oninput="app.updateSliders()"><button class="btn btn-icon" onclick="app.stepSlider('wand-tol', 5)">➕</button></div>
                         </div>
                     </div>
-                    <div class="row" style="gap: 5px; margin-bottom: 15px;"><button id="btn-zig-straight" class="btn btn-primary" style="flex:1;" onclick="app.setZigzagLineStyle('straight')">〰️ Droites</button><button id="btn-zig-wave" class="btn" style="flex:1;" onclick="app.setZigzagLineStyle('wave')">🌊 Vagues</button></div>
-                    <div class="row"><label>Orientation :</label>
-                        <select id="zigzag-type" onchange="app.updateZigzagLive(true)"><option value="angle">Angle Fixe</option><option value="guide">Suivre une Courbe</option><option value="spiral">Spirale de Contour</option></select>
+                    <div class="row" style="gap: 5px; margin-bottom: 15px;"><button id="btn-zig-straight" class="btn btn-primary" style="flex:1;" onclick="app.setZigzagLineStyle('straight')">〰️ Droites</button><button id="btn-zig-wave" class="btn" style="flex:1;" onclick="app.setZigzagLineStyle('wave')">🌊 Vagues</button><button id="btn-zig-tsp" class="btn" style="flex:1;" onclick="app.setZigzagLineStyle('tsp')">🎯 TSP</button></div>
+                    <div id="zig-classic-opts">
+                        <div class="row"><label>Orientation :</label>
+                            <select id="zigzag-type" onchange="app.updateZigzagLive(true)"><option value="angle">Angle Fixe</option><option value="guide">Suivre une Courbe</option><option value="spiral">Spirale de Contour</option></select>
+                        </div>
+                        <div id="zig-spiral-div" style="display:none; padding: 5px 0;"><div class="row"><label>Sens Spirale :</label><select id="spiral-dir" onchange="app.updateZigzagLive()" style="padding:4px;"><option value="in">Extérieur ➡️ Centre</option><option value="out">Centre ➡️ Extérieur</option></select></div></div>
+                        <div id="zig-angle-div">
+                            <div class="row"><label id="zigzag-angle-label">🔄 Angle :</label> <span class="val-badge" id="val-zigzag-angle">0°</span></div>
+                            <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('zigzag-angle', -5)">➖</button><input type="range" id="zigzag-angle" min="0" max="360" value="0" oninput="app.updateZigzagLive()"><button class="btn btn-icon" onclick="app.stepSlider('zigzag-angle', 5)">➕</button></div>
+                        </div>
+                        <div id="zig-guide-div" style="display:none; text-align:center; padding: 10px 0;"><button id="btn-draw-guide" class="btn btn-primary" style="width:100%;" onclick="app.startDrawingGuide()" disabled>✏️ Dessiner la courbe guide</button></div>
+                        <div class="row"><label>📏 Espacement :</label> <span class="val-badge" id="val-zigzag-spacing">2.00</span></div>
+                        <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', -10)">➖</button><input type="range" id="zigzag-spacing" min="1" max="1500" value="200" oninput="app.updateZigzagLive()"><button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', 10)">➕</button></div>
+                        <div id="wave-opts-div" style="display:none; border-top: 1px solid #ccc; padding-top: 10px; margin-top: 10px;">
+                            <div class="row"><label>↕️ Hauteur Vague :</label> <span class="val-badge" id="val-wave-amp">2.0</span></div>
+                            <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('wave-amp', -5)">➖</button><input type="range" id="wave-amp" min="1" max="100" value="20" oninput="app.updateZigzagLive()"><button class="btn btn-icon" onclick="app.stepSlider('wave-amp', 5)">➕</button></div>
+                            <div class="row"><label>↔️ Longueur Vague :</label> <span class="val-badge" id="val-wave-len">15.0</span></div>
+                            <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('wave-len', -5)">➖</button><input type="range" id="wave-len" min="10" max="500" value="150" oninput="app.updateZigzagLive()"><button class="btn btn-icon" onclick="app.stepSlider('wave-len', 5)">➕</button></div>
+                        </div>
                     </div>
-                    <div id="zig-spiral-div" style="display:none; padding: 5px 0;"><div class="row"><label>Sens Spirale :</label><select id="spiral-dir" onchange="app.updateZigzagLive()" style="padding:4px;"><option value="in">Extérieur ➡️ Centre</option><option value="out">Centre ➡️ Extérieur</option></select></div></div>
-                    <div id="zig-angle-div">
-                        <div class="row"><label id="zigzag-angle-label">🔄 Angle :</label> <span class="val-badge" id="val-zigzag-angle">0°</span></div>
-                        <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('zigzag-angle', -5)">➖</button><input type="range" id="zigzag-angle" min="0" max="360" value="0" oninput="app.updateZigzagLive()"><button class="btn btn-icon" onclick="app.stepSlider('zigzag-angle', 5)">➕</button></div>
-                    </div>
-                    <div id="zig-guide-div" style="display:none; text-align:center; padding: 10px 0;"><button id="btn-draw-guide" class="btn btn-primary" style="width:100%;" onclick="app.startDrawingGuide()" disabled>✏️ Dessiner la courbe guide</button></div>
-                    <div class="row"><label>📏 Espacement :</label> <span class="val-badge" id="val-zigzag-spacing">2.00</span></div>
-                    <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', -10)">➖</button><input type="range" id="zigzag-spacing" min="1" max="1500" value="200" oninput="app.updateZigzagLive()"><button class="btn btn-icon" onclick="app.stepSlider('zigzag-spacing', 10)">➕</button></div>
-                    <div id="wave-opts-div" style="display:none; border-top: 1px solid #ccc; padding-top: 10px; margin-top: 10px;">
-                        <div class="row"><label>↕️ Hauteur Vague :</label> <span class="val-badge" id="val-wave-amp">2.0</span></div>
-                        <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('wave-amp', -5)">➖</button><input type="range" id="wave-amp" min="1" max="100" value="20" oninput="app.updateZigzagLive()"><button class="btn btn-icon" onclick="app.stepSlider('wave-amp', 5)">➕</button></div>
-                        <div class="row"><label>↔️ Longueur Vague :</label> <span class="val-badge" id="val-wave-len">15.0</span></div>
-                        <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('wave-len', -5)">➖</button><input type="range" id="wave-len" min="10" max="500" value="150" oninput="app.updateZigzagLive()"><button class="btn btn-icon" onclick="app.stepSlider('wave-len', 5)">➕</button></div>
+                    <div id="zig-tsp-div" style="display:none;">
+                        <div style="font-size:11px; margin-bottom:10px; color:#555;">Le remplissage recalcule automatiquement quelques instants après avoir relâché un curseur.</div>
+                        <div class="row" style="gap:5px; margin-bottom:14px;">
+                            <button id="btn-tsp-pick-start" class="btn" style="flex:1; font-size:12px;" onclick="app.toggleTSPPick('start')">📍 Départ</button>
+                            <button id="btn-tsp-pick-end" class="btn" style="flex:1; font-size:12px;" onclick="app.toggleTSPPick('end')">🏁 Arrivée</button>
+                            <button class="btn" style="flex:0 0 40px; font-size:12px;" onclick="app.clearTSPPoints()">✕</button>
+                        </div>
+                        <div class="row"><label>🔬 Résolution (nb. points) :</label> <span class="val-badge" id="val-tsp-res">900</span></div>
+                        <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('tsp-res', -50)">➖</button><input type="range" id="tsp-res" min="100" max="4000" step="50" value="900" oninput="app.updateZigzagLive()"><button class="btn btn-icon" onclick="app.stepSlider('tsp-res', 50)">➕</button></div>
                     </div>
                 </fieldset>
 
@@ -211,8 +222,28 @@
                     <button class="btn" style="flex:1; font-weight:bold; background: #e3f2fd;" onclick="document.getElementById('file-image').click()">📂 + Image</button>
                     <button class="btn" style="flex:1; font-weight:bold; background: #f3e5f5;" onclick="document.getElementById('file-thr').click()">📂 + Tracé (.thr)</button>
                 </div>
-                <button class="btn" style="width:100%; font-weight:bold; background: #fff3e0; margin-bottom:15px;" onclick="AutoTrace.open()">🧵 Auto-Trace (Image → Tracé vectoriel)</button>
-                
+                <fieldset id="fs-tsp-convert" style="display:none; background:#fff3e0;">
+                    <legend>🎯 Convertir l'image en tracé TSP</legend>
+                    <div style="font-size:11px; margin-bottom:10px; color:#555;">Positionnez et redimensionnez d'abord l'image avec l'outil Sélection, puis réglez et cliquez sur Appliquer.</div>
+                    <div class="row"><label>🖥️ Résolution :</label> <span class="val-badge" id="val-tc-res">450px</span></div>
+                    <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('tc-res', -20)">➖</button><input type="range" id="tc-res" min="200" max="800" step="20" value="450"><button class="btn btn-icon" onclick="app.stepSlider('tc-res', 20)">➕</button></div>
+                    <div class="row"><label>◐ Contraste :</label> <span class="val-badge" id="val-tc-contrast">50</span></div>
+                    <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('tc-contrast', -5)">➖</button><input type="range" id="tc-contrast" min="0" max="100" value="50"><button class="btn btn-icon" onclick="app.stepSlider('tc-contrast', 5)">➕</button></div>
+                    <div class="row"><label>⚪ Seuil de blanc (fond) :</label> <span class="val-badge" id="val-tc-white">235</span></div>
+                    <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('tc-white', -5)">➖</button><input type="range" id="tc-white" min="120" max="254" value="235"><button class="btn btn-icon" onclick="app.stepSlider('tc-white', 5)">➕</button></div>
+                    <div class="row"><label>⚫ Nombre de points :</label> <span class="val-badge" id="val-tc-points">1500</span></div>
+                    <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('tc-points', -50)">➖</button><input type="range" id="tc-points" min="150" max="5000" step="50" value="1500"><button class="btn btn-icon" onclick="app.stepSlider('tc-points', 50)">➕</button></div>
+                    <div style="display:flex; gap:5px;">
+                        <button class="btn" style="flex:1;" onclick="AutoTrace.suggestWhiteCutoff()">🪄 Seuil auto</button>
+                        <button class="btn btn-primary" style="flex:2; font-weight:bold;" onclick="AutoTrace.convertSelectedImage()">✨ Appliquer</button>
+                    </div>
+                    <div id="tc-progress-wrap" style="display:none; margin-top:10px;">
+                        <div style="background:#eee; border-radius:8px; height:10px; overflow:hidden;"><div id="tc-progress-fill" style="background:#0078D7; height:100%; width:0%; transition:width .15s;"></div></div>
+                        <div id="tc-progress-label" style="font-size:11px; color:#555; margin-top:4px; text-align:center;">Préparation…</div>
+                    </div>
+                    <div id="tc-msg" style="font-size:11px; border-radius:6px; padding:6px 8px; margin-top:8px; display:none;"></div>
+                </fieldset>
+
                 <fieldset id="fs-transform" disabled style="background:#fff;">
                     <legend>📐 Transformer la sélection</legend>
                     <div style="text-align:center; font-size:12px; color:#1565c0; font-weight:bold; margin-bottom:15px; background: #e3f2fd; padding:10px; border-radius: 6px;">
@@ -271,7 +302,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v5.0 (Auto-Trace TSP + TSP Fill)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.1 (Correctif débordement TSP)</span>
     </div>
 
 <script>
@@ -289,7 +320,7 @@ const app = {
     
     ui: {
         tool: 'select', penWidth: 1.5, ropeLength: 5.0, tremor: 0.0, color: '#000000', zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isLiquifying: false,
-        zigzagLineStyle: 'straight', waveAmp: 2.0, waveLen: 15.0, zigzagAngle: 0, zigzagSpacing: 2.0, zigzagDrawMode: 'contour', liquifyRadius: 30, liquifyStrength: 50, wandTolerance: 30, pointerHover: null,
+        zigzagLineStyle: 'straight', waveAmp: 2.0, waveLen: 15.0, zigzagAngle: 0, zigzagSpacing: 2.0, zigzagDrawMode: 'contour', liquifyRadius: 30, liquifyStrength: 50, wandTolerance: 30, pointerHover: null, tspPointCount: 900, tspPickMode: null,
         interpSteps: 6, interpState: 0, interpRoundTrip: true, activeTransform: null
     },
     
@@ -799,6 +830,18 @@ const app = {
             }
 
             if (activePointers.size === 1) {
+                if (this.ui.tool === 'zigzag' && this.ui.tspPickMode && this.selectedIds.length === 1) {
+                    let sel = this.findLayer(this.selectedIds[0]).layer;
+                    if (sel && sel.type === 'zigzag' && sel.lineStyle === 'tsp') {
+                        this.saveState();
+                        if (this.ui.tspPickMode === 'start') sel.tspStart = { x: ptScene.x, y: ptScene.y };
+                        else sel.tspEnd = { x: ptScene.x, y: ptScene.y };
+                        this.toggleTSPPick(this.ui.tspPickMode);
+                        sel.points = this.generateTSPZigzagFill(sel);
+                        this.invalidateSim(); this.draw(); this.autoSave();
+                        return;
+                    }
+                }
                 if (this.ui.tool === 'text') {
                     if (this.isPointInBounds(ptScene)) {
                         this.saveState();
@@ -972,10 +1015,11 @@ const app = {
                         } else {
                             this.pos.currentPath.push({...this.pos.currentPath[0]});
                             let type = document.getElementById('zigzag-type').value; let dir = document.getElementById('spiral-dir') ? document.getElementById('spiral-dir').value : 'in';
-                            let layer = { type: 'zigzag', name: `〰️ Remplissage ${this.zigzagCount++}`, color: this.ui.color, width: 1.3, boundary: [...this.pos.currentPath], zigzagType: type, spiralDir: dir, lineStyle: this.ui.zigzagLineStyle, waveAmp: this.ui.waveAmp, waveLen: this.ui.waveLen, angle: this.ui.zigzagAngle, spacing: this.ui.zigzagSpacing, guideCurve: null, points: [] };
-                            if (type === 'angle' || type === 'spiral') layer.points = this.generateZigzag(layer);
+                            let layer = { type: 'zigzag', name: `〰️ Remplissage ${this.zigzagCount++}`, color: this.ui.color, width: 1.3, boundary: [...this.pos.currentPath], zigzagType: type, spiralDir: dir, lineStyle: this.ui.zigzagLineStyle, waveAmp: this.ui.waveAmp, waveLen: this.ui.waveLen, angle: this.ui.zigzagAngle, spacing: this.ui.zigzagSpacing, tspPointCount: this.ui.tspPointCount, guideCurve: null, points: [] };
+                            if (layer.lineStyle === 'tsp') layer.points = this.generateTSPZigzagFill(layer);
+                            else if (type === 'angle' || type === 'spiral') layer.points = this.generateZigzag(layer);
                             this.addLayer(layer);
-                            if (type === 'guide') this.startDrawingGuide();
+                            if (type === 'guide' && layer.lineStyle !== 'tsp') this.startDrawingGuide();
                         }
                     } else if (this.ui.tool === 'interp') {
                         if (this.ui.interpState === 0) {
@@ -1063,11 +1107,12 @@ const app = {
         boundary.push({...boundary[0]}); boundary = this.smoothPath(boundary, 3);
         
         let type = document.getElementById('zigzag-type').value; let spiralDir = document.getElementById('spiral-dir') ? document.getElementById('spiral-dir').value : 'in';
-        let layer = { type: 'zigzag', name: `〰️ Remplissage ${this.zigzagCount++}`, color: this.ui.color, width: 1.3, boundary: boundary, zigzagType: type, spiralDir: spiralDir, lineStyle: this.ui.zigzagLineStyle, waveAmp: this.ui.waveAmp, waveLen: this.ui.waveLen, angle: this.ui.zigzagAngle, spacing: this.ui.zigzagSpacing, guideCurve: null, points: [] };
-        if (layer.zigzagType === 'angle' || layer.zigzagType === 'spiral') layer.points = this.generateZigzag(layer);
+        let layer = { type: 'zigzag', name: `〰️ Remplissage ${this.zigzagCount++}`, color: this.ui.color, width: 1.3, boundary: boundary, zigzagType: type, spiralDir: spiralDir, lineStyle: this.ui.zigzagLineStyle, waveAmp: this.ui.waveAmp, waveLen: this.ui.waveLen, angle: this.ui.zigzagAngle, spacing: this.ui.zigzagSpacing, tspPointCount: this.ui.tspPointCount, guideCurve: null, points: [] };
+        if (layer.lineStyle === 'tsp') layer.points = this.generateTSPZigzagFill(layer);
+        else if (layer.zigzagType === 'angle' || layer.zigzagType === 'spiral') layer.points = this.generateZigzag(layer);
 
         this.undoStack.pop(); this.addLayer(layer);
-        if (layer.zigzagType === 'guide') this.startDrawingGuide(); else if (this.ui.zigzagDrawMode === 'wand') this.toggleWandMode();
+        if (layer.zigzagType === 'guide' && layer.lineStyle !== 'tsp') this.startDrawingGuide(); else if (this.ui.zigzagDrawMode === 'wand') this.toggleWandMode();
     },
 
     pointInPolygon(point, vs) {
@@ -1109,8 +1154,84 @@ const app = {
         this.ui.zigzagLineStyle = style;
         document.getElementById('btn-zig-straight').className = style === 'straight' ? 'btn btn-primary' : 'btn';
         document.getElementById('btn-zig-wave').className = style === 'wave' ? 'btn btn-primary' : 'btn';
+        document.getElementById('btn-zig-tsp').className = style === 'tsp' ? 'btn btn-primary' : 'btn';
         document.getElementById('wave-opts-div').style.display = style === 'wave' ? 'block' : 'none';
+        document.getElementById('zig-classic-opts').style.display = style === 'tsp' ? 'none' : 'block';
+        document.getElementById('zig-tsp-div').style.display = style === 'tsp' ? 'block' : 'none';
+        if (style !== 'tsp') this.toggleTSPPick(null);
         this.updateZigzagLive();
+    },
+
+    // --- Remplissage TSP : sélection du point de départ/arrivée par clic direct sur la table ---
+    toggleTSPPick(mode) {
+        this.ui.tspPickMode = (this.ui.tspPickMode === mode) ? null : mode;
+        let btnS = document.getElementById('btn-tsp-pick-start'), btnE = document.getElementById('btn-tsp-pick-end');
+        if (btnS) btnS.className = this.ui.tspPickMode === 'start' ? 'btn btn-primary' : 'btn';
+        if (btnE) btnE.className = this.ui.tspPickMode === 'end' ? 'btn btn-primary' : 'btn';
+    },
+
+    clearTSPPoints() {
+        if (this.selectedIds.length !== 1) return;
+        let sel = this.findLayer(this.selectedIds[0]);
+        if (sel && sel.layer.type === 'zigzag' && sel.layer.lineStyle === 'tsp') {
+            this.saveState(); delete sel.layer.tspStart; delete sel.layer.tspEnd;
+            sel.layer.points = this.generateTSPZigzagFill(sel.layer);
+            this.invalidateSim(); this.draw(); this.autoSave();
+        }
+    },
+
+    tspNearestIndex(pts, target) {
+        let best = 0, bestD = Infinity;
+        for (let i = 0; i < pts.length; i++) { let dx = pts[i].x - target.x, dy = pts[i].y - target.y; let d = dx * dx + dy * dy; if (d < bestD) { bestD = d; best = i; } }
+        return best;
+    },
+
+    // Rasterise le contour (dessiné par l'utilisateur, potentiellement imprécis / auto-intersectant)
+    // via le remplissage natif du <canvas> (règle non-zero standard) au lieu d'un test point-dans-polygone
+    // manuel : ceci reproduit fidèlement la même zone que ce que l'utilisateur VOIT rempli à l'écran,
+    // et évite les débordements observés sur des contours dessinés à main levée imprécis.
+    generateTSPZigzagFill(layer) {
+        if (!layer.boundary || layer.boundary.length < 3 || !window.TSPCore) return [];
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        layer.boundary.forEach(p => { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; });
+        let w = Math.max(1e-6, maxX - minX), h = Math.max(1e-6, maxY - minY);
+        let pad = Math.max(w, h) * 0.05;
+        let fit = { minX: minX - pad, minY: minY - pad, span: Math.max(w, h) + pad * 2 };
+        // v6.1 : la résolution de rasterisation suit le nombre de points demandé (plus de
+        // points -> une grille plus fine), pour que la forme remplie reste fidèle au contour
+        // même sur des découpes complexes, sans exposer un curseur séparé à régler soi-même.
+        let pointCountForRes = layer.tspPointCount || 900;
+        let res = Math.max(200, Math.min(500, Math.round(Math.sqrt(pointCountForRes) * 9)));
+        let cv = document.createElement('canvas'); cv.width = res; cv.height = res;
+        let cctx = cv.getContext('2d');
+        let toRaster = (p) => ({ x: (p.x - fit.minX) / fit.span * res, y: (p.y - fit.minY) / fit.span * res });
+        cctx.fillStyle = '#000'; cctx.beginPath();
+        let c0 = toRaster(layer.boundary[0]); cctx.moveTo(c0.x, c0.y);
+        for (let i = 1; i < layer.boundary.length; i++) { let c = toRaster(layer.boundary[i]); cctx.lineTo(c.x, c.y); }
+        cctx.closePath(); cctx.fill();
+        let data = cctx.getImageData(0, 0, res, res).data;
+        let density = new Float32Array(res * res);
+        for (let i = 0; i < res * res; i++) density[i] = data[i * 4 + 3] > 127 ? 1 : 0;
+
+        let pointCount = layer.tspPointCount || 900;
+        let pts = window.TSPCore.stipple(density, res, res, pointCount, 3, Math.random);
+        if (pts.length < 2) return pts.map(p => ({ x: fit.minX + (p.x / res) * fit.span, y: fit.minY + (p.y / res) * fit.span }));
+
+        let sceneToRaster = (p) => ({ x: (p.x - fit.minX) / fit.span * res, y: (p.y - fit.minY) / fit.span * res });
+        let startIdx = null, endIdx = null;
+        if (layer.tspStart) startIdx = this.tspNearestIndex(pts, sceneToRaster(layer.tspStart));
+        if (layer.tspEnd) { endIdx = this.tspNearestIndex(pts, sceneToRaster(layer.tspEnd)); if (endIdx === startIdx) endIdx = null; }
+        let tour = window.TSPCore.greedyTour(pts, startIdx, endIdx);
+        let knn = window.TSPCore.buildKNN(pts, 8);
+        let optimized = window.TSPCore.twoOpt(pts, tour, knn, 20);
+        // Filet de sécurité : la relaxation de Lloyd peut, sur des découpes très biscornues,
+        // laisser une poignée de points dériver légèrement hors du contour (observé : ~1% sur
+        // une forme en étoile très dentelée) — on les replaque sur le bord le plus proche du
+        // contour (en espace raster) plutôt que de les laisser dépasser.
+        let rasterBoundary = layer.boundary.map(toRaster);
+        let checkInside = (x, y) => this.pointInPolygon({ x, y }, rasterBoundary);
+        let finalRasterPts = window.TSPCore.clampToPolygon(optimized.map(i => pts[i]), rasterBoundary, checkInside);
+        return finalRasterPts.map(p => ({ x: fit.minX + (p.x / res) * fit.span, y: fit.minY + (p.y / res) * fit.span }));
     },
 
     generateZigzag(layer) {
@@ -1300,7 +1421,8 @@ const app = {
         this.ui.zigzagSpacing = parseInt(document.getElementById('zigzag-spacing').value) / 100.0; document.getElementById('val-zigzag-spacing').innerText = this.ui.zigzagSpacing.toFixed(2);
         this.ui.waveAmp = parseInt(document.getElementById('wave-amp').value) / 10.0; document.getElementById('val-wave-amp').innerText = this.ui.waveAmp.toFixed(1);
         this.ui.waveLen = parseInt(document.getElementById('wave-len').value) / 10.0; document.getElementById('val-wave-len').innerText = this.ui.waveLen.toFixed(1);
-        
+        let tspResEl = document.getElementById('tsp-res'); if (tspResEl) { this.ui.tspPointCount = parseInt(tspResEl.value); document.getElementById('val-tsp-res').innerText = this.ui.tspPointCount; }
+
         if (this.zigzagTimeout) clearTimeout(this.zigzagTimeout);
         this.zigzagTimeout = setTimeout(() => {
             if (this.selectedIds.length === 1) {
@@ -1311,12 +1433,13 @@ const app = {
                     sel.layer.waveAmp = this.ui.waveAmp; sel.layer.waveLen = this.ui.waveLen; sel.layer.angle = this.ui.zigzagAngle; sel.layer.spacing = this.ui.zigzagSpacing;
                     // Retrait volontaire du regenerate automatique pour éviter la perte de déformation.
                     // Si l'utilisateur change les paramètres dans le menu de droite, c'est le seul moment où la régénération opère.
-                    if (type === 'angle' || type === 'spiral' || (type === 'guide' && sel.layer.guideCurve)) sel.layer.points = this.generateZigzag(sel.layer);
+                    if (sel.layer.lineStyle === 'tsp') { sel.layer.tspPointCount = this.ui.tspPointCount; sel.layer.points = this.generateTSPZigzagFill(sel.layer); }
+                    else if (type === 'angle' || type === 'spiral' || (type === 'guide' && sel.layer.guideCurve)) sel.layer.points = this.generateZigzag(sel.layer);
                     else if (type === 'guide' && typeChanged) this.startDrawingGuide();
                     this.invalidateSim(); this.draw(); this.autoSave();
                 }
             }
-        }, 150); 
+        }, this.ui.zigzagLineStyle === 'tsp' ? 450 : 150); 
     },
 
     updateInterpLive() {
@@ -1447,6 +1570,15 @@ const app = {
                         this.ctx.beginPath(); this.ctx.moveTo(l.guideCurve[0].x, l.guideCurve[0].y);
                         for(let j=1; j<l.guideCurve.length; j++) this.ctx.lineTo(l.guideCurve[j].x, l.guideCurve[j].y);
                         this.ctx.strokeStyle = "rgba(142, 68, 173, 0.5)"; this.ctx.lineWidth = 2.0 / this.ui.zoom; this.ctx.stroke();
+                    }
+                    if (l.lineStyle === 'tsp' && (l.tspStart || l.tspEnd)) {
+                        let mr = 6 / this.ui.zoom;
+                        let drawTSPMarker = (p, color, label) => {
+                            if (!p) return;
+                            this.ctx.beginPath(); this.ctx.arc(p.x, p.y, mr, 0, Math.PI * 2); this.ctx.fillStyle = color; this.ctx.fill();
+                            this.ctx.strokeStyle = '#fff'; this.ctx.lineWidth = 1.5 / this.ui.zoom; this.ctx.stroke();
+                        };
+                        drawTSPMarker(l.tspStart, '#2e7d32'); drawTSPMarker(l.tspEnd, '#c62828');
                     }
                 }
                 if (l.type === 'wall') {
@@ -1653,6 +1785,7 @@ const app = {
     changeTool() {
         let newTool = document.querySelector('input[name="tool"]:checked').value;
         if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand' && newTool !== 'zigzag') this.toggleWandMode();
+        if (this.ui.tool === 'zigzag' && newTool !== 'zigzag' && this.ui.tspPickMode) this.toggleTSPPick(this.ui.tspPickMode);
         if (newTool === 'zigzag') {
             document.getElementById('zigzag-type').value = 'angle'; document.getElementById('zig-angle-div').style.display = 'block'; document.getElementById('zig-guide-div').style.display = 'none'; document.getElementById('zig-spiral-div').style.display = 'none'; document.getElementById('zigzag-angle-label').innerText = "🔄 Angle :";
         }
@@ -1761,7 +1894,8 @@ const app = {
                 document.getElementById('div-opacity').style.display = 'block'; document.getElementById('img-opacity').value = (sel.opacity !== undefined ? sel.opacity : 1.0) * 100;
                 document.getElementById('div-rotation').style.display = 'block'; document.getElementById('img-rot').value = sel.rot || 0; document.getElementById('val-img-rot').innerText = (sel.rot || 0) + "°";
             } else { document.getElementById('div-opacity').style.display = 'none'; document.getElementById('div-rotation').style.display = 'none'; }
-        } else { fsTransform.disabled = true; document.getElementById('div-opacity').style.display = 'none'; }
+            document.getElementById('fs-tsp-convert').style.display = (this.selectedIds.length === 1 && sel && sel.type === 'image') ? 'block' : 'none';
+        } else { fsTransform.disabled = true; document.getElementById('div-opacity').style.display = 'none'; document.getElementById('fs-tsp-convert').style.display = 'none'; }
 
         if (sel && sel.type === 'text') {
             document.getElementById('text-c').value = sel.charCount || 5; document.getElementById('val-text-c').innerText = sel.charCount || 5;
@@ -1904,7 +2038,13 @@ const app = {
         if (file) {
             const reader = new FileReader();
             reader.onload = (event) => {
-                const img = new Image(); img.onload = () => { this.addLayer({ type: 'image', img: img, src: event.target.result, x: 0, y: 0, scaleX: 1.0, scaleY: 1.0, opacity: 0.5, rot: 0 }); }
+                const img = new Image(); img.onload = () => {
+                    this.addLayer({ type: 'image', img: img, src: event.target.result, x: 0, y: 0, scaleX: 1.0, scaleY: 1.0, opacity: 0.5, rot: 0 });
+                    // Pré-calcule un seuil de blanc raisonnable (Otsu) dès l'import, pour que le
+                    // panneau Auto-Trace ne démarre pas sur une valeur par défaut trop permissive
+                    // qui laisserait filtrer un fond légèrement texturé (filigrane, papier).
+                    if (typeof AutoTrace !== 'undefined' && AutoTrace.suggestWhiteCutoff) AutoTrace.suggestWhiteCutoff();
+                }
                 img.src = event.target.result;
             };
             reader.readAsDataURL(file);
