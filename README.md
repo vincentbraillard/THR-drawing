@@ -1,5 +1,60 @@
 # Éditeur de Tracés Sunae — Journal des modifications
 
+## v6.2 — Fiabilité (calque vide, bouton silencieux) + retour visuel + croisements
+
+Deux problèmes signalés après mise à jour : le remplissage TSP créait un calque vide (rien ne
+s'affichait), et le bouton "Appliquer" d'Auto-Trace ne faisait plus rien du tout.
+
+### Bug trouvé : le témoin "occupé" d'Auto-Trace pouvait rester bloqué pour toujours
+
+Dans `convertSelectedImage`, la ligne `tcBusy = true` et l'accès au DOM (`els.msg.style.display`)
+étaient placés **avant** le `try`. La moindre erreur à cet endroit laissait `tcBusy` bloqué à `true`
+indéfiniment — et comme la fonction commence par `if (tcBusy) return;`, **tous les clics suivants sur
+"Appliquer" ne faisaient plus rien, silencieusement**, jusqu'au rechargement de la page. C'est
+exactement le symptôme décrit. Corrigé en déplaçant tout le travail (y compris l'activation du témoin)
+à l'intérieur du `try/finally`, qui garantit maintenant que `tcBusy` est toujours remis à `false` quoi
+qu'il arrive.
+
+### Erreurs maintenant visibles au lieu de silencieuses (les deux outils)
+
+Plutôt que de continuer à deviner la cause exacte d'un éventuel échec côté remplissage TSP (le moteur
+lui-même a été re-testé et reste rapide — 320 ms même au réglage maximum de 4000 points, donc ce n'est
+pas un problème de lenteur), les deux outils **affichent maintenant clairement toute erreur** au lieu
+d'échouer en silence :
+- **Auto-Trace** : le message d'erreur affiché inclut désormais le détail technique (`err.message`),
+  en plus de la barre de progression déjà présente qui montre l'avancement étape par étape
+  (préparation → analyse → stippling → construction → optimisation → mise en place).
+- **TSP Fill** : ajout d'un témoin "⏳ Calcul du remplissage…" (affiché pendant le calcul, à chaque
+  changement de curseur ou de point de départ/arrivée) et d'un message d'erreur rouge si quelque chose
+  échoue — auparavant, un échec silencieux dans `generateTSPZigzagFill` produisait exactement le
+  symptôme décrit ("le calque se crée mais je ne vois rien"), sans aucun indice pour comprendre
+  pourquoi. Les 5 points d'appel de la génération TSP passent maintenant tous par un nouveau point de
+  passage unique (`regenerateTSPFill`) qui gère témoin + erreurs de façon uniforme.
+
+Si le problème persiste après cette mise à jour, le message d'erreur affiché (et la console du
+navigateur, F12) donnera enfin de quoi identifier précisément la cause plutôt que de deviner à l'aveugle.
+
+### Croisements de traits (départ/arrivée imposés)
+
+Une contrainte de point de départ et/ou d'arrivée peut occasionnellement forcer le trajet à revenir de
+loin pour rejoindre ce point précis, créant un croisement visible — c'est une limite inhérente à
+l'heuristique d'optimisation 2-opt utilisée (elle réduit les croisements mais ne garantit pas leur
+élimination totale, en particulier près d'un point imposé). Deux atténuations apportées :
+- Le nombre de passes d'optimisation 2-opt est monté de 20 à 35 (vérifié : toujours rapide, 89 ms même
+  au réglage maximum) pour réduire davantage les croisements résiduels.
+- Une note explicative a été ajoutée dans le panneau, avec la suggestion de déplacer ou retirer (✕) le
+  point de départ/arrivée si un croisement gênant apparaît près de celui-ci.
+
+### Fichiers modifiés
+
+- `index.html` — nouveau point de passage `regenerateTSPFill` (témoin + gestion d'erreur) câblé sur
+  les 5 points d'appel de la génération TSP, 2-opt à 35 passes, note explicative (version affichée :
+  v6.2).
+- `autotrace.js` — correction du bug de témoin bloqué dans `convertSelectedImage`, message d'erreur
+  plus détaillé, 2-opt à 35 passes.
+
+---
+
 ## v6.1 — Correctif : débordement du remplissage TSP hors de la forme
 
 Bug corrigé : le remplissage TSP (dans l'outil Remplissage, à côté de Droites/Vagues) débordait
