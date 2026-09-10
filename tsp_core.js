@@ -261,6 +261,159 @@
         return tour;
     };
 
+    // ---------------- Composantes connexes d'une carte de densité (îlots séparés) ----------------
+    TSPCore.connectedComponents = function (density, w, h) {
+        const labels = new Int32Array(w * h).fill(-1);
+        let nextLabel = 0; const stack = []; const comps = [];
+        for (let start = 0; start < w * h; start++) {
+            if (density[start] <= 0 || labels[start] !== -1) continue;
+            let area = 0;
+            stack.length = 0; stack.push(start); labels[start] = nextLabel;
+            while (stack.length) {
+                const idx = stack.pop(); const x = idx % w, y = (idx / w) | 0; area++;
+                const neighbors = [idx - 1, idx + 1, idx - w, idx + w];
+                for (const n of neighbors) {
+                    if (n < 0 || n >= w * h) continue;
+                    if ((n === idx - 1 || n === idx + 1) && ((n / w) | 0) !== y) continue;
+                    if (density[n] > 0 && labels[n] === -1) { labels[n] = nextLabel; stack.push(n); }
+                }
+            }
+            comps.push({ label: nextLabel, area }); nextLabel++;
+        }
+        return { labels, comps };
+    };
+
+    // ---------------- Solveur "multi-îlots" : LE point d'entrée haut niveau recommandé ----------------
+    // Détecte les régions déconnectées de la carte de densité (ex. les mèches séparées d'une
+    // crinière), résout la tournée de CHAQUE îlot indépendamment (départ choisi automatiquement au
+    // point le plus excentré de son propre nuage — donc près du bord, pas en plein milieu), puis
+    // enchaîne les îlots par plus-proche-EXTRÉMITÉ (le pont entre deux îlots part et arrive donc
+    // toujours d'un bout de trajet déjà proche du bord de chaque forme, plutôt que d'un point
+    // quelconque choisi au hasard en plein milieu). Une passe finale de `removeCrossings` sur
+    // l'ensemble assemblé garantit zéro croisement, y compris entre les ponts eux-mêmes.
+    // opts: { rng, startPoint, endPoint } — startPoint/endPoint en coordonnées de la grille (mêmes
+    // unités que w,h), pour imposer un point de départ/arrivée précis si l'utilisateur en a choisi un.
+    TSPCore.solveMultiIsland = function (density, w, h, count, opts) {
+        opts = opts || {};
+        const { labels, comps } = TSPCore.connectedComponents(density, w, h);
+        if (comps.length === 0) return [];
+
+        const allPts = TSPCore.stipple(density, w, h, count, opts.relaxIterations !== undefined ? opts.relaxIterations : 3, opts.rng || Math.random);
+        const buckets = new Map();
+        for (const p of allPts) {
+            const gx = Math.min(w - 1, Math.max(0, p.x | 0)), gy = Math.min(h - 1, Math.max(0, p.y | 0));
+            const label = labels[gy * w + gx];
+            if (label === -1) continue;
+            if (!buckets.has(label)) buckets.set(label, []);
+            buckets.get(label).push(p);
+        }
+
+        const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+        const nearestInList = (pts, target) => {
+            let best = 0, bestD = Infinity;
+            pts.forEach((p, i) => { const d = dist(p, target); if (d < bestD) { bestD = d; best = i; } });
+            return best;
+        };
+
+        const solveIsland = (pts, forcedStart, forcedEnd) => {
+            if (pts.length <= 1) return pts.map((_, i) => i);
+            let startIdx;
+            if (forcedStart) startIdx = nearestInList(pts, forcedStart);
+            else {
+                // pas de contrainte : démarre au point le plus excentré de son propre nuage
+                // (donc naturellement près du bord, pas en plein milieu de l'îlot).
+                let cx = 0, cy = 0; pts.forEach(p => { cx += p.x; cy += p.y; }); cx /= pts.length; cy /= pts.length;
+                let bestD = -1; startIdx = 0;
+                pts.forEach((p, i) => { const d = (p.x - cx) ** 2 + (p.y - cy) ** 2; if (d > bestD) { bestD = d; startIdx = i; } });
+            }
+            let endIdx = forcedEnd ? nearestInList(pts, forcedEnd) : null;
+            if (endIdx === startIdx) endIdx = null;
+            const tour = TSPCore.greedyTour(pts, startIdx, endIdx);
+            const knn = TSPCore.buildKNN(pts, Math.min(12, pts.length - 1));
+            let t = TSPCore.twoOpt(pts, tour, knn, 25);
+            t = TSPCore.removeCrossings(pts, t, 15);
+            return t;
+        };
+
+        // Détermine quel îlot (le cas échéant) doit porter le départ/l'arrivée imposés, pour que
+        // sa PROPRE tournée interne s'y termine exactement, plutôt que de déplacer un point après
+        // coup (ce qui casserait la continuité du trajet).
+        const bucketEntries = [...buckets.entries()];
+        let startBucketIdx = null, endBucketIdx = null;
+        if (opts.startPoint) {
+            let bestD = Infinity;
+            bucketEntries.forEach(([, pts], i) => { const idx = nearestInList(pts, opts.startPoint); const d = dist(pts[idx], opts.startPoint); if (d < bestD) { bestD = d; startBucketIdx = i; } });
+        }
+        if (opts.endPoint) {
+            let bestD = Infinity;
+            bucketEntries.forEach(([, pts], i) => { const idx = nearestInList(pts, opts.endPoint); const d = dist(pts[idx], opts.endPoint); if (d < bestD) { bestD = d; endBucketIdx = i; } });
+        }
+
+        const islands = bucketEntries.map(([, pts], i) => {
+            const forcedStart = (i === startBucketIdx) ? opts.startPoint : null;
+            const forcedEnd = (i === endBucketIdx) ? opts.endPoint : null;
+            const order = solveIsland(pts, forcedStart, forcedEnd);
+            return { points: order.map(idx => pts[idx]), isStartIsland: i === startBucketIdx, isEndIsland: i === endBucketIdx };
+        });
+        if (islands.length === 0) return [];
+
+        const remaining = islands.slice();
+        const ordered = [];
+
+        // L'îlot de départ imposé (s'il existe) passe en premier, orienté pour que son point
+        // forcé soit bien en position 0 (pas à l'autre bout).
+        let firstIdx = remaining.findIndex(isl => isl.isStartIsland);
+        if (firstIdx === -1) {
+            // pas de contrainte : démarre par l'îlot/extrémité le plus proche de l'origine (choix
+            // stable par défaut, lui aussi naturellement proche du bord grâce à solveIsland ci-dessus).
+            let bestI = 0, bestRev = false, bestD = Infinity;
+            remaining.forEach((isl, ii) => {
+                const d0 = dist({ x: 0, y: 0 }, isl.points[0]), d1 = dist({ x: 0, y: 0 }, isl.points[isl.points.length - 1]);
+                if (d0 < bestD) { bestD = d0; bestI = ii; bestRev = false; }
+                if (d1 < bestD) { bestD = d1; bestI = ii; bestRev = true; }
+            });
+            firstIdx = bestI;
+            const isl = remaining.splice(firstIdx, 1)[0]; if (bestRev) isl.points.reverse();
+            ordered.push(isl);
+        } else {
+            const isl = remaining.splice(firstIdx, 1)[0];
+            const dStart = dist(isl.points[0], opts.startPoint), dEnd = dist(isl.points[isl.points.length - 1], opts.startPoint);
+            if (dEnd < dStart) isl.points.reverse();
+            ordered.push(isl);
+        }
+        let cursor = ordered[0].points[ordered[0].points.length - 1];
+
+        // Réserve l'îlot d'arrivée imposé pour la toute fin.
+        let endIsland = null;
+        if (endBucketIdx !== null) {
+            const idx = remaining.findIndex(isl => isl.isEndIsland);
+            if (idx !== -1) endIsland = remaining.splice(idx, 1)[0];
+        }
+
+        while (remaining.length) {
+            let bestI = -1, bestRev = false, bestD = Infinity;
+            remaining.forEach((isl, ii) => {
+                const d0 = dist(cursor, isl.points[0]), d1 = dist(cursor, isl.points[isl.points.length - 1]);
+                if (d0 < bestD) { bestD = d0; bestI = ii; bestRev = false; }
+                if (d1 < bestD) { bestD = d1; bestI = ii; bestRev = true; }
+            });
+            const isl = remaining.splice(bestI, 1)[0]; if (bestRev) isl.points.reverse();
+            ordered.push(isl); cursor = isl.points[isl.points.length - 1];
+        }
+        if (endIsland) {
+            // Son point imposé est déjà en dernière position (forcé via `forcedEnd` dans
+            // solveIsland ci-dessus) : on l'ajoute tel quel, sans le réordonner.
+            ordered.push(endIsland);
+        }
+
+        let finalPts = [];
+        for (const isl of ordered) finalPts.push(...isl.points);
+
+        const idxTour = finalPts.map((_, i) => i);
+        const cleaned = TSPCore.removeCrossings(finalPts, idxTour, 30);
+        return cleaned.map(i => finalPts[i]);
+    };
+
     TSPCore.tourLength = function (points, tour) {
         let len = 0;
         for (let i = 1; i < tour.length; i++) len += Math.hypot(points[tour[i]].x - points[tour[i - 1]].x, points[tour[i]].y - points[tour[i - 1]].y);
