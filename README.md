@@ -1,5 +1,60 @@
 # Éditeur de Tracés Sunae — Journal des modifications
 
+## v6.1 — Correctif : débordement du remplissage TSP hors de la forme
+
+Bug corrigé : le remplissage TSP (dans l'outil Remplissage, à côté de Droites/Vagues) débordait
+largement hors de la forme dessinée, avec de longs traits parasites en zigzag partant visiter des
+points isolés loin à l'extérieur — visible sur les captures fournies (masse dense au centre, entourée
+d'un enchevêtrement de traits qui s'étendent bien au-delà du contour).
+
+**Cause** : lors de la relaxation de Lloyd (l'étape qui répartit les points de façon régulière),
+chaque pixel de la grille — y compris ceux HORS de la forme, à densité nulle — recevait un poids
+plancher de +0.02 au lieu de 0. Sur une forme dont le rectangle englobant contient une grande zone
+vide autour d'elle (courant pour une forme irrégulière ou étroite), cette masse de pixels extérieurs à
+poids non-nul, cumulée sur toute la zone vide, suffisait à entraîner des points hors de la forme —
+jusqu'à 12 % des points observés, certains dérivant à plus de 3 fois le rayon de la forme. Testé et
+confirmé avant correction : sur une forme de 500 points, 63 se retrouvaient dehors, l'un à 168 unités
+du centre pour un rayon de forme de 40-55.
+
+**Correction** (`tsp_core.js`, donc effective pour Auto-Trace ET TSP Fill puisqu'ils partagent le même
+moteur) :
+- Suppression du plancher de poids — un pixel à densité strictement nulle n'a plus aucune influence.
+  Vérifié : 0 point hors de la forme après correction sur le même test (contre 63 avant).
+- Ajout d'un filet de sécurité supplémentaire (`TSPCore.clampToPolygon`) : tout point qui se
+  retrouverait malgré tout hors du contour (cas limite résiduel sur des découpes très dentelées —
+  mesuré à environ 1 % sur une forme en étoile très irrégulière, à une distance de l'ordre de 0,0001
+  unité du bord, donc un simple arrondi) est replaqué sur le point le plus proche du contour. Câblé
+  dans `generateTSPZigzagFill` (index.html) via la fonction `pointInPolygon` déjà utilisée ailleurs
+  dans l'application, pour rester cohérent avec la façon dont le reste du logiciel teste
+  l'appartenance à une forme.
+- La résolution de rasterisation de la forme (utilisée pour convertir le contour en carte de densité)
+  suit maintenant le nombre de points demandé (200 à 500 px de côté selon la densité choisie) au lieu
+  d'être fixée à 260 — un remplissage plus dense obtient aussi une grille plus fine, pour rester fidèle
+  aux découpes complexes.
+- Seuil de blanc (Auto-Trace) pré-calculé automatiquement (méthode d'Otsu) dès l'import d'une image,
+  plutôt que d'attendre un clic sur "🪄 Seuil auto" — la valeur par défaut était parfois trop permissive
+  et laissait filtrer un fond légèrement texturé (filigrane, papier) sans que ce soit évident tant que
+  le bouton n'avait pas été utilisé.
+
+### Fichiers modifiés
+
+- `tsp_core.js` — suppression du plancher de poids, ajout de `clampToPolygon`.
+- `index.html` — filet de sécurité câblé dans `generateTSPZigzagFill`, résolution de rasterisation
+  adaptative, seuil de blanc auto-calculé à l'import (version affichée : v6.1).
+- `autotrace.js` — inchangé dans cette passe (déjà en bon état : panneau inline dans l'onglet Transf.,
+  seuil d'Otsu, coupure dure du fond, pas de popup).
+
+### Vérifications effectuées
+
+Comme pour chaque correctif de ce projet, la correction a été testée indépendamment sous Node.js avant
+d'être considérée acquise : reproduction du bug sur une forme synthétique (12,6 % de points dehors,
+jusqu'à 168 unités de débordement), confirmation que la suppression du plancher ramène ce chiffre à 0,
+puis re-test sur une forme en étoile très dentelée (cas plus difficile) pour vérifier le filet de
+sécurité — les quelques points encore techniquement "dehors" après filet de sécurité se sont révélés
+être à une distance de 0,0000 unité du contour (précision flottante au bord, pas un vrai débordement).
+
+---
+
 ## v5.0 — Auto-Trace revu en profondeur : approche TSP-art (finitecurve), + outil TSP Fill
 
 Changement majeur suite à un test réel (image de poule au trait, avec cadre décoratif) qui a montré
