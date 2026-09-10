@@ -183,15 +183,22 @@
         const layer = getSelectedImageLayer();
         if (!layer) { alert("Sélectionnez d'abord un calque image."); return; }
         if (!window.TSPCore) { alert("Le moteur TSP (tsp_core.js) n'est pas chargé."); return; }
-        const app = window.app;
         const els = getTcEls();
+        if (!els) { alert("Erreur interne : panneau Auto-Trace introuvable dans la page."); return; }
 
-        tcBusy = true; tcCancelRequested = false;
-        els.msg.style.display = 'none';
-        tcSetProgress(5, "Préparation de l'image…");
-
+        // v6.2 : tout le travail (y compris l'activation du témoin "occupé" et la lecture du
+        // DOM) est maintenant DANS le try/finally. Auparavant, `tcBusy = true` était fixé
+        // AVANT le try : la moindre erreur à cet endroit (même improbable) laissait le témoin
+        // bloqué à `true` pour toujours, et tous les clics suivants sur "Appliquer" ne
+        // faisaient plus rien du tout, silencieusement — exactement le symptôme rapporté.
+        tcBusy = true;
         try {
+            const app = window.app;
+            tcCancelRequested = false;
+            els.msg.style.display = 'none';
+            tcSetProgress(5, "Préparation de l'image…");
             await yieldUI();
+
             const resolution = parseInt(els.res.value);
             const contrast = parseInt(els.contrast.value);
             const whiteCutoff = parseInt(els.white.value);
@@ -220,7 +227,7 @@
             tcSetProgress(75, 'Optimisation (2-opt)…'); await yieldUI();
             const knn = window.TSPCore.buildKNN(pts, 8);
             await yieldUI();
-            const optimized = window.TSPCore.twoOpt(pts, tour, knn, 20);
+            const optimized = window.TSPCore.twoOpt(pts, tour, knn, 35);
 
             tcSetProgress(92, 'Mise en place sur le calque…'); await yieldUI();
             // Repère LOCAL centré, en unités pixel de l'image d'ORIGINE (mêmes conventions que
@@ -252,10 +259,10 @@
             tcShowMsg(`✅ Tracé créé (${scenePoints.length} points). L'image source a été masquée (visible dans les calques).`, 'ok');
         } catch (err) {
             if (err && err.message === 'NO_POINTS') tcShowMsg('Aucun point détecté — essayez de monter le seuil de blanc ou le contraste.', 'err');
-            else { console.error(err); tcShowMsg('Une erreur est survenue pendant la conversion.', 'err'); }
+            else { console.error('[AutoTrace] erreur pendant la conversion :', err); tcShowMsg('❌ Erreur : ' + (err && err.message ? err.message : err) + ' (détails dans la console du navigateur, F12).', 'err'); }
         } finally {
             tcBusy = false;
-            setTimeout(() => { const e = getTcEls(); e.progressWrap.style.display = 'none'; }, 600);
+            setTimeout(() => { const e = getTcEls(); if (e) e.progressWrap.style.display = 'none'; }, 600);
         }
     };
 
