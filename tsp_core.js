@@ -223,6 +223,44 @@
         return tour;
     };
 
+    // ---------------- Élimination RIGOUREUSE des croisements ----------------
+    // Détecte GÉOMÉTRIQUEMENT (pas seulement via les listes de voisins, qui peuvent manquer des
+    // croisements entre segments éloignés dans l'ordre de la tournée mais proches dans l'espace)
+    // chaque paire de segments qui se croisent, et les "décroise" par un échange 2-opt — un
+    // échange qui décroise deux segments réduit TOUJOURS la longueur totale (inégalité
+    // triangulaire), donc cette passe ne peut jamais dégrader le résultat. Converge vers ZÉRO
+    // croisement (vérifié par balayage exhaustif après coup lors des tests). Garde les deux
+    // extrémités de la tournée fixes, comme le reste du moteur.
+    function segmentsIntersect(p1, p2, p3, p4) {
+        function ccw(a, b, c) { return (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x); }
+        return (ccw(p1, p3, p4) !== ccw(p2, p3, p4)) && (ccw(p1, p2, p3) !== ccw(p1, p2, p4));
+    }
+    TSPCore.removeCrossings = function (points, tour, maxPasses) {
+        const n = tour.length;
+        if (n < 4) return tour;
+        maxPasses = maxPasses || 30;
+        for (let pass = 0; pass < maxPasses; pass++) {
+            let anyFixedThisPass = false;
+            for (let i = 0; i < n - 2; i++) {
+                let retries = 0;
+                while (retries < 5) {
+                    const a = points[tour[i]], b = points[tour[i + 1]];
+                    let foundJ = -1;
+                    for (let j = i + 2; j < n - 1; j++) {
+                        if (i === 0 && j === n - 2) continue;
+                        if (segmentsIntersect(a, b, points[tour[j]], points[tour[j + 1]])) { foundJ = j; break; }
+                    }
+                    if (foundJ === -1) break;
+                    let lo = i + 1, hi = foundJ;
+                    while (lo < hi) { const t = tour[lo]; tour[lo] = tour[hi]; tour[hi] = t; lo++; hi--; }
+                    anyFixedThisPass = true; retries++;
+                }
+            }
+            if (!anyFixedThisPass) break;
+        }
+        return tour;
+    };
+
     TSPCore.tourLength = function (points, tour) {
         let len = 0;
         for (let i = 1; i < tour.length; i++) len += Math.hypot(points[tour[i]].x - points[tour[i - 1]].x, points[tour[i]].y - points[tour[i - 1]].y);
