@@ -1,5 +1,69 @@
 # Éditeur de Tracés Sunae — Journal des modifications
 
+## v6.3 — Élimination rigoureuse des croisements + workflow "Mettre à jour" / "Appliquer"
+
+### 1 & 4. Traits qui traversent le dessin (Auto-Trace et TSP Fill)
+
+**Diagnostic** : le logo fourni en exemple (tête de loup) contient plusieurs zones noires
+**réellement disjointes** (les mèches de la crinière séparées par de fins espaces blancs). Avec la
+coupure nette du seuil de blanc, ces espaces blancs ont une densité strictement nulle : les points
+générés dans chaque mèche forment des îlots complètement séparés dans l'espace des points, et le
+trajet doit forcément les relier par un pont direct — c'est inévitable. Le vrai problème n'était donc
+pas ces ponts en eux-mêmes, mais le fait que le 2-opt (limité à des listes de voisins proches, k=8)
+peut manquer des croisements entre segments éloignés dans l'ordre de la tournée mais géométriquement
+proches — laissant des croisements résiduels au lieu d'un simple pont propre.
+
+**Correction** : ajout d'une nouvelle passe, `TSPCore.removeCrossings`, qui détecte
+**géométriquement** chaque paire de segments qui se croisent (peu importe leur distance dans l'ordre
+de la tournée) et les décroise par un échange 2-opt — un échange qui décroise deux segments réduit
+*toujours* la longueur totale du trajet (inégalité triangulaire), donc cette passe ne peut jamais
+dégrader le résultat. Elle tourne après le 2-opt classique, dans les deux outils (même moteur
+partagé).
+
+**Vérifications effectuées** (comme toujours, testé sous Node avant intégration) :
+- Sur une forme très découpée (16 pointes fines), 117 croisements détectés après le 2-opt classique
+  → **0 croisement restant** après `removeCrossings`, vérifié par balayage exhaustif indépendant.
+- Performance : d'abord testée à 5 secondes pour 4000 points (trop lent), algorithme optimisé pour
+  éviter de tout rebalayer après chaque correction individuelle → ramené à moins de 500 ms, même à
+  5000 points sur une forme extrême.
+- Le nombre de voisins considérés par le 2-opt classique est aussi monté de 8 à 12 (plus
+  d'opportunités de correction locale avant même d'en arriver à `removeCrossings`).
+
+### 2. L'opacité de l'image importée n'affecte pas le moteur TSP
+
+Vérifié directement dans le code : la conversion Auto-Trace dessine l'image source sur un canevas de
+travail dédié (`ctx.drawImage(img, 0, 0, w, h)`) sans jamais lire ni appliquer la propriété `opacity`
+du calque — cette dernière est une propriété d'affichage uniquement, utilisée seulement quand le
+calque est dessiné sur le canevas principal de l'application. La seule "opacité" qui influence
+réellement le résultat est la **transparence propre à l'image** (canal alpha d'un PNG), qui est prise
+en compte intentionnellement (un pixel transparent est traité comme du fond).
+
+### 3. Nouveau workflow Auto-Trace : "Mettre à jour" puis "Appliquer les changements"
+
+Auparavant, le bouton "Appliquer" créait le tracé final ET sélectionnait automatiquement ce nouveau
+calque — ce qui faisait disparaître le panneau de réglages (il n'est visible que lorsqu'un calque
+*image* est sélectionné), obligeant à resélectionner l'image et tout reparamétrer pour ajuster quoi
+que ce soit.
+
+Désormais, deux boutons distincts :
+- **🔄 Mettre à jour** : calcule le tracé et l'affiche directement sur le canevas (calque d'aperçu
+  réutilisé et mis à jour en place à chaque clic, plutôt qu'un nouveau calque à chaque fois) — la
+  sélection reste sur le calque image, donc le panneau reste ouvert. Cliquable autant de fois que
+  nécessaire pour affiner les réglages.
+- **✅ Appliquer les changements** : une fois satisfait, termine la conversion — masque l'image
+  source (sans la supprimer) et bascule la sélection sur le tracé final.
+
+### Fichiers modifiés
+
+- `tsp_core.js` — nouvelle fonction `removeCrossings`.
+- `index.html` — `removeCrossings` câblé dans `generateTSPZigzagFill`, k=12 pour le 2-opt (version
+  affichée : v6.3).
+- `autotrace.js` — `convertSelectedImage` scindée en `updatePreview()` (mise à jour en place, garde le
+  panneau ouvert) et `finalizeConversion()` (termine et bascule la sélection), `removeCrossings`
+  câblée, k=12 pour le 2-opt.
+
+---
+
 ## v6.2 — Fiabilité (calque vide, bouton silencieux) + retour visuel + croisements
 
 Deux problèmes signalés après mise à jour : le remplissage TSP créait un calque vide (rien ne
