@@ -193,7 +193,7 @@
                             <button id="btn-tsp-pick-end" class="btn" style="flex:1; font-size:12px;" onclick="app.toggleTSPPick('end')">🏁 Arrivée</button>
                             <button class="btn" style="flex:0 0 40px; font-size:12px;" onclick="app.clearTSPPoints()">✕</button>
                         </div>
-                        <div style="font-size:10px; margin-bottom:12px; color:#888;">💡 Imposer un départ/arrivée peut occasionnellement créer un croisement (le trajet doit rejoindre ce point précis) — l'optimisation réduit ces croisements mais ne les élimine pas toujours à 100%. Essayez de déplacer le point ou de le retirer (✕) si besoin.</div>
+                        <div style="font-size:10px; margin-bottom:12px; color:#888;">💡 Le trajet ne se croise jamais lui-même. Si la forme comporte des zones vraiment séparées (ex. plusieurs traits disjoints), un pont en ligne droite reste nécessaire pour les relier — c'est inévitable, mais il part et arrive toujours près d'un bord plutôt que du milieu d'une forme.</div>
                         <div class="row"><label>🔬 Résolution (nb. points) :</label> <span class="val-badge" id="val-tsp-res">900</span></div>
                         <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('tsp-res', -50)">➖</button><input type="range" id="tsp-res" min="100" max="4000" step="50" value="900" oninput="app.updateZigzagLive()"><button class="btn btn-icon" onclick="app.stepSlider('tsp-res', 50)">➕</button></div>
                     </div>
@@ -306,7 +306,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.3 (Zéro croisement + workflow Mettre à jour)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.4 (Îlots + ponts sur les bords + miroir fidèle)</span>
     </div>
 
 <script>
@@ -1240,28 +1240,24 @@ const app = {
         for (let i = 0; i < res * res; i++) density[i] = data[i * 4 + 3] > 127 ? 1 : 0;
 
         let pointCount = layer.tspPointCount || 900;
-        let pts = window.TSPCore.stipple(density, res, res, pointCount, 3, Math.random);
-        if (pts.length < 2) return pts.map(p => ({ x: fit.minX + (p.x / res) * fit.span, y: fit.minY + (p.y / res) * fit.span }));
-
         let sceneToRaster = (p) => ({ x: (p.x - fit.minX) / fit.span * res, y: (p.y - fit.minY) / fit.span * res });
-        let startIdx = null, endIdx = null;
-        if (layer.tspStart) startIdx = this.tspNearestIndex(pts, sceneToRaster(layer.tspStart));
-        if (layer.tspEnd) { endIdx = this.tspNearestIndex(pts, sceneToRaster(layer.tspEnd)); if (endIdx === startIdx) endIdx = null; }
-        let tour = window.TSPCore.greedyTour(pts, startIdx, endIdx);
-        let knn = window.TSPCore.buildKNN(pts, 12);
-        let optimized = window.TSPCore.twoOpt(pts, tour, knn, 35);
-        // Élimination rigoureuse des croisements (voir CHANGELOG) : contrairement au 2-opt limité
-        // aux voisins proches, cette passe détecte GÉOMÉTRIQUEMENT chaque croisement, même entre
-        // segments éloignés dans la tournée, et le supprime — garanti de ne jamais dégrader le
-        // résultat (un croisement supprimé raccourcit toujours le trajet).
-        optimized = window.TSPCore.removeCrossings(pts, optimized, 30);
+        // v6.4 : solveMultiIsland gère lui-même le placement des points, la détection d'îlots
+        // séparés (utile si le contour dessiné forme plusieurs zones disjointes), le trajet par
+        // îlot, l'enchaînement par plus-proche-extrémité (ponts partant d'un bord plutôt que du
+        // milieu), et l'élimination des croisements sur l'ensemble assemblé.
+        let opts = {};
+        if (layer.tspStart) opts.startPoint = sceneToRaster(layer.tspStart);
+        if (layer.tspEnd) opts.endPoint = sceneToRaster(layer.tspEnd);
+        let solved = window.TSPCore.solveMultiIsland(density, res, res, pointCount, opts);
+        if (solved.length < 2) return solved.map(p => ({ x: fit.minX + (p.x / res) * fit.span, y: fit.minY + (p.y / res) * fit.span }));
+
         // Filet de sécurité : la relaxation de Lloyd peut, sur des découpes très biscornues,
         // laisser une poignée de points dériver légèrement hors du contour (observé : ~1% sur
         // une forme en étoile très dentelée) — on les replaque sur le bord le plus proche du
         // contour (en espace raster) plutôt que de les laisser dépasser.
         let rasterBoundary = layer.boundary.map(toRaster);
         let checkInside = (x, y) => this.pointInPolygon({ x, y }, rasterBoundary);
-        let finalRasterPts = window.TSPCore.clampToPolygon(optimized.map(i => pts[i]), rasterBoundary, checkInside);
+        let finalRasterPts = window.TSPCore.clampToPolygon(solved, rasterBoundary, checkInside);
         return finalRasterPts.map(p => ({ x: fit.minX + (p.x / res) * fit.span, y: fit.minY + (p.y / res) * fit.span }));
     },
 
