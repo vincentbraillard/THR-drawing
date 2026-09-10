@@ -65,7 +65,12 @@
             };
             for (let y = 0; y < h; y++) {
                 for (let x = 0; x < w; x++) {
-                    const wgt = density[y * w + x] + 0.02;
+                    // v5.1 : pas de "plancher" de poids ici (c'était +0.02 avant) — un pixel à densité
+                    // strictement nulle (hors d'une forme, pour TSP Fill) ne doit avoir AUCUNE influence,
+                    // sinon la relaxation de Lloyd entraîne des points hors de la forme (bug confirmé :
+                    // jusqu'à 12% des points dérivant à 3-4x le rayon de la forme hors de ses limites).
+                    const wgt = density[y * w + x];
+                    if (wgt <= 0) continue;
                     const idx = findNearest(x + 0.5, y + 0.5);
                     if (idx === -1) continue;
                     sumX[idx] += (x + 0.5) * wgt; sumY[idx] += (y + 0.5) * wgt; sumW[idx] += wgt;
@@ -249,6 +254,29 @@
         }
         return best;
     }
+
+    // Filet de sécurité pour TSP Fill : reprojette tout point qui se retrouverait hors du
+    // polygone (cas limite résiduel, ex. formes très fines) sur le point le plus proche de
+    // son contour, pour garantir qu'aucun point ne dépasse jamais la zone à remplir.
+    TSPCore.clampToPolygon = function (points, poly, pointInPolygonFn) {
+        const closestOnSegment = (p, a, b) => {
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const len2 = dx * dx + dy * dy;
+            let t = len2 > 1e-12 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2 : 0;
+            t = t < 0 ? 0 : (t > 1 ? 1 : t);
+            return { x: a.x + t * dx, y: a.y + t * dy };
+        };
+        return points.map(p => {
+            if (pointInPolygonFn(p.x, p.y, poly)) return p;
+            let best = null, bestD = Infinity;
+            for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+                const c = closestOnSegment(p, poly[j], poly[i]);
+                const d = (c.x - p.x) * (c.x - p.x) + (c.y - p.y) * (c.y - p.y);
+                if (d < bestD) { bestD = d; best = c; }
+            }
+            return best || p;
+        });
+    };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = TSPCore;
     if (typeof window !== 'undefined') window.TSPCore = TSPCore;
