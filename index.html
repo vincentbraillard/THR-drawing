@@ -227,7 +227,7 @@
                 </div>
                 <fieldset id="fs-tsp-convert" style="display:none; background:#fff3e0;">
                     <legend>🎯 Convertir l'image en tracé TSP</legend>
-                    <div style="font-size:11px; margin-bottom:10px; color:#555;">Positionnez et redimensionnez d'abord l'image avec l'outil Sélection, puis réglez et cliquez sur Appliquer.</div>
+                    <div style="font-size:11px; margin-bottom:10px; color:#555;">Positionnez et redimensionnez d'abord l'image avec l'outil Sélection. Réglez les curseurs puis cliquez sur "Mettre à jour" pour voir le résultat sur le canevas (le panneau reste ouvert, ajustez autant de fois que besoin). Cliquez sur "Appliquer les changements" une fois satisfait.</div>
                     <div class="row"><label>🖥️ Résolution :</label> <span class="val-badge" id="val-tc-res">450px</span></div>
                     <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('tc-res', -20)">➖</button><input type="range" id="tc-res" min="200" max="800" step="20" value="450"><button class="btn btn-icon" onclick="app.stepSlider('tc-res', 20)">➕</button></div>
                     <div class="row"><label>◐ Contraste :</label> <span class="val-badge" id="val-tc-contrast">50</span></div>
@@ -238,8 +238,9 @@
                     <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('tc-points', -50)">➖</button><input type="range" id="tc-points" min="150" max="5000" step="50" value="1500"><button class="btn btn-icon" onclick="app.stepSlider('tc-points', 50)">➕</button></div>
                     <div style="display:flex; gap:5px;">
                         <button class="btn" style="flex:1;" onclick="AutoTrace.suggestWhiteCutoff()">🪄 Seuil auto</button>
-                        <button class="btn btn-primary" style="flex:2; font-weight:bold;" onclick="AutoTrace.convertSelectedImage()">✨ Appliquer</button>
+                        <button class="btn btn-primary" style="flex:2; font-weight:bold;" onclick="AutoTrace.updatePreview()">🔄 Mettre à jour</button>
                     </div>
+                    <button class="btn" style="width:100%; font-weight:bold; margin-top:8px; background:#e8f5e9; color:#2e7d32; border-color:#a5d6a7;" onclick="AutoTrace.finalizeConversion()">✅ Appliquer les changements</button>
                     <div id="tc-progress-wrap" style="display:none; margin-top:10px;">
                         <div style="background:#eee; border-radius:8px; height:10px; overflow:hidden;"><div id="tc-progress-fill" style="background:#0078D7; height:100%; width:0%; transition:width .15s;"></div></div>
                         <div id="tc-progress-label" style="font-size:11px; color:#555; margin-top:4px; text-align:center;">Préparation…</div>
@@ -305,7 +306,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.2 (Fiabilité + retour visuel)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.3 (Zéro croisement + workflow Mettre à jour)</span>
     </div>
 
 <script>
@@ -1247,8 +1248,13 @@ const app = {
         if (layer.tspStart) startIdx = this.tspNearestIndex(pts, sceneToRaster(layer.tspStart));
         if (layer.tspEnd) { endIdx = this.tspNearestIndex(pts, sceneToRaster(layer.tspEnd)); if (endIdx === startIdx) endIdx = null; }
         let tour = window.TSPCore.greedyTour(pts, startIdx, endIdx);
-        let knn = window.TSPCore.buildKNN(pts, 8);
+        let knn = window.TSPCore.buildKNN(pts, 12);
         let optimized = window.TSPCore.twoOpt(pts, tour, knn, 35);
+        // Élimination rigoureuse des croisements (voir CHANGELOG) : contrairement au 2-opt limité
+        // aux voisins proches, cette passe détecte GÉOMÉTRIQUEMENT chaque croisement, même entre
+        // segments éloignés dans la tournée, et le supprime — garanti de ne jamais dégrader le
+        // résultat (un croisement supprimé raccourcit toujours le trajet).
+        optimized = window.TSPCore.removeCrossings(pts, optimized, 30);
         // Filet de sécurité : la relaxation de Lloyd peut, sur des découpes très biscornues,
         // laisser une poignée de points dériver légèrement hors du contour (observé : ~1% sur
         // une forme en étoile très dentelée) — on les replaque sur le bord le plus proche du
