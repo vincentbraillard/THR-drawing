@@ -186,11 +186,14 @@
                     </div>
                     <div id="zig-tsp-div" style="display:none;">
                         <div style="font-size:11px; margin-bottom:10px; color:#555;">Le remplissage recalcule automatiquement quelques instants après avoir relâché un curseur.</div>
+                        <div id="tsp-fill-status" style="display:none; font-size:12px; font-weight:bold; color:#0078D7; background:#eef4fc; border-radius:6px; padding:6px 8px; margin-bottom:10px;">⏳ Calcul du remplissage…</div>
+                        <div id="tsp-fill-error" style="display:none; font-size:11px; color:#c62828; background:#ffebee; border-radius:6px; padding:6px 8px; margin-bottom:10px;"></div>
                         <div class="row" style="gap:5px; margin-bottom:14px;">
                             <button id="btn-tsp-pick-start" class="btn" style="flex:1; font-size:12px;" onclick="app.toggleTSPPick('start')">📍 Départ</button>
                             <button id="btn-tsp-pick-end" class="btn" style="flex:1; font-size:12px;" onclick="app.toggleTSPPick('end')">🏁 Arrivée</button>
                             <button class="btn" style="flex:0 0 40px; font-size:12px;" onclick="app.clearTSPPoints()">✕</button>
                         </div>
+                        <div style="font-size:10px; margin-bottom:12px; color:#888;">💡 Imposer un départ/arrivée peut occasionnellement créer un croisement (le trajet doit rejoindre ce point précis) — l'optimisation réduit ces croisements mais ne les élimine pas toujours à 100%. Essayez de déplacer le point ou de le retirer (✕) si besoin.</div>
                         <div class="row"><label>🔬 Résolution (nb. points) :</label> <span class="val-badge" id="val-tsp-res">900</span></div>
                         <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('tsp-res', -50)">➖</button><input type="range" id="tsp-res" min="100" max="4000" step="50" value="900" oninput="app.updateZigzagLive()"><button class="btn btn-icon" onclick="app.stepSlider('tsp-res', 50)">➕</button></div>
                     </div>
@@ -302,7 +305,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.1 (Correctif débordement TSP)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.2 (Fiabilité + retour visuel)</span>
     </div>
 
 <script>
@@ -837,8 +840,7 @@ const app = {
                         if (this.ui.tspPickMode === 'start') sel.tspStart = { x: ptScene.x, y: ptScene.y };
                         else sel.tspEnd = { x: ptScene.x, y: ptScene.y };
                         this.toggleTSPPick(this.ui.tspPickMode);
-                        sel.points = this.generateTSPZigzagFill(sel);
-                        this.invalidateSim(); this.draw(); this.autoSave();
+                        this.regenerateTSPFill(sel);
                         return;
                     }
                 }
@@ -1016,9 +1018,9 @@ const app = {
                             this.pos.currentPath.push({...this.pos.currentPath[0]});
                             let type = document.getElementById('zigzag-type').value; let dir = document.getElementById('spiral-dir') ? document.getElementById('spiral-dir').value : 'in';
                             let layer = { type: 'zigzag', name: `〰️ Remplissage ${this.zigzagCount++}`, color: this.ui.color, width: 1.3, boundary: [...this.pos.currentPath], zigzagType: type, spiralDir: dir, lineStyle: this.ui.zigzagLineStyle, waveAmp: this.ui.waveAmp, waveLen: this.ui.waveLen, angle: this.ui.zigzagAngle, spacing: this.ui.zigzagSpacing, tspPointCount: this.ui.tspPointCount, guideCurve: null, points: [] };
-                            if (layer.lineStyle === 'tsp') layer.points = this.generateTSPZigzagFill(layer);
-                            else if (type === 'angle' || type === 'spiral') layer.points = this.generateZigzag(layer);
+                            if (layer.lineStyle !== 'tsp' && (type === 'angle' || type === 'spiral')) layer.points = this.generateZigzag(layer);
                             this.addLayer(layer);
+                            if (layer.lineStyle === 'tsp') this.regenerateTSPFill(this.findLayer(this.selectedIds[0]).layer);
                             if (type === 'guide' && layer.lineStyle !== 'tsp') this.startDrawingGuide();
                         }
                     } else if (this.ui.tool === 'interp') {
@@ -1108,10 +1110,10 @@ const app = {
         
         let type = document.getElementById('zigzag-type').value; let spiralDir = document.getElementById('spiral-dir') ? document.getElementById('spiral-dir').value : 'in';
         let layer = { type: 'zigzag', name: `〰️ Remplissage ${this.zigzagCount++}`, color: this.ui.color, width: 1.3, boundary: boundary, zigzagType: type, spiralDir: spiralDir, lineStyle: this.ui.zigzagLineStyle, waveAmp: this.ui.waveAmp, waveLen: this.ui.waveLen, angle: this.ui.zigzagAngle, spacing: this.ui.zigzagSpacing, tspPointCount: this.ui.tspPointCount, guideCurve: null, points: [] };
-        if (layer.lineStyle === 'tsp') layer.points = this.generateTSPZigzagFill(layer);
-        else if (layer.zigzagType === 'angle' || layer.zigzagType === 'spiral') layer.points = this.generateZigzag(layer);
+        if (layer.lineStyle !== 'tsp' && (layer.zigzagType === 'angle' || layer.zigzagType === 'spiral')) layer.points = this.generateZigzag(layer);
 
         this.undoStack.pop(); this.addLayer(layer);
+        if (layer.lineStyle === 'tsp') this.regenerateTSPFill(this.findLayer(this.selectedIds[0]).layer);
         if (layer.zigzagType === 'guide' && layer.lineStyle !== 'tsp') this.startDrawingGuide(); else if (this.ui.zigzagDrawMode === 'wand') this.toggleWandMode();
     },
 
@@ -1175,8 +1177,7 @@ const app = {
         let sel = this.findLayer(this.selectedIds[0]);
         if (sel && sel.layer.type === 'zigzag' && sel.layer.lineStyle === 'tsp') {
             this.saveState(); delete sel.layer.tspStart; delete sel.layer.tspEnd;
-            sel.layer.points = this.generateTSPZigzagFill(sel.layer);
-            this.invalidateSim(); this.draw(); this.autoSave();
+            this.regenerateTSPFill(sel.layer);
         }
     },
 
@@ -1190,6 +1191,30 @@ const app = {
     // via le remplissage natif du <canvas> (règle non-zero standard) au lieu d'un test point-dans-polygone
     // manuel : ceci reproduit fidèlement la même zone que ce que l'utilisateur VOIT rempli à l'écran,
     // et évite les débordements observés sur des contours dessinés à main levée imprécis.
+    // Enrobe generateTSPZigzagFill() d'un indicateur "Calcul en cours", d'une gestion d'erreur
+    // visible (au lieu d'un échec silencieux), et d'un court délai pour laisser le témoin
+    // s'afficher avant que le calcul (synchrone) ne démarre.
+    regenerateTSPFill(layer) {
+        let statusEl = document.getElementById('tsp-fill-status'); let errEl = document.getElementById('tsp-fill-error');
+        if (errEl) errEl.style.display = 'none';
+        if (statusEl) statusEl.style.display = 'block';
+        setTimeout(() => {
+            try {
+                layer.points = this.generateTSPZigzagFill(layer);
+                if (!layer.points || layer.points.length === 0) {
+                    if (errEl) { errEl.textContent = "⚠️ Aucun point généré — la forme est peut-être trop petite, ou mal fermée."; errEl.style.display = 'block'; }
+                }
+            } catch (err) {
+                console.error('[TSP Fill] erreur pendant le calcul :', err);
+                if (errEl) { errEl.textContent = '❌ Erreur : ' + (err && err.message ? err.message : err) + ' (détails dans la console du navigateur, F12).'; errEl.style.display = 'block'; }
+                if (!layer.points) layer.points = [];
+            } finally {
+                if (statusEl) statusEl.style.display = 'none';
+                this.invalidateSim(); this.draw(); this.autoSave();
+            }
+        }, 20);
+    },
+
     generateTSPZigzagFill(layer) {
         if (!layer.boundary || layer.boundary.length < 3 || !window.TSPCore) return [];
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -1223,7 +1248,7 @@ const app = {
         if (layer.tspEnd) { endIdx = this.tspNearestIndex(pts, sceneToRaster(layer.tspEnd)); if (endIdx === startIdx) endIdx = null; }
         let tour = window.TSPCore.greedyTour(pts, startIdx, endIdx);
         let knn = window.TSPCore.buildKNN(pts, 8);
-        let optimized = window.TSPCore.twoOpt(pts, tour, knn, 20);
+        let optimized = window.TSPCore.twoOpt(pts, tour, knn, 35);
         // Filet de sécurité : la relaxation de Lloyd peut, sur des découpes très biscornues,
         // laisser une poignée de points dériver légèrement hors du contour (observé : ~1% sur
         // une forme en étoile très dentelée) — on les replaque sur le bord le plus proche du
@@ -1433,10 +1458,14 @@ const app = {
                     sel.layer.waveAmp = this.ui.waveAmp; sel.layer.waveLen = this.ui.waveLen; sel.layer.angle = this.ui.zigzagAngle; sel.layer.spacing = this.ui.zigzagSpacing;
                     // Retrait volontaire du regenerate automatique pour éviter la perte de déformation.
                     // Si l'utilisateur change les paramètres dans le menu de droite, c'est le seul moment où la régénération opère.
-                    if (sel.layer.lineStyle === 'tsp') { sel.layer.tspPointCount = this.ui.tspPointCount; sel.layer.points = this.generateTSPZigzagFill(sel.layer); }
-                    else if (type === 'angle' || type === 'spiral' || (type === 'guide' && sel.layer.guideCurve)) sel.layer.points = this.generateZigzag(sel.layer);
-                    else if (type === 'guide' && typeChanged) this.startDrawingGuide();
-                    this.invalidateSim(); this.draw(); this.autoSave();
+                    if (sel.layer.lineStyle === 'tsp') {
+                        sel.layer.tspPointCount = this.ui.tspPointCount;
+                        this.regenerateTSPFill(sel.layer); // gère lui-même invalidateSim/draw/autoSave
+                    } else {
+                        if (type === 'angle' || type === 'spiral' || (type === 'guide' && sel.layer.guideCurve)) sel.layer.points = this.generateZigzag(sel.layer);
+                        else if (type === 'guide' && typeChanged) this.startDrawingGuide();
+                        this.invalidateSim(); this.draw(); this.autoSave();
+                    }
                 }
             }
         }, this.ui.zigzagLineStyle === 'tsp' ? 450 : 150); 
