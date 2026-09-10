@@ -178,7 +178,12 @@
     // rotation/échelle actuelles (le nouveau tracé est placé avec les mêmes x, y, rot,
     // scaleX, scaleY que le calque image source — aucune ré-interprétation du cadrage n'est
     // nécessaire puisque tout part des pixels bruts de l'image, dans son propre repère local).
-    AutoTrace.convertSelectedImage = async function () {
+    // "Mettre à jour" : (re)calcule le tracé et l'affiche directement sur le canevas principal,
+    // SANS fermer/masquer le panneau de réglages — la sélection reste sur le calque image source,
+    // pour que l'utilisateur puisse ajuster les curseurs et recalculer autant de fois qu'il veut.
+    // Un calque d'aperçu unique est réutilisé (mis à jour en place) d'un appel à l'autre au lieu
+    // d'en créer un nouveau à chaque fois.
+    AutoTrace.updatePreview = async function () {
         if (tcBusy) return;
         const layer = getSelectedImageLayer();
         if (!layer) { alert("Sélectionnez d'abord un calque image."); return; }
@@ -186,11 +191,6 @@
         const els = getTcEls();
         if (!els) { alert("Erreur interne : panneau Auto-Trace introuvable dans la page."); return; }
 
-        // v6.2 : tout le travail (y compris l'activation du témoin "occupé" et la lecture du
-        // DOM) est maintenant DANS le try/finally. Auparavant, `tcBusy = true` était fixé
-        // AVANT le try : la moindre erreur à cet endroit (même improbable) laissait le témoin
-        // bloqué à `true` pour toujours, et tous les clics suivants sur "Appliquer" ne
-        // faisaient plus rien du tout, silencieusement — exactement le symptôme rapporté.
         tcBusy = true;
         try {
             const app = window.app;
@@ -224,10 +224,13 @@
             tcSetProgress(55, 'Construction du trajet…'); await yieldUI();
             const tour = window.TSPCore.greedyTour(pts, null, null);
 
-            tcSetProgress(75, 'Optimisation (2-opt)…'); await yieldUI();
-            const knn = window.TSPCore.buildKNN(pts, 8);
+            tcSetProgress(70, 'Optimisation (2-opt)…'); await yieldUI();
+            const knn = window.TSPCore.buildKNN(pts, 12);
             await yieldUI();
-            const optimized = window.TSPCore.twoOpt(pts, tour, knn, 35);
+            let optimized = window.TSPCore.twoOpt(pts, tour, knn, 35);
+
+            tcSetProgress(85, 'Élimination des croisements…'); await yieldUI();
+            optimized = window.TSPCore.removeCrossings(pts, optimized, 30);
 
             tcSetProgress(92, 'Mise en place sur le calque…'); await yieldUI();
             // Repère LOCAL centré, en unités pixel de l'image d'ORIGINE (mêmes conventions que
@@ -241,22 +244,32 @@
 
             tcSetProgress(100, 'Terminé !'); await yieldUI();
 
-            app.autoTraceCount = (app.autoTraceCount || 1);
             app.saveState();
-            app.addLayer({
-                type: 'imported_path', name: `🎯 TSP ${app.autoTraceCount++}`,
-                originalPoints: scenePoints, points: [...scenePoints],
-                x: layer.x, y: layer.y, rot: layer.rot || 0,
-                scaleX: layer.scaleX !== undefined ? layer.scaleX : 1, scaleY: layer.scaleY !== undefined ? layer.scaleY : 1,
-                opacity: 1.0, color: app.ui ? app.ui.color : '#000000', width: 1.0,
-            });
-            layer.visible = false; // masque l'image source plutôt que de la supprimer (non destructif)
+            // Réutilise le calque d'aperçu existant s'il y en a un (créé par un appel précédent),
+            // sinon en crée un nouveau et retient son id sur le calque image source.
+            let previewInfo = layer._autoTracePreviewId ? app.findLayer(layer._autoTracePreviewId) : null;
+            if (previewInfo) {
+                previewInfo.layer.originalPoints = scenePoints;
+                previewInfo.layer.points = [...scenePoints];
+            } else {
+                app.autoTraceCount = (app.autoTraceCount || 1);
+                app.addLayer({
+                    type: 'imported_path', name: `🎯 TSP ${app.autoTraceCount++}`,
+                    originalPoints: scenePoints, points: [...scenePoints],
+                    x: layer.x, y: layer.y, rot: layer.rot || 0,
+                    scaleX: layer.scaleX !== undefined ? layer.scaleX : 1, scaleY: layer.scaleY !== undefined ? layer.scaleY : 1,
+                    opacity: 1.0, color: app.ui ? app.ui.color : '#000000', width: 1.0,
+                });
+                layer._autoTracePreviewId = app.selectedIds[0]; // addLayer vient de le sélectionner
+            }
+            // Remet la sélection sur le calque IMAGE (pas l'aperçu) pour garder le panneau ouvert.
+            app.selectedIds = [layer.id];
             if (typeof app.invalidateSim === 'function') app.invalidateSim();
             if (typeof app.refreshLayerList === 'function') app.refreshLayerList();
             if (typeof app.draw === 'function') app.draw();
             if (typeof app.autoSave === 'function') app.autoSave();
 
-            tcShowMsg(`✅ Tracé créé (${scenePoints.length} points). L'image source a été masquée (visible dans les calques).`, 'ok');
+            tcShowMsg(`🔄 Aperçu mis à jour (${scenePoints.length} points) — visible sur le canevas. Ajustez les réglages si besoin, puis cliquez sur "Appliquer les changements" quand vous êtes satisfait.`, 'ok');
         } catch (err) {
             if (err && err.message === 'NO_POINTS') tcShowMsg('Aucun point détecté — essayez de monter le seuil de blanc ou le contraste.', 'err');
             else { console.error('[AutoTrace] erreur pendant la conversion :', err); tcShowMsg('❌ Erreur : ' + (err && err.message ? err.message : err) + ' (détails dans la console du navigateur, F12).', 'err'); }
@@ -264,6 +277,25 @@
             tcBusy = false;
             setTimeout(() => { const e = getTcEls(); if (e) e.progressWrap.style.display = 'none'; }, 600);
         }
+    };
+
+    // "Appliquer les changements" : termine la conversion — masque le calque image source (sans le
+    // supprimer) et bascule la sélection sur le tracé final. Nécessite d'avoir cliqué au moins une
+    // fois sur "Mettre à jour" pour qu'un aperçu existe.
+    AutoTrace.finalizeConversion = function () {
+        const app = window.app;
+        const layer = getSelectedImageLayer();
+        if (!layer) { alert("Sélectionnez d'abord un calque image."); return; }
+        const previewInfo = layer._autoTracePreviewId ? app.findLayer(layer._autoTracePreviewId) : null;
+        if (!previewInfo) { alert('Cliquez d\'abord sur "Mettre à jour" pour générer un aperçu.'); return; }
+
+        app.saveState();
+        layer.visible = false; // masque l'image source plutôt que de la supprimer (non destructif)
+        app.selectedIds = [previewInfo.layer.id];
+        if (typeof app.invalidateSim === 'function') app.invalidateSim();
+        if (typeof app.refreshLayerList === 'function') app.refreshLayerList();
+        if (typeof app.draw === 'function') app.draw();
+        if (typeof app.autoSave === 'function') app.autoSave();
     };
 
     window.AutoTrace = AutoTrace;
