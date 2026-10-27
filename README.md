@@ -1,5 +1,44 @@
 # Éditeur de Tracés Sunae — Journal des modifications
 
+## v6.6 — Outil Remplissage : trois modes de tracé (Crayon · Points · Détection auto)
+
+### Ce qui change
+
+Dans l'outil **Remplissage (Zones)**, le choix du mode de tracé du contour se fait désormais avec
+trois petits boutons placés en haut du panneau « Paramètres Remplissage » :
+
+- **✏️ Crayon** — tracé à main levée d'une forme fermée (comportement historique). C'est
+  maintenant le **mode par défaut** et il est mis en évidence à l'ouverture de l'outil.
+- **📍 Points** — *nouveau* : chaque clic pose un point relié au précédent par une **ligne droite**.
+  Une ligne élastique suit le curseur, le premier point est affiché en vert et s'entoure d'un anneau
+  quand on est assez près pour fermer.
+  - Fermer la forme : recliquer sur le premier point (à partir de 3 points), double-clic, touche
+    **Entrée**, ou bouton **✅ Fermer la forme**.
+  - Corriger : **Retour arrière** ou bouton **↩️ Dernier point** retire le dernier point ;
+    **Échap** ou **✖️ Annuler** abandonne la forme en cours.
+  - La forme fermée produit exactement le même calque de remplissage qu'un tracé à main levée
+    (Droites / Vagues / TSP, angle, spirale, courbe guide…) : les côtés sont simplement échantillonnés
+    tous les 1 unité pour donner un contour équivalent.
+- **🪄 Détection auto** — le bouton existait déjà (il s'appelait « Utiliser la Détection Auto ») ;
+  il prend sa place dans cette rangée de trois boutons. Il n'apparaît toujours que lorsqu'une image
+  de fond visible est présente, et le curseur de **Sensibilité** n'est affiché que dans ce mode.
+
+### Détails de comportement
+
+- Le dernier choix entre Crayon et Points est mémorisé : après le tracé d'une courbe guide, ou après
+  une détection auto, l'outil revient au mode Crayon ou Points précédemment utilisé.
+- Changer d'outil abandonne une forme par points inachevée.
+- Le texte d'aide du panneau s'adapte au mode actif.
+
+### Fichiers modifiés
+
+- `index.html` — rangée de boutons de mode, `setZigzagDrawMode` / `updateZigzagModeUI`, fonctions du
+  mode Points (`addPolygonPoint`, `closePolygonShape`, `undoPolygonPoint`, `cancelPolygonShape`),
+  création du calque factorisée dans `createZigzagLayerFromPath`, aperçu du polygone dans `draw()`
+  (version affichée : v6.6).
+
+---
+
 ## v6.4 — Solveur multi-îlots (ponts sur les bords) + miroir fidèle à l'aperçu
 
 ### 1 & 2. Les ponts entre formes séparées, et départ/arrivée par défaut sur le bord
