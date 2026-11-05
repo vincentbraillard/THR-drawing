@@ -359,7 +359,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.9 (Composer — 1er test)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.10 (Composer — liaisons)</span>
     </div>
 
 <script>
@@ -1694,7 +1694,10 @@ const app = {
         return finalRasterPts.map(p => ({ x: fit.minX + (p.x / res) * fit.span, y: fit.minY + (p.y / res) * fit.span }));
     },
 
-    generateZigzag(layer) {
+    // Enveloppe : layer.reversed inverse le sens de parcours (départ ↔ arrivée), conservé quand le remplissage est régénéré.
+    generateZigzag(layer) { let pts = this.generateZigzagRaw(layer); if (layer.reversed && pts && pts.length) pts = pts.slice().reverse(); return pts; },
+
+    generateZigzagRaw(layer) {
         if (!layer.boundary || layer.boundary.length < 3) return [];
         let spacing = Math.max(0.5, layer.spacing || 2.0); let isWave = layer.lineStyle === 'wave'; let wAmp = layer.waveAmp || 2.0; let wLen = layer.waveLen || 15.0;
         

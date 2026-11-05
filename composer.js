@@ -69,6 +69,7 @@
                 }
                 stats.push(s);
             }
+            const outside = new Uint8Array(stats.length); for (let k = 1; k < stats.length; k++) if (stats[k].border) outside[k] = 1; // blanc relié au bord = extérieur du dessin
             const regions = [];
             for (let k = 1; k < stats.length; k++) {
                 const s = stats[k]; if (s.n < minArea) continue;
@@ -81,7 +82,7 @@
                     border: s.border, style: null, angle: null, contour: null });
             }
             regions.sort((a, b) => b.area - a.area); if (regions.length > 400) regions.length = 400;
-            this.ignoreBg = ignoreBg; this.src = src; this.labels = labels; this.regions = regions; this.byId = new Map(regions.map(r => [r.id, r])); this.selected = null; this.ready = true;
+            this.ignoreBg = ignoreBg; this.outside = outside; this.src = src; this.labels = labels; this.regions = regions; this.byId = new Map(regions.map(r => [r.id, r])); this.buildGrid(); this.selected = null; this.ready = true;
             this.rebuildOverlay(); this.updateUI();
             this.setStatus(regions.length ? 'Zones détectées. Cliquez une zone pour changer son style, Maj+clic pour l\'ignorer.' : 'Aucune zone fermée trouvée : ajustez le seuil ou « Fermer les petits trous ».');
             app.draw();
@@ -179,40 +180,123 @@
         },
         chaikin(pts) { const out = []; for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; out.push({ x: 0.75 * a.x + 0.25 * b.x, y: 0.75 * a.y + 0.25 * b.y }, { x: 0.25 * a.x + 0.75 * b.x, y: 0.25 * a.y + 0.75 * b.y }); } return out; },
 
-        // ---------- génération des calques ----------
-        orderRegions(list) { // plus proche voisin, départ au plus près du centre de la table
-            const rest = list.slice(); const out = []; let cur = { cx: 0, cy: 0 };
-            while (rest.length) { let bi = 0, bd = Infinity; rest.forEach((r, i) => { const d = Math.hypot(r.cx - cur.cx, r.cy - cur.cy); if (d < bd) { bd = d; bi = i; } }); cur = rest.splice(bi, 1)[0]; out.push(cur); }
-            return out;
+        // ---------- grille de cheminement (liaisons entre zones) ----------
+        buildGrid() {
+            const { w, h } = this.src, CELL = 4, gw = Math.ceil(w / CELL), gh = Math.ceil(h / CELL);
+            const inside = new Uint8Array(gw * gh), zone = new Int32Array(gw * gh);
+            const L = (x, y) => this.labels[Math.min(h - 1, y) * w + Math.min(w - 1, x)];
+            for (let gy = 0; gy < gh; gy++) for (let gx = 0; gx < gw; gx++) {
+                const x0 = gx * CELL, y0 = gy * CELL; let out = 0;
+                for (const [dx, dy] of [[1, 1], [3, 1], [1, 3], [3, 3]]) { const l = L(x0 + dx, y0 + dy); if (l > 0 && this.outside[l]) out++; }
+                const c = L(x0 + 2, y0 + 2); const z = (c > 0 && !this.outside[c] && this.byId.has(c)) ? c : 0;
+                zone[gy * gw + gx] = z; inside[gy * gw + gx] = (out < 2 || z > 0) ? 1 : 0;
+            }
+            this.grid = { gw, gh, CELL, inside, zone };
         },
-        makeFill(boundary, over, name) {
+        cellOf(p) { const g = this.grid; return Math.min(g.gh - 1, Math.max(0, Math.floor((p.y + this.src.H / 2) * S / g.CELL))) * g.gw + Math.min(g.gw - 1, Math.max(0, Math.floor((p.x + this.src.W / 2) * S / g.CELL))); },
+        cellPt(i) { const g = this.grid; const gx = i % g.gw, gy = (i - gx) / g.gw; return { x: (gx * g.CELL + g.CELL / 2) / S - this.src.W / 2, y: (gy * g.CELL + g.CELL / 2) / S - this.src.H / 2 }; },
+        // Dijkstra depuis une cellule : coût 1 sur le trait / zones pas encore remplies, 25 sur les zones déjà remplies (ou jamais remplies), interdit hors du dessin.
+        dijkstra(src, zoneCost) {
+            const g = this.grid, n = g.gw * g.gh, dist = new Float64Array(n).fill(Infinity), prev = new Int32Array(n).fill(-1);
+            const hk = [], hv = []; // tas binaire
+            const push = (k, v) => { let i = hk.length; hk.push(k); hv.push(v); while (i > 0) { const pa = (i - 1) >> 1; if (hk[pa] <= hk[i]) break; [hk[pa], hk[i]] = [hk[i], hk[pa]]; [hv[pa], hv[i]] = [hv[i], hv[pa]]; i = pa; } };
+            const pop = () => { const k = hk[0], v = hv[0]; const lk = hk.pop(), lv = hv.pop(); if (hk.length) { hk[0] = lk; hv[0] = lv; let i = 0; for (;;) { let l = 2 * i + 1, r = l + 1, m = i; if (l < hk.length && hk[l] < hk[m]) m = l; if (r < hk.length && hk[r] < hk[m]) m = r; if (m === i) break; [hk[m], hk[i]] = [hk[i], hk[m]]; [hv[m], hv[i]] = [hv[i], hv[m]]; i = m; } } return [k, v]; };
+            const cost = (c) => g.inside[c] ? (g.zone[c] > 0 ? zoneCost[g.zone[c]] : 1) : Infinity;
+            dist[src] = 0; push(0, src);
+            const D = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414]];
+            while (hk.length) {
+                const [d, u] = pop(); if (d > dist[u]) continue; const ux = u % g.gw, uy = (u - ux) / g.gw;
+                for (const [dx, dy, st] of D) {
+                    const vx = ux + dx, vy = uy + dy; if (vx < 0 || vy < 0 || vx >= g.gw || vy >= g.gh) continue; const v = vy * g.gw + vx;
+                    if (dx && dy && (!g.inside[uy * g.gw + vx] || !g.inside[vy * g.gw + ux])) continue; // pas de coupe-coin hors du dessin
+                    const cv = cost(v); if (cv === Infinity) continue; const nd = d + st * cv;
+                    if (nd < dist[v]) { dist[v] = nd; prev[v] = u; push(nd, v); }
+                }
+            }
+            return { dist, prev };
+        },
+        simplifyOpen(pts, eps) {
+            if (pts.length < 3) return pts; const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
+            const dist = (p, a, b) => { const A = b.x - a.x, B = b.y - a.y, Lq = A * A + B * B; if (!Lq) return Math.hypot(p.x - a.x, p.y - a.y); const t = Math.max(0, Math.min(1, ((p.x - a.x) * A + (p.y - a.y) * B) / Lq)); return Math.hypot(p.x - a.x - t * A, p.y - a.y - t * B); };
+            const rec = (lo, hi) => { let mi = -1, md = 0; for (let i = lo + 1; i < hi; i++) { const d = dist(pts[i], pts[lo], pts[hi]); if (d > md) { md = d; mi = i; } } if (md > eps) { keep[mi] = 1; rec(lo, mi); rec(mi, hi); } };
+            rec(0, pts.length - 1); return pts.filter((_, i) => keep[i]);
+        },
+
+        // ---------- génération des calques ----------
+        buildLayer(boundary, over, name) {
             const b = boundary.map(p => ({ x: p.x, y: p.y })); b.push({ ...b[0] });
-            const layer = Object.assign({ type: 'zigzag', name, color: app.ui.color, width: 1.3, boundary: b, zigzagType: 'angle', spiralDir: 'in', lineStyle: 'straight', waveAmp: app.ui.waveAmp, waveLen: app.ui.waveLen, angle: 0, spacing: app.ui.zigzagSpacing, tspPointCount: app.ui.tspPointCount, guideCurve: null, points: [] }, over);
-            if (layer.lineStyle !== 'tsp' && (layer.zigzagType === 'angle' || layer.zigzagType === 'spiral')) layer.points = app.generateZigzag(layer);
-            app.addLayer(layer);
-            if (layer.lineStyle === 'tsp') app.regenerateTSPFill(app.findLayer(app.selectedIds[0]).layer);
+            const layer = Object.assign({ type: 'zigzag', name, visible: true, locked: false, color: app.ui.color, width: 1.3, boundary: b, zigzagType: 'angle', spiralDir: 'in', lineStyle: 'straight', waveAmp: app.ui.waveAmp, waveLen: app.ui.waveLen, angle: 0, spacing: app.ui.zigzagSpacing, tspPointCount: app.ui.tspPointCount, guideCurve: null, points: [] }, over);
+            layer.points = (layer.lineStyle === 'tsp') ? app.generateTSPZigzagFill(layer) : app.generateZigzag(layer);
+            return layer;
+        },
+        // Un « travail » = une zone à tracer ; chaque candidat = une façon de la parcourir (sens, point de départ) avec son départ et son arrivée.
+        buildTask(r, n) {
+            const st = this.styleOf(r), a = Math.round(this.angleOf(r)), c = this.regionContour(r); if (c.length < 3) return null;
+            const nm = (t) => `${t} ${n}`; const rev = (arr) => arr.slice().reverse(); const f = (L) => ({ s: L.points[0], e: L.points[L.points.length - 1] });
+            const task = { r, st, cands: [] };
+            const dual = (L) => { // lignes / vagues / TSP : 2 sens possibles
+                if (!L.points.length) return;
+                const q = f(L);
+                task.cands.push({ s: q.s, e: q.e, make: () => [L] });
+                task.cands.push({ s: q.e, e: q.s, make: () => { const M = Object.assign({}, L, { points: rev(L.points) }); if (L.lineStyle !== 'tsp') M.reversed = true; return [M]; } });
+            };
+            if (st === 'lines') dual(this.buildLayer(c, { angle: a }, nm('〰️ Lignes')));
+            else if (st === 'wave') dual(this.buildLayer(c, { angle: a, lineStyle: 'wave' }, nm('🌊 Vagues')));
+            else if (st === 'tsp') dual(this.buildLayer(c, { lineStyle: 'tsp' }, nm('🎯 TSP')));
+            else if (st === 'spiral') { // du centre vers l'extérieur : on entre par le centre (zone encore vierge) et on finit au bord
+                const L = this.buildLayer(c, { zigzagType: 'spiral', spiralDir: 'out' }, nm('🌀 Spirale')); if (L.points.length) { const q = f(L); task.cands.push({ s: q.s, e: q.e, make: () => [L] }); }
+            } else if (st === 'hatch') {
+                const A = this.buildLayer(c, { angle: a }, nm('✳️ Hachures')), B = this.buildLayer(c, { angle: a + 90 }, nm('✳️ Hachures ⊥'));
+                if (A.points.length && B.points.length) for (const ra of [false, true]) {
+                    const A2 = ra ? Object.assign({}, A, { points: rev(A.points), reversed: true }) : A; const ea = A2.points[A2.points.length - 1];
+                    const sb = B.points[0], eb = B.points[B.points.length - 1];
+                    const rb = Math.hypot(ea.x - eb.x, ea.y - eb.y) < Math.hypot(ea.x - sb.x, ea.y - sb.y);
+                    const B2 = rb ? Object.assign({}, B, { points: rev(B.points), reversed: true }) : B;
+                    task.cands.push({ s: A2.points[0], e: B2.points[B2.points.length - 1], make: () => [A2, B2] });
+                }
+            } else if (st === 'outline') {
+                const K = Math.min(c.length, 12);
+                for (let i = 0; i < K; i++) { const k = Math.floor(i * c.length / K); const pts = c.slice(k).concat(c.slice(0, k + 1)).map(p => ({ x: p.x, y: p.y })); task.cands.push({ s: pts[0], e: pts[pts.length - 1], make: () => [{ type: 'pen', name: nm('✏️ Contour'), visible: true, locked: false, color: app.ui.color, width: app.ui.penWidth, points: pts }] }); }
+            }
+            return task.cands.length ? task : null;
         },
         generate() {
             if (!this.ready) return;
-            const todo = this.orderRegions(this.regions.filter(r => this.styleOf(r) !== 'ignore'));
-            if (!todo.length) return;
-            app.saveState();
-            let folder = { id: app.genId(), type: 'folder', name: '🎨 Composition ' + (app.compoCount = (app.compoCount || 0) + 1), visible: true, locked: false, isOpen: false, layers: [] };
-            app.layers.unshift(folder); app.selectedIds = [folder.id];
-            let n = 0;
-            for (const r of todo) {
-                const st = this.styleOf(r), a = Math.round(this.angleOf(r)), c = this.regionContour(r); n++;
-                if (c.length < 3) continue;
-                const nm = (s) => `${s} ${n}`;
-                if (st === 'lines') this.makeFill(c, { angle: a }, nm('〰️ Lignes'));
-                else if (st === 'wave') this.makeFill(c, { angle: a, lineStyle: 'wave' }, nm('🌊 Vagues'));
-                else if (st === 'spiral') this.makeFill(c, { zigzagType: 'spiral' }, nm('🌀 Spirale'));
-                else if (st === 'hatch') { this.makeFill(c, { angle: a }, nm('✳️ Hachures')); this.makeFill(c, { angle: a + 90 }, nm('✳️ Hachures ⊥')); }
-                else if (st === 'tsp') this.makeFill(c, { lineStyle: 'tsp' }, nm('🎯 TSP'));
-                else if (st === 'outline') { const pts = c.map(p => ({ x: p.x, y: p.y })); pts.push({ ...pts[0] }); app.addLayer({ type: 'pen', name: nm('✏️ Contour'), color: app.ui.color, width: app.ui.penWidth, points: pts }); }
+            const t0 = performance.now(); const todo = this.regions.filter(r => this.styleOf(r) !== 'ignore');
+            let tasks = []; todo.forEach((r, i) => { const t = this.buildTask(r, i + 1); if (t) tasks.push(t); });
+            if (!tasks.length) return;
+            // coût de traversée par zone : 1 = encore à remplir ; 25 = déjà remplie / jamais remplie (on évite d'y laisser un trait)
+            const maxId = Math.max(...this.regions.map(r => r.id), 0); const zc = new Float32Array(maxId + 2).fill(25);
+            for (const t of tasks) if (t.st !== 'outline') zc[t.r.id] = 1;
+            const seq = []; let cur = null, links = 0, jumps = 0, linkLen = 0;
+            while (tasks.length) {
+                let best = null, route = null;
+                if (!cur) { // départ : au plus près du centre de la table
+                    let bd = Infinity; tasks.forEach(t => t.cands.forEach(c => { const d = Math.hypot(c.s.x, c.s.y); if (d < bd) { bd = d; best = { t, c }; } }));
+                } else {
+                    const { dist, prev } = this.dijkstra(this.cellOf(cur), zc); let bd = Infinity;
+                    tasks.forEach(t => t.cands.forEach(c => { const d = dist[this.cellOf(c.s)]; if (d < bd) { bd = d; best = { t, c }; } }));
+                    if (best) { // reconstitue le trajet de liaison
+                        const cells = []; let u = this.cellOf(best.c.s); const src = this.cellOf(cur); let guard = 0;
+                        while (u !== -1 && u !== src && guard++ < 1e6) { cells.push(u); u = prev[u]; }
+                        cells.reverse(); route = [cur, ...cells.map(i => this.cellPt(i)), best.c.s];
+                    } else { // pièce isolée : pas de chemin possible dans le dessin → saut direct (rare)
+                        let bd2 = Infinity; tasks.forEach(t => t.cands.forEach(c => { const d = Math.hypot(c.s.x - cur.x, c.s.y - cur.y); if (d < bd2) { bd2 = d; best = { t, c }; } })); jumps++;
+                    }
+                }
+                if (route) {
+                    const pts = this.simplifyOpen(route, 1.2); let len = 0; for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+                    if (len > 2.5 && pts.length >= 2) { links++; linkLen += len; seq.push({ type: 'pen', name: `↪ Liaison ${links}`, visible: true, locked: false, color: app.ui.color, width: app.ui.penWidth, points: pts }); }
+                }
+                seq.push(...best.c.make()); cur = best.c.e; zc[best.t.r.id] = 25; tasks = tasks.filter(t => t !== best.t);
             }
+            app.saveState();
+            const folder = { id: app.genId(), type: 'folder', name: '🎨 Composition ' + (app.compoCount = (app.compoCount || 0) + 1), visible: true, locked: false, isOpen: false, layers: [] };
+            folder.layers = seq.map(l => Object.assign({ id: app.genId() }, l)).reverse(); // le tracé part du bas de la liste
+            app.layers.unshift(folder); app.selectedIds = [folder.id];
             app.invalidateSim(); app.refreshLayerList(); app.autoSave(); app.draw();
-            this.setStatus('Calques générés dans un dossier « Composition ». Vous pouvez les retoucher dans l\'onglet Calques.');
+            this.lastReport = { zones: seq.filter(l => l.type !== 'pen' || !/Liaison/.test(l.name)).length, links, linkLen: Math.round(linkLen), jumps, ms: Math.round(performance.now() - t0) };
+            this.setStatus('Calques générés dans le dossier « Composition » : ', links + ' ' + this.t('liaisons tracées à l\'intérieur du dessin') + '.');
         },
 
         // ---------- affichage ----------

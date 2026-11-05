@@ -88,7 +88,7 @@
         "Zones détectées. Cliquez une zone pour changer son style, Maj+clic pour l'ignorer.": 'Zones detected. Click a zone to change its style, Shift+click to ignore it.',
         'Aucune zone fermée trouvée : ajustez le seuil ou « Fermer les petits trous ».': 'No closed zone found: adjust the threshold or “Close small gaps”.',
         'zones': 'zones', 'à remplir': 'to fill', 'Zone': 'Zone', 'style proposé': 'suggested style',
-        "Calques générés dans un dossier « Composition ». Vous pouvez les retoucher dans l'onglet Calques.": 'Layers generated in a “Composition” folder. You can fine-tune them in the Layers tab.',
+        'Calques générés dans le dossier « Composition » : ': 'Layers generated in the “Composition” folder: ', "liaisons tracées à l'intérieur du dessin": 'links drawn inside the drawing',
         '✅ Fermer la forme': '✅ Close shape', '↩️ Dernier point': '↩️ Last point', '✖️ Annuler': '✖️ Cancel',
         '🎚️ Sensibilité :': '🎚️ Sensitivity:',
         '〰️ Droites': '〰️ Straight', '🌊 Vagues': '🌊 Waves',

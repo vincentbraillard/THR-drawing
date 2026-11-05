@@ -1,5 +1,24 @@
 # Éditeur de Tracés Sunae — Journal des modifications
 
+## v6.10 — Composer : ordre des zones et traits de liaison maîtrisés
+
+Problème corrigé : en v6.9 les zones étaient enchaînées sans tenir compte du départ / de l'arrivée de chaque
+remplissage, et les liaisons automatiques (ligne droite fin → début) traversaient tout, y compris l'extérieur du dessin.
+
+- **Extérieur du dessin** = le blanc relié au bord de l'image. Aucune liaison n'y passe, jamais.
+- **Chaîne de zones** : l'ordre est choisi de proche en proche **en coût de trajet réel dans le dessin** (pas à vol d'oiseau).
+  Chaque zone est parcourue dans le sens (ou depuis le point du contour) qui rend la liaison la plus courte ;
+  les lignes / vagues / TSP peuvent être inversées (`reversed` mémorisé), les spirales partent du **centre vers le bord**
+  (on entre par le centre à travers la zone encore vierge, on finit au bord), les contours démarrent au point le plus proche.
+- **Liaisons** : calques « ↪ Liaison n » (modifiables / supprimables) qui suivent le trait et les zones **pas encore remplies**
+  (elles seront recouvertes ensuite). Traverser une zone déjà remplie, ou une zone qui ne sera jamais remplie
+  (ignorée, contour seul) est fortement pénalisé (coût ×25) mais reste possible si c'est le seul passage.
+  Les pièces totalement isolées sont reliées par un saut direct (compté, rare).
+- Départ du tracé : zone la plus proche du centre de la table. Génération en 1 seule étape d'annulation.
+- Test (zèbre, 49 zones) : 48 liaisons, 0 point de liaison hors du dessin, 0 coupure entre calques consécutifs, ~1,2 s.
+- Limite : si on modifie ensuite un remplissage (angle, espacement), son départ / arrivée peut changer et la liaison
+  voisine ne le suit pas — régénérer la composition dans ce cas.
+
 ## v6.9 — Outil « 🎨 Composer » (premier test) : image noir et blanc → zones → styles → calques
 
 Remplace le test « Segmenter » (v6.8, retiré : l'approche par modèle de segmentation n'était pas retenue).
