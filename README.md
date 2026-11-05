@@ -1,5 +1,23 @@
 # Éditeur de Tracés Sunae — Journal des modifications
 
+## v6.8 — Outil « ✂️ Segmenter » (premier test) : un clic = une forme
+
+Objectif : obtenir des zones qui correspondent aux **formes** de l'image (une oreille, une tête, une patte),
+et non un découpage par couleurs. Première version, à valider sur de vraies images.
+
+- **Où** : outil Remplissage → bouton **✂️ Segmenter** (visible seulement avec une image de fond).
+- **Principe** : clic sur une partie de l'image → un modèle de segmentation (SlimSAM, via transformers.js)
+  trouve la forme complète → contour lissé → **Valider la zone** crée un calque de remplissage
+  (avec le type de remplissage, l'angle et l'espacement réglés dans l'outil).
+- **Corriger** : clics supplémentaires ; **Maj+clic** (ou bouton ➖ Retrait) retire un morceau.
+- **Réglages** : taille de la forme (détail fin / partie / objet entier, pour un 1er clic), lissage du contour,
+  option « Retirer les zones déjà validées » (l'oreille n'est plus comptée dans la tête).
+- **Modèle** : téléchargé au premier usage depuis internet (quelques dizaines de Mo), ensuite mis en cache par le
+  navigateur. Aucun serveur Sunae n'est nécessaire.
+- **État du test** : tout le traitement (aperçu, contour, création des calques) a été vérifié avec un modèle simulé ;
+  le vrai modèle n'a pas pu être exécuté dans l'environnement de développement — à confirmer dans le navigateur.
+- Fichiers : `segmenter.js` (nouveau), `index.html` (bouton, panneau, branchements), `i18n.js`, `help.js`.
+
 ## v6.7 — Interface bilingue FR / EN + infobulles « i » (outils animés, paramètres expliqués)
 
 ### 1. Bouton de langue (drapeaux 🇫🇷 / 🇬🇧)

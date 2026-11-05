@@ -188,6 +188,23 @@
                         <button id="btn-mode-pen" class="btn btn-primary" style="flex:1;" title="Dessin à main levée" onclick="app.setZigzagDrawMode('contour')">✏️ Crayon</button>
                         <button id="btn-mode-points" class="btn" style="flex:1;" title="Forme par points reliés par des lignes droites" onclick="app.setZigzagDrawMode('points')">📍 Points</button>
                         <button id="btn-wand-mode" class="btn" style="flex:1; display:none;" title="Détection automatique sur l'image de fond" onclick="app.setZigzagDrawMode('wand')">🪄 Détection auto</button>
+                        <button id="btn-sam-mode" class="btn" style="flex:1; display:none;" title="Segmenter : un clic sur une partie de l'image trouve sa forme complète" onclick="app.setZigzagDrawMode('sam')">✂️ Segmenter</button>
+                    </div>
+                    <div id="sam-container" style="display:none; background:#fce4ec; padding:10px; border-radius:6px; margin-bottom:15px; border:1px solid #f8bbd0;">
+                        <div id="sam-status" style="font-size:11px; font-weight:bold; color:#555; margin-bottom:8px;">Cliquez sur une partie de l'image (Maj+clic = retirer).</div>
+                        <div class="row" style="margin-bottom:6px;"><label>🔍 Taille de la forme :</label>
+                            <select id="sam-gran" onchange="THRSeg.onParamChange()"><option value="0">Détail fin</option><option value="1" selected>Partie</option><option value="2">Objet entier</option></select></div>
+                        <div class="row"><label>〰️ Lissage du contour :</label> <span class="val-badge" id="val-sam-smooth">2</span></div>
+                        <div class="row-slider"><input type="range" id="sam-smooth" min="0" max="8" value="2" oninput="THRSeg.onParamChange()"></div>
+                        <div class="row" style="margin-bottom:8px;"><label style="font-size:12px;"><input type="checkbox" id="sam-subtract" checked onchange="THRSeg.onParamChange()"> Retirer les zones déjà validées</label></div>
+                        <div class="row" style="gap:5px;">
+                            <button id="sam-validate" class="btn btn-primary" style="flex:2;" disabled onclick="THRSeg.validate()">✅ Valider la zone</button>
+                            <button id="sam-neg" class="btn" style="flex:1;" title="Le prochain clic retire une partie de la forme (comme Maj+clic)" onclick="THRSeg.toggleNeg()">➖ Retrait</button>
+                        </div>
+                        <div class="row" style="gap:5px; margin-top:5px; margin-bottom:0;">
+                            <button id="sam-undo" class="btn" style="flex:1;" disabled onclick="THRSeg.undo()">↩️ Dernier clic</button>
+                            <button id="sam-clear" class="btn" style="flex:1;" disabled onclick="THRSeg.reset(true)">✖️ Annuler</button>
+                        </div>
                     </div>
                     <div id="points-actions" style="display:none; gap:5px; margin-bottom:10px;">
                         <button class="btn btn-primary" style="flex:1;" onclick="app.closePolygonShape()">✅ Fermer la forme</button>
@@ -344,7 +361,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.7 (Langues FR/EN · Infobulles « i »)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.8 (Segmenter — 1er test)</span>
     </div>
 
 <script>
@@ -702,7 +719,9 @@ const app = {
         let hasImg = this.layers.some(l => l.type === 'image' && l.effectiveVisible);
         // Le bouton "Détection auto" n'apparaît que s'il y a une image de fond visible.
         let btnWand = document.getElementById('btn-wand-mode'); if (btnWand) btnWand.style.display = hasImg ? 'block' : 'none';
+        let btnSam = document.getElementById('btn-sam-mode'); if (btnSam) btnSam.style.display = hasImg ? 'block' : 'none';
         if (!hasImg && this.ui.zigzagDrawMode === 'wand') this.toggleWandMode();
+        if (!hasImg && this.ui.zigzagDrawMode === 'sam') this.setZigzagDrawMode(this.defaultZigzagDrawMode());
     },
 
     // Mode de tracé "par défaut" de l'outil Remplissage : le dernier choisi entre Crayon et Points.
@@ -712,7 +731,9 @@ const app = {
     setZigzagDrawMode(mode) {
         if (this.ui.zigzagDrawMode === 'guide') this.cancelPendingAction();
         if (mode !== 'points') this.pos.polyPoints = [];
-        if (mode === 'wand') {
+        if (mode !== 'sam' && this.ui.zigzagDrawMode === 'sam' && window.THRSeg) THRSeg.reset(true);
+        if (mode === 'sam' && window.THRSeg) THRSeg.reset(true);
+        if (mode === 'wand' || mode === 'sam') {
             let btnGuide = document.getElementById('btn-draw-guide'); if (btnGuide) { btnGuide.innerText = "✏️ Dessiner la courbe guide"; btnGuide.style.backgroundColor = "var(--primary)"; }
         } else {
             this.ui.zigzagInputMode = (mode === 'points') ? 'points' : 'pen';
@@ -727,12 +748,14 @@ const app = {
     updateZigzagModeUI() {
         let m = this.ui.zigzagDrawMode;
         let set = (id, on) => { let el = document.getElementById(id); if (el) el.classList.toggle('btn-primary', on); };
-        set('btn-mode-pen', m === 'contour'); set('btn-mode-points', m === 'points'); set('btn-wand-mode', m === 'wand');
+        set('btn-mode-pen', m === 'contour'); set('btn-mode-points', m === 'points'); set('btn-wand-mode', m === 'wand'); set('btn-sam-mode', m === 'sam');
+        let sc = document.getElementById('sam-container'); if (sc) sc.style.display = (m === 'sam') ? 'block' : 'none';
         let wo = document.getElementById('wand-options'); if (wo) wo.style.display = (m === 'wand') ? 'block' : 'none';
         let wc = document.getElementById('wand-container'); if (wc) wc.style.display = (m === 'wand') ? 'block' : 'none';
         let pa = document.getElementById('points-actions'); if (pa) pa.style.display = (m === 'points') ? 'flex' : 'none';
         let help = document.getElementById('zigzag-help-text');
         if (help && m !== 'guide') help.innerText = (m === 'wand') ? "Cliquez sur une image de fond pour générer un remplissage."
+            : (m === 'sam') ? "Cliquez sur une partie de l'image (oreille, tête, patte…) : sa forme est détectée, puis validez."
             : (m === 'points') ? "Cliquez pour placer des points reliés par des lignes droites. Fermez en recliquant sur le 1er point (ou double-clic / Entrée)."
             : "Dessinez une forme fermée à main levée, ou choisissez Points / Détection auto.";
         let wrapper = document.getElementById('canvas-wrapper');
@@ -1235,7 +1258,7 @@ const app = {
                         this.invalidateSim(); this.draw(); this.autoSave();
                     }
                 } else if (this.ui.tool === 'pen' || this.ui.tool === 'wall' || this.ui.tool === 'zigzag' || this.ui.tool === 'interp') {
-                    if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand') {}
+                    if (this.ui.tool === 'zigzag' && (this.ui.zigzagDrawMode === 'wand' || this.ui.zigzagDrawMode === 'sam')) {}
                     else if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'points') { this.addPolygonPoint(ptScene); }
                     else if (this.isPointInBounds(ptScene)) { this.ui.isDrawing = true; this.pos.anchor = {x: ptScene.x, y: ptScene.y}; this.pos.lastSmoothed = {x: ptScene.x, y: ptScene.y}; this.pos.currentPath = [{...this.pos.anchor}]; this.draw(); }
                 }
@@ -1373,6 +1396,9 @@ const app = {
 
             if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand') {
                 if (Math.hypot((this.ui.pointerHover || this.pos.lastClick).x - this.pos.lastClick.x, (this.ui.pointerHover || this.pos.lastClick).y - this.pos.lastClick.y) < 10) this.executeMagicWand(this.pos.lastClick);
+            }
+            if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'sam' && window.THRSeg && e.type !== 'pointercancel') {
+                if (Math.hypot((this.ui.pointerHover || this.pos.lastClick).x - this.pos.lastClick.x, (this.ui.pointerHover || this.pos.lastClick).y - this.pos.lastClick.y) < 10) THRSeg.onClick(this.pos.lastClick, e.shiftKey);
             }
 
             if (this.ui.activeTransform) {
@@ -2123,6 +2149,8 @@ const app = {
             }
         }
 
+        if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'sam' && window.THRSeg) THRSeg.drawOverlay(this.ctx, this.ui.zoom);
+
         if (this.ui.tool === 'liquify' && this.ui.pointerHover) {
             this.ctx.beginPath(); this.ctx.arc(this.ui.pointerHover.x, this.ui.pointerHover.y, this.ui.liquifyRadius / this.ui.zoom, 0, Math.PI*2);
             this.ctx.strokeStyle = "rgba(255, 0, 0, 0.5)"; this.ctx.fillStyle = "rgba(255, 0, 0, 0.1)"; this.ctx.lineWidth = 1 / this.ui.zoom; this.ctx.fill(); this.ctx.stroke();
@@ -2286,6 +2314,7 @@ const app = {
     changeTool() {
         let newTool = document.querySelector('input[name="tool"]:checked').value;
         if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand' && newTool !== 'zigzag') this.toggleWandMode();
+        if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'sam' && newTool !== 'zigzag') this.setZigzagDrawMode(this.defaultZigzagDrawMode());
         if (newTool !== 'zigzag') this.pos.polyPoints = []; // forme par points inachevée abandonnée
         // Note : on NE désarme PLUS la visée du point de départ/arrivée TSP en changeant d'outil —
         // elle reste active (le calque ciblé est mémorisé) et se termine dès qu'on revient sur l'outil
@@ -3083,6 +3112,7 @@ function render(h, mask, nx, ny, cell) {
 </script>
 
 <!-- v6.7 : langues FR/EN (drapeaux) + infobulles « i » -->
+<script src="segmenter.js"></script>
 <script src="i18n.js"></script>
 <script src="help.js"></script>
 </body>
