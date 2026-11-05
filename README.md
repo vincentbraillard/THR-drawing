@@ -1,5 +1,21 @@
 # Éditeur de Tracés Sunae — Journal des modifications
 
+## v6.11 — Composer : rendu sable lisible (marges le long des traits, liaisons qui épargnent le dessin)
+
+Constat sur le zèbre : dans le simulateur de sable la bille fait **Ø12 mm** (≈ 10 u de scène, 1 u ≈ 1,15 mm). Les remplissages
+posés jusqu'au bord des zones et les liaisons qui longeaient les traits noirs **écrasaient les crêtes qui forment le dessin** :
+tout se fondait en un labyrinthe de sillons.
+
+- **Marge le long des traits** (réglage, 3 u par défaut ≈ rayon de la bille) : chaque zone est réduite avant d'être remplie,
+  les traits noirs restent donc des crêtes visibles. Une zone qui se scinde après réduction donne plusieurs remplissages.
+- **Zones trop fines pour la bille** (rayon inscrit < 3,2 u) : un seul passage le long de leur cœur au lieu d'un remplissage
+  (proposé « contour seul »).
+- **Liaisons** : coûts de passage revus — zone encore à remplir 1 (la liaison sera recouverte), zone déjà remplie 6,
+  **trait noir du dessin ou zone jamais remplie 40** : une liaison ne marche plus le long des traits, elle ne les croise
+  que là où c'est nécessaire.
+- **Taille mini des zones** : 150 u² par défaut (au lieu de 40) ; un avertissement s'affiche si beaucoup de zones sont plus fines
+  que la bille : **agrandir l'image sur la table** est le meilleur réglage (zèbre à 580 u de haut : lisible ; à 370 u : illisible).
+
 ## v6.10 — Composer : ordre des zones et traits de liaison maîtrisés
 
 Problème corrigé : en v6.9 les zones étaient enchaînées sans tenir compte du départ / de l'arrivée de chaque

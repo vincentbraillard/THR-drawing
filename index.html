@@ -196,8 +196,10 @@
                         <div class="row-slider"><input type="range" id="compo-thr" min="40" max="220" value="140" onchange="THRCompo.onParam()" oninput="document.getElementById('val-compo-thr').innerText=this.value"></div>
                         <div class="row"><label>🔗 Fermer les petits trous :</label> <span class="val-badge" id="val-compo-close">1</span></div>
                         <div class="row-slider"><input type="range" id="compo-close" min="0" max="4" value="1" onchange="THRCompo.onParam()" oninput="document.getElementById('val-compo-close').innerText=this.value"></div>
-                        <div class="row"><label>📏 Taille mini des zones :</label> <span class="val-badge" id="val-compo-min">40</span></div>
-                        <div class="row-slider"><input type="range" id="compo-min" min="5" max="600" value="40" onchange="THRCompo.onParam()" oninput="document.getElementById('val-compo-min').innerText=this.value"></div>
+                        <div class="row"><label>📏 Taille mini des zones :</label> <span class="val-badge" id="val-compo-min">150</span></div>
+                        <div class="row-slider"><input type="range" id="compo-min" min="5" max="600" value="150" onchange="THRCompo.onParam()" oninput="document.getElementById('val-compo-min').innerText=this.value"></div>
+                        <div class="row"><label>↔️ Marge le long des traits :</label> <span class="val-badge" id="val-compo-inset">3</span></div>
+                        <div class="row-slider"><input type="range" id="compo-inset" min="0" max="10" value="3" oninput="document.getElementById('val-compo-inset').innerText=this.value"></div>
                         <div class="row" style="margin-bottom:8px;"><label style="font-size:12px;"><input type="checkbox" id="compo-bg" checked onchange="THRCompo.onParam()"> Ignorer le fond (zones touchant le bord)</label></div>
                         <button class="btn btn-primary" style="width:100%;" onclick="THRCompo.analyze()">🔍 Analyser l'image</button>
                         <div id="compo-after" style="display:none; margin-top:10px;">
@@ -359,7 +361,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.10 (Composer — liaisons)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.11 (Composer — marges & liaisons)</span>
     </div>
 
 <script>

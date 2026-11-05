@@ -87,6 +87,8 @@
         "Composer : analysez une image noir et blanc simple, choisissez le style de chaque zone, puis générez les calques.": 'Compose: analyse a simple black-and-white image, pick each zone\'s style, then generate the layers.',
         "Zones détectées. Cliquez une zone pour changer son style, Maj+clic pour l'ignorer.": 'Zones detected. Click a zone to change its style, Shift+click to ignore it.',
         'Aucune zone fermée trouvée : ajustez le seuil ou « Fermer les petits trous ».': 'No closed zone found: adjust the threshold or “Close small gaps”.',
+        "⚠️ Beaucoup de zones sont plus fines que la bille (Ø12 mm) : agrandissez l'image sur la table ou augmentez la taille mini des zones.": '⚠️ Many zones are thinner than the ball (Ø12 mm): enlarge the image on the table or raise the minimum zone size.',
+        '↔️ Marge le long des traits :': '↔️ Margin along the lines:',
         'zones': 'zones', 'à remplir': 'to fill', 'Zone': 'Zone', 'style proposé': 'suggested style',
         'Calques générés dans le dossier « Composition » : ': 'Layers generated in the “Composition” folder: ', "liaisons tracées à l'intérieur du dessin": 'links drawn inside the drawing',
         '✅ Fermer la forme': '✅ Close shape', '↩️ Dernier point': '↩️ Last point', '✖️ Annuler': '✖️ Cancel',

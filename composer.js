@@ -10,6 +10,7 @@
     const COLORS = { lines: [30, 120, 255], wave: [0, 190, 200], spiral: [220, 0, 180], hatch: [255, 140, 0], tsp: [0, 170, 80], outline: [230, 50, 50], ignore: [120, 120, 120] };
 
     const C = {
+        blackCost: 40, // traverser un trait noir (= une crête du dessin) coûte cher : on n'y marche pas dessus, on ne le croise que si nécessaire
         src: null, labels: null, regions: [], byId: new Map(), selected: null, overlay: null, ready: false,
         t(fr) { return (window.I18N && window.I18N.tr) ? window.I18N.tr(fr) : fr; },
         setStatus(fr, extra) { const el = $('compo-status'); if (el) el.innerText = this.t(fr) + (extra || ''); },
@@ -69,6 +70,13 @@
                 }
                 stats.push(s);
             }
+            // distance (px) de chaque pixel blanc au trait noir le plus proche : sert à garder une marge le long des traits
+            const dt = new Float32Array(w * h); for (let i = 0; i < dt.length; i++) dt[i] = black[i] ? 0 : 1e9;
+            for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (!dt[i]) continue; let v = dt[i];
+                if (x > 0) v = Math.min(v, dt[i - 1] + 1); if (y > 0) { v = Math.min(v, dt[i - w] + 1); if (x > 0) v = Math.min(v, dt[i - w - 1] + 1.414); if (x < w - 1) v = Math.min(v, dt[i - w + 1] + 1.414); } dt[i] = v; }
+            for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) { const i = y * w + x; if (!dt[i]) continue; let v = dt[i];
+                if (x < w - 1) v = Math.min(v, dt[i + 1] + 1); if (y < h - 1) { v = Math.min(v, dt[i + w] + 1); if (x < w - 1) v = Math.min(v, dt[i + w + 1] + 1.414); if (x > 0) v = Math.min(v, dt[i + w - 1] + 1.414); } dt[i] = v; }
+            const dmaxPx = new Float32Array(stats.length); for (let i = 0; i < dt.length; i++) { const l = labels[i]; if (l > 0 && dt[i] > dmaxPx[l] && dt[i] < 1e8) dmaxPx[l] = dt[i]; }
             const outside = new Uint8Array(stats.length); for (let k = 1; k < stats.length; k++) if (stats[k].border) outside[k] = 1; // blanc relié au bord = extérieur du dessin
             const regions = [];
             for (let k = 1; k < stats.length; k++) {
@@ -79,12 +87,14 @@
                 const area = s.n / (S * S), per = Math.max(1, s.per) / S;
                 regions.push({ id: s.id, area, cx: mx / S - src.W / 2, cy: my / S - src.H / 2, ang: 0.5 * Math.atan2(2 * cxy, cxx - cyy) * 180 / Math.PI,
                     elong: Math.sqrt(l1 / l2), width: 2 * area / per, circ: Math.min(1, 4 * Math.PI * area / (per * per)), bbox: [s.minx, s.miny, s.maxx, s.maxy],
-                    border: s.border, style: null, angle: null, contour: null });
+                    border: s.border, dmax: dmaxPx[s.id] / S, style: null, angle: null, contours: null });
             }
             regions.sort((a, b) => b.area - a.area); if (regions.length > 400) regions.length = 400;
-            this.ignoreBg = ignoreBg; this.outside = outside; this.src = src; this.labels = labels; this.regions = regions; this.byId = new Map(regions.map(r => [r.id, r])); this.buildGrid(); this.selected = null; this.ready = true;
+            this.dt = dt; this.dmaxPx = dmaxPx; this.ignoreBg = ignoreBg; this.outside = outside; this.src = src; this.labels = labels; this.regions = regions; this.byId = new Map(regions.map(r => [r.id, r])); this.buildGrid(); this.selected = null; this.ready = true;
             this.rebuildOverlay(); this.updateUI();
-            this.setStatus(regions.length ? 'Zones détectées. Cliquez une zone pour changer son style, Maj+clic pour l\'ignorer.' : 'Aucune zone fermée trouvée : ajustez le seuil ou « Fermer les petits trous ».');
+            const kept = regions.filter(r => !(r.border && ignoreBg)); const thin = kept.filter(r => r.dmax < 5.2).length; // 5,2 u ≈ rayon de la bille (6 mm)
+            this.setStatus(!regions.length ? 'Aucune zone fermée trouvée : ajustez le seuil ou « Fermer les petits trous ».' : 'Zones détectées. Cliquez une zone pour changer son style, Maj+clic pour l\'ignorer.',
+                (kept.length && thin / kept.length > 0.4) ? ' ' + this.t('⚠️ Beaucoup de zones sont plus fines que la bille (Ø12 mm) : agrandissez l\'image sur la table ou augmentez la taille mini des zones.') : '');
             app.draw();
         },
         dilate(m, w, h, r) {
@@ -97,7 +107,7 @@
         // ---------- style proposé ----------
         suggest(r) {
             if (r.border && this.ignoreBg) return 'ignore';
-            if (r.width < 5) return 'outline';
+            if (r.dmax < 3.2) return 'outline'; // trop fin pour être rempli (la bille fait Ø12 mm) : un seul passage
             if (r.area < 2500 && r.circ > 0.55) return 'spiral';
             return 'lines';
         },
@@ -140,16 +150,28 @@
         },
 
         // ---------- contour d'une zone ----------
-        regionContour(r) {
-            if (r.contour) return r.contour;
+        // Contours à remplir : la zone réduite d'une marge (la bille ne doit pas écraser les traits qui forment le dessin).
+        // Une zone peut se scinder en plusieurs morceaux après réduction. Zone très fine : on garde son « cœur ».
+        regionContours(r) {
+            const inset = parseFloat($('compo-inset').value) || 0;
+            if (r.contours && r.cInset === inset) return r.contours;
             const { w } = this.src; const [x0, y0, x1, y1] = r.bbox; const pad = 2; const bw = x1 - x0 + 1 + 2 * pad, bh = y1 - y0 + 1 + 2 * pad;
+            const rho = Math.min(inset * S, Math.max(0.55 * this.dmaxPx[r.id], 1.5));
             const m = new Uint8Array(bw * bh);
-            for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (this.labels[y * w + x] === r.id) m[(y - y0 + pad) * bw + (x - x0 + pad)] = 1;
-            this.fillHoles(m, bw, bh);
-            let poly = this.trace(m, bw, bh);
-            poly = this.simplify(poly, 0.8); for (let k = 0; k < 2; k++) poly = this.chaikin(poly);
-            r.contour = poly.map(p => ({ x: (p.x + x0 - pad) / S - this.src.W / 2, y: (p.y + y0 - pad) / S - this.src.H / 2 }));
-            return r.contour;
+            for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * w + x; if (this.labels[i] === r.id && this.dt[i] >= rho) m[(y - y0 + pad) * bw + (x - x0 + pad)] = 1; }
+            // composantes connexes de la zone réduite
+            const lab = new Int32Array(bw * bh), out = []; let id = 0; const st = [];
+            for (let i = 0; i < m.length; i++) {
+                if (!m[i] || lab[i]) continue; id++; const pix = []; lab[i] = id; st.push(i);
+                while (st.length) { const q = st.pop(); pix.push(q); const x = q % bw, y = (q - x) / bw;
+                    if (x > 0 && m[q - 1] && !lab[q - 1]) { lab[q - 1] = id; st.push(q - 1); } if (x < bw - 1 && m[q + 1] && !lab[q + 1]) { lab[q + 1] = id; st.push(q + 1); }
+                    if (y > 0 && m[q - bw] && !lab[q - bw]) { lab[q - bw] = id; st.push(q - bw); } if (y < bh - 1 && m[q + bw] && !lab[q + bw]) { lab[q + bw] = id; st.push(q + bw); } }
+                if (pix.length < 10) continue;
+                const cm = new Uint8Array(bw * bh); for (const q of pix) cm[q] = 1; this.fillHoles(cm, bw, bh);
+                let poly = this.trace(cm, bw, bh); poly = this.simplify(poly, 0.8); for (let k = 0; k < 2; k++) poly = this.chaikin(poly);
+                if (poly.length >= 3) out.push(poly.map(p => ({ x: (p.x + x0 - pad) / S - this.src.W / 2, y: (p.y + y0 - pad) / S - this.src.H / 2 })));
+            }
+            r.contours = out; r.cInset = inset; return out;
         },
         fillHoles(m, w, h) {
             const seen = new Uint8Array(w * h), stack = []; const push = (i) => { if (!m[i] && !seen[i]) { seen[i] = 1; stack.push(i); } };
@@ -201,7 +223,7 @@
             const hk = [], hv = []; // tas binaire
             const push = (k, v) => { let i = hk.length; hk.push(k); hv.push(v); while (i > 0) { const pa = (i - 1) >> 1; if (hk[pa] <= hk[i]) break; [hk[pa], hk[i]] = [hk[i], hk[pa]]; [hv[pa], hv[i]] = [hv[i], hv[pa]]; i = pa; } };
             const pop = () => { const k = hk[0], v = hv[0]; const lk = hk.pop(), lv = hv.pop(); if (hk.length) { hk[0] = lk; hv[0] = lv; let i = 0; for (;;) { let l = 2 * i + 1, r = l + 1, m = i; if (l < hk.length && hk[l] < hk[m]) m = l; if (r < hk.length && hk[r] < hk[m]) m = r; if (m === i) break; [hk[m], hk[i]] = [hk[i], hk[m]]; [hv[m], hv[i]] = [hv[i], hv[m]]; i = m; } } return [k, v]; };
-            const cost = (c) => g.inside[c] ? (g.zone[c] > 0 ? zoneCost[g.zone[c]] : 1) : Infinity;
+            const cost = (c) => g.inside[c] ? (g.zone[c] > 0 ? zoneCost[g.zone[c]] : this.blackCost) : Infinity;
             dist[src] = 0; push(0, src);
             const D = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414]];
             while (hk.length) {
@@ -230,8 +252,8 @@
             return layer;
         },
         // Un « travail » = une zone à tracer ; chaque candidat = une façon de la parcourir (sens, point de départ) avec son départ et son arrivée.
-        buildTask(r, n) {
-            const st = this.styleOf(r), a = Math.round(this.angleOf(r)), c = this.regionContour(r); if (c.length < 3) return null;
+        buildTask(r, n, c) {
+            const st = this.styleOf(r), a = Math.round(this.angleOf(r)); if (!c || c.length < 3) return null;
             const nm = (t) => `${t} ${n}`; const rev = (arr) => arr.slice().reverse(); const f = (L) => ({ s: L.points[0], e: L.points[L.points.length - 1] });
             const task = { r, st, cands: [] };
             const dual = (L) => { // lignes / vagues / TSP : 2 sens possibles
@@ -263,11 +285,11 @@
         generate() {
             if (!this.ready) return;
             const t0 = performance.now(); const todo = this.regions.filter(r => this.styleOf(r) !== 'ignore');
-            let tasks = []; todo.forEach((r, i) => { const t = this.buildTask(r, i + 1); if (t) tasks.push(t); });
+            let tasks = []; const remaining = new Map(); todo.forEach((r, i) => { this.regionContours(r).forEach((c, j) => { const t = this.buildTask(r, (i + 1) + (j ? String.fromCharCode(96 + j) : ''), c); if (t) { tasks.push(t); remaining.set(r.id, (remaining.get(r.id) || 0) + 1); } }); });
             if (!tasks.length) return;
-            // coût de traversée par zone : 1 = encore à remplir ; 25 = déjà remplie / jamais remplie (on évite d'y laisser un trait)
-            const maxId = Math.max(...this.regions.map(r => r.id), 0); const zc = new Float32Array(maxId + 2).fill(25);
-            for (const t of tasks) if (t.st !== 'outline') zc[t.r.id] = 1;
+            // coût de traversée : 1 = zone encore à remplir (la liaison sera recouverte) ; 6 = zone déjà remplie (un trait court y passe presque inaperçu) ; 40 = trait noir du dessin ou zone jamais remplie (à ne pas abîmer) ; 8 = trait fin déjà creusé
+            const maxId = Math.max(...this.regions.map(r => r.id), 0); const zc = new Float32Array(maxId + 2).fill(40);
+            for (const t of tasks) zc[t.r.id] = (t.st === 'outline') ? 8 : 1; // 1 = encore à remplir (la liaison sera recouverte) ; 8 = trait fin qu'on peut croiser
             const seq = []; let cur = null, links = 0, jumps = 0, linkLen = 0;
             while (tasks.length) {
                 let best = null, route = null;
@@ -288,7 +310,7 @@
                     const pts = this.simplifyOpen(route, 1.2); let len = 0; for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
                     if (len > 2.5 && pts.length >= 2) { links++; linkLen += len; seq.push({ type: 'pen', name: `↪ Liaison ${links}`, visible: true, locked: false, color: app.ui.color, width: app.ui.penWidth, points: pts }); }
                 }
-                seq.push(...best.c.make()); cur = best.c.e; zc[best.t.r.id] = 25; tasks = tasks.filter(t => t !== best.t);
+                seq.push(...best.c.make()); cur = best.c.e; const left = remaining.get(best.t.r.id) - 1; remaining.set(best.t.r.id, left); if (left <= 0) zc[best.t.r.id] = (best.t.st === 'outline') ? 8 : 6; tasks = tasks.filter(t => t !== best.t);
             }
             app.saveState();
             const folder = { id: app.genId(), type: 'folder', name: '🎨 Composition ' + (app.compoCount = (app.compoCount || 0) + 1), visible: true, locked: false, isOpen: false, layers: [] };
@@ -312,7 +334,7 @@
             if (!this.src) return; const { W, H } = this.src;
             if (this.overlay) ctx.drawImage(this.overlay, -W / 2, -H / 2, W, H);
             if (this.selected) {
-                const c = this.regionContour(this.selected); if (c.length > 2) {
+                for (const c of this.regionContours(this.selected)) if (c.length > 2) {
                     ctx.beginPath(); ctx.moveTo(c[0].x, c[0].y); for (let i = 1; i < c.length; i++) ctx.lineTo(c[i].x, c[i].y); ctx.closePath();
                     ctx.strokeStyle = '#ffeb3b'; ctx.lineWidth = 3 / zoom; ctx.setLineDash([]); ctx.stroke();
                     const a = this.angleOf(this.selected) * Math.PI / 180, L = 25; // sens des lignes (angle 0 = horizontal, comme le réglage de l'outil)
