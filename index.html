@@ -291,7 +291,7 @@
                         💡 Utilisez l'outil "🖐️ Sélection" pour déplacer, tourner et redimensionner le calque <b>ou le groupe</b> sur la table (poignées d'angle = redimensionner, glisser au-delà du centre = miroir). <br><br><b>Maintenez SHIFT ou CTRL pour conserver les proportions ou créer des angles stricts (15°).</b>
                     </div>
                     <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; margin-bottom: 12px; background:#f3e5f5; padding:8px; border-radius:6px;"><input type="checkbox" id="chk-lock-aspect" onchange="app.ui.lockAspect = document.getElementById('chk-lock-aspect').checked;"> 🔗 Conserver les proportions (sans SHIFT — pratique sur tablette)</label>
-                    <label>Miroir Global :</label>
+                    <label id="lbl-mirror">Miroir Global :</label>
                     <div style="display:flex; gap:5px; margin-bottom:10px;">
                         <button class="btn" style="flex:1" onclick="app.toggleFlip('H')">↔️ Horiz.</button>
                         <button class="btn" style="flex:1" onclick="app.toggleFlip('V')">↕️ Vert.</button>
@@ -344,7 +344,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.6 (Remplissage : Crayon · Points · Détection auto)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.7 (Langues FR/EN · Infobulles « i »)</span>
     </div>
 
 <script>
@@ -3081,5 +3081,9 @@ function render(h, mask, nx, ny, cell) {
   return out;
 }
 </script>
+
+<!-- v6.7 : langues FR/EN (drapeaux) + infobulles « i » -->
+<script src="i18n.js"></script>
+<script src="help.js"></script>
 </body>
 </html>

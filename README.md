@@ -1,5 +1,51 @@
 # Éditeur de Tracés Sunae — Journal des modifications
 
+## v6.7 — Interface bilingue FR / EN + infobulles « i » (outils animés, paramètres expliqués)
+
+### 1. Bouton de langue (drapeaux 🇫🇷 / 🇬🇧)
+
+- Deux petits drapeaux en haut du panneau de droite, à côté de Undo / Redo. Le drapeau actif est
+  entouré en bleu ; un clic sur l'autre change toute l'interface immédiatement, sans recharger la page.
+- **Langue au démarrage** : si le navigateur est configuré en français (fr, fr-CH, fr-CA…) l'éditeur
+  s'ouvre en français, **sinon en anglais**. Un choix manuel via les drapeaux est mémorisé par le
+  navigateur et prime sur la détection automatique lors des visites suivantes.
+- La traduction est **purement visuelle** : les noms de calques que vous avez saisis et les fichiers
+  `.sunae` / `.thr` ne sont jamais modifiés. Les noms créés automatiquement (« Remplissage 3 »,
+  « Dossier 1 », « Tracé 2 »…) s'affichent traduits (« Fill 3 », « Folder 1 », « Path 2 »).
+- Sont traduits : tous les libellés, boutons, listes déroulantes, info-bulles natives, textes d'aide
+  qui changent selon le contexte, messages d'état (sauvegarde, simulation de sable, Auto-Trace…) et
+  boîtes de dialogue (`alert`, `confirm`, `prompt`). Le titre de l'onglet du navigateur aussi.
+
+### 2. Infobulles « i »
+
+- **Outils** : un petit **ⓘ** à droite de chacun des 7 outils (Sélection, Crayon, Texte, Remplissage,
+  Déformation, Interpolation, Mur). Au **survol** (souris) ou au **clic / toucher** (tablette, téléphone),
+  une bulle s'ouvre à gauche du panneau avec une **courte animation d'exemple** (boucle de 6 s : on
+  voit le curseur déplacer / redimensionner / tourner une forme, tracer à main levée, poser des cases
+  et y écrire, remplir une zone, tordre des lignes, générer des traits intermédiaires, contourner un
+  mur) et une phrase d'explication. Cliquer sur le ⓘ **ne sélectionne pas** l'outil.
+- **Paramètres** : un ⓘ à côté de chaque réglage (39 au total : épaisseur, lissage, nombre / taille
+  des cases, modes Crayon / Points / Détection auto, style Droites / Vagues / TSP, orientation, angle,
+  espacement, vagues, départ / arrivée TSP, résolution, pinceau, interpolation, conversion d'image,
+  proportions, miroir, rotation, opacité, zoom, aperçu sable, choix multiple, halo, simulateur…). La
+  bulle explique **en texte** ce que fait le réglage.
+- Fermer une bulle : clic ailleurs, deuxième clic sur le ⓘ, touche **Échap**, ou simplement quitter le
+  ⓘ avec la souris. Le ⓘ est aussi utilisable au clavier (Tab puis Entrée).
+- Les textes des bulles suivent la langue choisie, y compris quand on change de langue bulle ouverte.
+
+### Fichiers
+
+- **`i18n.js`** (nouveau) — dictionnaire FR → EN, détection de la langue, boutons drapeaux, traduction
+  des textes ajoutés dynamiquement par l'application (MutationObserver) et des dialogues.
+  *Ajouter une traduction* : une ligne `'Texte français': 'English text'` dans l'objet `EN`.
+- **`help.js`** (nouveau) — placement des ⓘ, bulle, animations SVG des outils (`DEMOS`), textes des
+  outils (`TOOLS`) et des paramètres (`PARAMS`, en français et en anglais).
+  *Ajouter l'aide d'un nouveau réglage* : une entrée `{ id: 'id-du-curseur', fr: '…', en: '…' }`.
+- `index.html` — chargement des deux scripts, identifiant sur le libellé « Miroir Global » (version
+  affichée : v6.7). Aucune logique de dessin n'a été modifiée.
+
+---
+
 ## v6.6 — Outil Remplissage : trois modes de tracé (Crayon · Points · Détection auto)
 
 ### Ce qui change
