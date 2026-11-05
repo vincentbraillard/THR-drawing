@@ -44,6 +44,12 @@
 - `index.html` — chargement des deux scripts, identifiant sur le libellé « Miroir Global » (version
   affichée : v6.7). Aucune logique de dessin n'a été modifiée.
 
+### Correctif
+
+- **Pastille orange vide** en haut du canevas : le bandeau « action en attente » était toujours affiché,
+  même sans action en cours, car son style déclarait `display:none` puis `display:flex`. Il est maintenant
+  caché par défaut et n'apparaît que pendant le tracé d'une courbe guide ou le choix d'un Départ / Arrivée TSP.
+
 ---
 
 ## v6.6 — Outil Remplissage : trois modes de tracé (Crayon · Points · Détection auto)
