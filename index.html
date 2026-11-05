@@ -188,33 +188,31 @@
                         <button id="btn-mode-pen" class="btn btn-primary" style="flex:1;" title="Dessin à main levée" onclick="app.setZigzagDrawMode('contour')">✏️ Crayon</button>
                         <button id="btn-mode-points" class="btn" style="flex:1;" title="Forme par points reliés par des lignes droites" onclick="app.setZigzagDrawMode('points')">📍 Points</button>
                         <button id="btn-wand-mode" class="btn" style="flex:1; display:none;" title="Détection automatique sur l'image de fond" onclick="app.setZigzagDrawMode('wand')">🪄 Détection auto</button>
-                        <button id="btn-sam-mode" class="btn" style="flex:1; display:none;" title="Segmenter : un clic sur une partie de l'image trouve sa forme complète" onclick="app.setZigzagDrawMode('sam')">✂️ Segmenter</button>
+                        <button id="btn-compose-mode" class="btn" style="flex:1; display:none;" title="Composer : à partir d'une image noir et blanc simple, détecte les zones et propose un remplissage pour chacune" onclick="app.setZigzagDrawMode('compose')">🎨 Composer</button>
                     </div>
-                    <div id="sam-container" style="display:none; background:#fce4ec; padding:10px; border-radius:6px; margin-bottom:15px; border:1px solid #f8bbd0;">
-                        <div id="sam-status" style="font-size:11px; font-weight:bold; color:#555; margin-bottom:8px;">Cliquez sur une partie de l'image (Maj+clic = retirer).</div>
-                        <div class="row" style="margin-bottom:6px;"><label>🔍 Taille de la forme :</label>
-                            <select id="sam-gran" onchange="THRSeg.onParamChange()"><option value="0">Détail fin</option><option value="1" selected>Partie</option><option value="2">Objet entier</option></select></div>
-                        <div class="row"><label>〰️ Lissage du contour :</label> <span class="val-badge" id="val-sam-smooth">2</span></div>
-                        <div class="row-slider"><input type="range" id="sam-smooth" min="0" max="8" value="2" oninput="THRSeg.onParamChange()"></div>
-                        <div class="row" style="margin-bottom:8px;"><label style="font-size:12px;"><input type="checkbox" id="sam-subtract" checked onchange="THRSeg.onParamChange()"> Retirer les zones déjà validées</label></div>
-                        <div class="row" style="gap:5px;">
-                            <button id="sam-validate" class="btn btn-primary" style="flex:2;" disabled onclick="THRSeg.validate()">✅ Valider la zone</button>
-                            <button id="sam-neg" class="btn" style="flex:1;" title="Le prochain clic retire une partie de la forme (comme Maj+clic)" onclick="THRSeg.toggleNeg()">➖ Retrait</button>
-                        </div>
-                        <div class="row" style="gap:5px; margin-top:5px; margin-bottom:0;">
-                            <button id="sam-undo" class="btn" style="flex:1;" disabled onclick="THRSeg.undo()">↩️ Dernier clic</button>
-                            <button id="sam-clear" class="btn" style="flex:1;" disabled onclick="THRSeg.reset(true)">✖️ Annuler</button>
-                        </div>
-                    </div>
-                    <div id="points-actions" style="display:none; gap:5px; margin-bottom:10px;">
-                        <button class="btn btn-primary" style="flex:1;" onclick="app.closePolygonShape()">✅ Fermer la forme</button>
-                        <button class="btn" style="flex:1;" onclick="app.undoPolygonPoint()">↩️ Dernier point</button>
-                        <button class="btn" style="flex:1;" onclick="app.cancelPolygonShape()">✖️ Annuler</button>
-                    </div>
-                    <div id="wand-container" style="display:none; background:#e8eaf6; padding: 10px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #c5cae9;">
-                        <div id="wand-options" style="display:none;">
-                            <div class="row"><label>🎚️ Sensibilité :</label> <span class="val-badge" id="val-wand-tol">30</span></div>
-                            <div class="row-slider" style="margin-bottom:0;"><button class="btn btn-icon" onclick="app.stepSlider('wand-tol', -5)">➖</button><input type="range" id="wand-tol" min="0" max="100" value="30" oninput="app.updateSliders()"><button class="btn btn-icon" onclick="app.stepSlider('wand-tol', 5)">➕</button></div>
+                    <div id="compo-container" style="display:none; background:#e8f5e9; padding:10px; border-radius:6px; margin-bottom:15px; border:1px solid #c8e6c9;">
+                        <div id="compo-status" style="font-size:11px; font-weight:bold; color:#555; margin-bottom:8px;">Importez une image simple en noir et blanc (type coloriage), puis analysez-la.</div>
+                        <div class="row"><label>◐ Seuil noir / blanc :</label> <span class="val-badge" id="val-compo-thr">140</span></div>
+                        <div class="row-slider"><input type="range" id="compo-thr" min="40" max="220" value="140" onchange="THRCompo.onParam()" oninput="document.getElementById('val-compo-thr').innerText=this.value"></div>
+                        <div class="row"><label>🔗 Fermer les petits trous :</label> <span class="val-badge" id="val-compo-close">1</span></div>
+                        <div class="row-slider"><input type="range" id="compo-close" min="0" max="4" value="1" onchange="THRCompo.onParam()" oninput="document.getElementById('val-compo-close').innerText=this.value"></div>
+                        <div class="row"><label>📏 Taille mini des zones :</label> <span class="val-badge" id="val-compo-min">40</span></div>
+                        <div class="row-slider"><input type="range" id="compo-min" min="5" max="600" value="40" onchange="THRCompo.onParam()" oninput="document.getElementById('val-compo-min').innerText=this.value"></div>
+                        <div class="row" style="margin-bottom:8px;"><label style="font-size:12px;"><input type="checkbox" id="compo-bg" checked onchange="THRCompo.onParam()"> Ignorer le fond (zones touchant le bord)</label></div>
+                        <button class="btn btn-primary" style="width:100%;" onclick="THRCompo.analyze()">🔍 Analyser l'image</button>
+                        <div id="compo-after" style="display:none; margin-top:10px;">
+                            <div id="compo-count" style="font-size:12px; font-weight:bold; margin-bottom:6px;"></div>
+                            <div id="compo-sel" style="display:none; background:#fff; border:1px solid #c8e6c9; border-radius:6px; padding:8px; margin-bottom:8px;">
+                                <div id="compo-sel-info" style="font-size:11px; color:#555; margin-bottom:6px;"></div>
+                                <div class="row"><label>🎨 Style :</label>
+                                    <select id="compo-style" onchange="THRCompo.setStyle()"><option value="auto">Auto (proposé)</option><option value="lines">〰️ Lignes parallèles</option><option value="wave">🌊 Vagues</option><option value="spiral">🌀 Spirale / concentrique</option><option value="hatch">✳️ Hachures croisées</option><option value="tsp">🎯 Points TSP</option><option value="outline">✏️ Contour seul</option><option value="ignore">🚫 Ignorer</option></select></div>
+                                <div class="row"><label>📐 Angle des lignes :</label> <span class="val-badge" id="val-compo-angle">0°</span></div>
+                                <div class="row-slider" style="margin-bottom:4px;"><input type="range" id="compo-angle" min="-90" max="90" value="0" oninput="THRCompo.setAngle()"></div>
+                                <label style="font-size:12px;"><input type="checkbox" id="compo-angle-auto" checked onchange="THRCompo.angleAuto()"> Angle automatique (sens de la forme)</label>
+                            </div>
+                            <div class="row" style="gap:5px; margin-bottom:8px;"><label style="flex:1; font-size:12px;">Style de toutes les zones :</label>
+                                <select id="compo-all" onchange="THRCompo.applyAll()"><option value="">…</option><option value="auto">Auto (proposé)</option><option value="lines">〰️ Lignes</option><option value="wave">🌊 Vagues</option><option value="spiral">🌀 Spirale</option><option value="outline">✏️ Contour seul</option><option value="ignore">🚫 Tout ignorer</option></select></div>
+                            <button id="compo-generate" class="btn btn-primary" style="width:100%;" disabled onclick="THRCompo.generate()">✨ Générer les calques</button>
                         </div>
                     </div>
                     <div class="row" style="gap: 5px; margin-bottom: 15px;"><button id="btn-zig-straight" class="btn btn-primary" style="flex:1;" onclick="app.setZigzagLineStyle('straight')">〰️ Droites</button><button id="btn-zig-wave" class="btn" style="flex:1;" onclick="app.setZigzagLineStyle('wave')">🌊 Vagues</button><button id="btn-zig-tsp" class="btn" style="flex:1;" onclick="app.setZigzagLineStyle('tsp')">🎯 TSP</button></div>
@@ -361,7 +359,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.8 (Segmenter — 1er test)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.9 (Composer — 1er test)</span>
     </div>
 
 <script>
@@ -719,9 +717,9 @@ const app = {
         let hasImg = this.layers.some(l => l.type === 'image' && l.effectiveVisible);
         // Le bouton "Détection auto" n'apparaît que s'il y a une image de fond visible.
         let btnWand = document.getElementById('btn-wand-mode'); if (btnWand) btnWand.style.display = hasImg ? 'block' : 'none';
-        let btnSam = document.getElementById('btn-sam-mode'); if (btnSam) btnSam.style.display = hasImg ? 'block' : 'none';
+        let btnSam = document.getElementById('btn-compose-mode'); if (btnSam) btnSam.style.display = hasImg ? 'block' : 'none';
         if (!hasImg && this.ui.zigzagDrawMode === 'wand') this.toggleWandMode();
-        if (!hasImg && this.ui.zigzagDrawMode === 'sam') this.setZigzagDrawMode(this.defaultZigzagDrawMode());
+        if (!hasImg && this.ui.zigzagDrawMode === 'compose') this.setZigzagDrawMode(this.defaultZigzagDrawMode());
     },
 
     // Mode de tracé "par défaut" de l'outil Remplissage : le dernier choisi entre Crayon et Points.
@@ -731,9 +729,8 @@ const app = {
     setZigzagDrawMode(mode) {
         if (this.ui.zigzagDrawMode === 'guide') this.cancelPendingAction();
         if (mode !== 'points') this.pos.polyPoints = [];
-        if (mode !== 'sam' && this.ui.zigzagDrawMode === 'sam' && window.THRSeg) THRSeg.reset(true);
-        if (mode === 'sam' && window.THRSeg) THRSeg.reset(true);
-        if (mode === 'wand' || mode === 'sam') {
+        if (mode !== 'compose' && this.ui.zigzagDrawMode === 'compose' && window.THRCompo) THRCompo.reset();
+        if (mode === 'wand' || mode === 'compose') {
             let btnGuide = document.getElementById('btn-draw-guide'); if (btnGuide) { btnGuide.innerText = "✏️ Dessiner la courbe guide"; btnGuide.style.backgroundColor = "var(--primary)"; }
         } else {
             this.ui.zigzagInputMode = (mode === 'points') ? 'points' : 'pen';
@@ -748,14 +745,14 @@ const app = {
     updateZigzagModeUI() {
         let m = this.ui.zigzagDrawMode;
         let set = (id, on) => { let el = document.getElementById(id); if (el) el.classList.toggle('btn-primary', on); };
-        set('btn-mode-pen', m === 'contour'); set('btn-mode-points', m === 'points'); set('btn-wand-mode', m === 'wand'); set('btn-sam-mode', m === 'sam');
-        let sc = document.getElementById('sam-container'); if (sc) sc.style.display = (m === 'sam') ? 'block' : 'none';
+        set('btn-mode-pen', m === 'contour'); set('btn-mode-points', m === 'points'); set('btn-wand-mode', m === 'wand'); set('btn-compose-mode', m === 'compose');
+        let sc = document.getElementById('compo-container'); if (sc) sc.style.display = (m === 'compose') ? 'block' : 'none';
         let wo = document.getElementById('wand-options'); if (wo) wo.style.display = (m === 'wand') ? 'block' : 'none';
         let wc = document.getElementById('wand-container'); if (wc) wc.style.display = (m === 'wand') ? 'block' : 'none';
         let pa = document.getElementById('points-actions'); if (pa) pa.style.display = (m === 'points') ? 'flex' : 'none';
         let help = document.getElementById('zigzag-help-text');
         if (help && m !== 'guide') help.innerText = (m === 'wand') ? "Cliquez sur une image de fond pour générer un remplissage."
-            : (m === 'sam') ? "Cliquez sur une partie de l'image (oreille, tête, patte…) : sa forme est détectée, puis validez."
+            : (m === 'compose') ? "Composer : analysez une image noir et blanc simple, choisissez le style de chaque zone, puis générez les calques."
             : (m === 'points') ? "Cliquez pour placer des points reliés par des lignes droites. Fermez en recliquant sur le 1er point (ou double-clic / Entrée)."
             : "Dessinez une forme fermée à main levée, ou choisissez Points / Détection auto.";
         let wrapper = document.getElementById('canvas-wrapper');
@@ -1258,7 +1255,7 @@ const app = {
                         this.invalidateSim(); this.draw(); this.autoSave();
                     }
                 } else if (this.ui.tool === 'pen' || this.ui.tool === 'wall' || this.ui.tool === 'zigzag' || this.ui.tool === 'interp') {
-                    if (this.ui.tool === 'zigzag' && (this.ui.zigzagDrawMode === 'wand' || this.ui.zigzagDrawMode === 'sam')) {}
+                    if (this.ui.tool === 'zigzag' && (this.ui.zigzagDrawMode === 'wand' || this.ui.zigzagDrawMode === 'compose')) {}
                     else if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'points') { this.addPolygonPoint(ptScene); }
                     else if (this.isPointInBounds(ptScene)) { this.ui.isDrawing = true; this.pos.anchor = {x: ptScene.x, y: ptScene.y}; this.pos.lastSmoothed = {x: ptScene.x, y: ptScene.y}; this.pos.currentPath = [{...this.pos.anchor}]; this.draw(); }
                 }
@@ -1397,8 +1394,8 @@ const app = {
             if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand') {
                 if (Math.hypot((this.ui.pointerHover || this.pos.lastClick).x - this.pos.lastClick.x, (this.ui.pointerHover || this.pos.lastClick).y - this.pos.lastClick.y) < 10) this.executeMagicWand(this.pos.lastClick);
             }
-            if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'sam' && window.THRSeg && e.type !== 'pointercancel') {
-                if (Math.hypot((this.ui.pointerHover || this.pos.lastClick).x - this.pos.lastClick.x, (this.ui.pointerHover || this.pos.lastClick).y - this.pos.lastClick.y) < 10) THRSeg.onClick(this.pos.lastClick, e.shiftKey);
+            if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'compose' && window.THRCompo && e.type !== 'pointercancel') {
+                if (Math.hypot((this.ui.pointerHover || this.pos.lastClick).x - this.pos.lastClick.x, (this.ui.pointerHover || this.pos.lastClick).y - this.pos.lastClick.y) < 10) THRCompo.onClick(this.pos.lastClick, e.shiftKey);
             }
 
             if (this.ui.activeTransform) {
@@ -2149,7 +2146,7 @@ const app = {
             }
         }
 
-        if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'sam' && window.THRSeg) THRSeg.drawOverlay(this.ctx, this.ui.zoom);
+        if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'compose' && window.THRCompo) THRCompo.drawOverlay(this.ctx, this.ui.zoom);
 
         if (this.ui.tool === 'liquify' && this.ui.pointerHover) {
             this.ctx.beginPath(); this.ctx.arc(this.ui.pointerHover.x, this.ui.pointerHover.y, this.ui.liquifyRadius / this.ui.zoom, 0, Math.PI*2);
@@ -2314,7 +2311,7 @@ const app = {
     changeTool() {
         let newTool = document.querySelector('input[name="tool"]:checked').value;
         if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand' && newTool !== 'zigzag') this.toggleWandMode();
-        if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'sam' && newTool !== 'zigzag') this.setZigzagDrawMode(this.defaultZigzagDrawMode());
+        if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'compose' && newTool !== 'zigzag') this.setZigzagDrawMode(this.defaultZigzagDrawMode());
         if (newTool !== 'zigzag') this.pos.polyPoints = []; // forme par points inachevée abandonnée
         // Note : on NE désarme PLUS la visée du point de départ/arrivée TSP en changeant d'outil —
         // elle reste active (le calque ciblé est mémorisé) et se termine dès qu'on revient sur l'outil
@@ -3112,7 +3109,7 @@ function render(h, mask, nx, ny, cell) {
 </script>
 
 <!-- v6.7 : langues FR/EN (drapeaux) + infobulles « i » -->
-<script src="segmenter.js"></script>
+<script src="composer.js"></script>
 <script src="i18n.js"></script>
 <script src="help.js"></script>
 </body>

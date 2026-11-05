@@ -1,22 +1,25 @@
 # Éditeur de Tracés Sunae — Journal des modifications
 
-## v6.8 — Outil « ✂️ Segmenter » (premier test) : un clic = une forme
+## v6.9 — Outil « 🎨 Composer » (premier test) : image noir et blanc → zones → styles → calques
 
-Objectif : obtenir des zones qui correspondent aux **formes** de l'image (une oreille, une tête, une patte),
-et non un découpage par couleurs. Première version, à valider sur de vraies images.
+Remplace le test « Segmenter » (v6.8, retiré : l'approche par modèle de segmentation n'était pas retenue).
 
-- **Où** : outil Remplissage → bouton **✂️ Segmenter** (visible seulement avec une image de fond).
-- **Principe** : clic sur une partie de l'image → un modèle de segmentation (SlimSAM, via transformers.js)
-  trouve la forme complète → contour lissé → **Valider la zone** crée un calque de remplissage
-  (avec le type de remplissage, l'angle et l'espacement réglés dans l'outil).
-- **Corriger** : clics supplémentaires ; **Maj+clic** (ou bouton ➖ Retrait) retire un morceau.
-- **Réglages** : taille de la forme (détail fin / partie / objet entier, pour un 1er clic), lissage du contour,
-  option « Retirer les zones déjà validées » (l'oreille n'est plus comptée dans la tête).
-- **Modèle** : téléchargé au premier usage depuis internet (quelques dizaines de Mo), ensuite mis en cache par le
-  navigateur. Aucun serveur Sunae n'est nécessaire.
-- **État du test** : tout le traitement (aperçu, contour, création des calques) a été vérifié avec un modèle simulé ;
-  le vrai modèle n'a pas pu être exécuté dans l'environnement de développement — à confirmer dans le navigateur.
-- Fichiers : `segmenter.js` (nouveau), `index.html` (bouton, panneau, branchements), `i18n.js`, `help.js`.
+- **Principe** : on part d'une **image simple en noir et blanc** (type coloriage pour enfants). Les zones blanches
+  fermées sont détectées ; un style de remplissage est **proposé** pour chacune ; l'utilisateur corrige ; un clic
+  génère tous les calques.
+- **Où** : outil Remplissage → **🎨 Composer** (visible avec une image de fond). **🔍 Analyser l'image** colorie les zones.
+- **Réglages d'analyse** : seuil noir/blanc, « Fermer les petits trous » (referme de petites coupures dans les traits),
+  taille mini des zones, « Ignorer le fond » (zones touchant le bord : ignorées par défaut mais cliquables).
+- **Corriger** : clic sur une zone = la sélectionner (style, angle) ; **Maj+clic** = l'ignorer / la réactiver ;
+  « Style de toutes les zones » pour changer d'un coup.
+- **Styles** : lignes parallèles (angle automatique = sens de la forme), vagues, spirale / concentrique,
+  hachures croisées, points TSP, contour seul, ignorer. Proposition automatique : parties fines → contour seul,
+  petites zones rondes → spirale, le reste → lignes.
+- **Génération** : un dossier « 🎨 Composition » contenant un calque par zone, dans un ordre de proche en proche
+  (départ au centre) ; type de ligne, espacement, couleur = réglages courants de l'outil Remplissage.
+- Limites actuelles : une zone contenant d'autres zones (tête et œil) est remplie en entier ; pas encore de
+  détection automatique des hachures croisées ; qualité dépendante de la netteté du dessin.
+- Fichiers : `composer.js` (nouveau), `index.html`, `i18n.js`, `help.js`.
 
 ## v6.7 — Interface bilingue FR / EN + infobulles « i » (outils animés, paramètres expliqués)
 
