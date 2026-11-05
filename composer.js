@@ -90,7 +90,7 @@
                     border: s.border, dmax: dmaxPx[s.id] / S, style: null, angle: null, contours: null });
             }
             regions.sort((a, b) => b.area - a.area); if (regions.length > 400) regions.length = 400;
-            this.dt = dt; this.dmaxPx = dmaxPx; this.ignoreBg = ignoreBg; this.outside = outside; this.src = src; this.labels = labels; this.regions = regions; this.byId = new Map(regions.map(r => [r.id, r])); this.buildGrid(); this.selected = null; this.ready = true;
+            this.baseComps = this.silhouette(labels, outside, w, h, src, minArea); this.silArea = this.baseComps.reduce((a, c) => a + c.area, 0); this.dt = dt; this.dmaxPx = dmaxPx; this.ignoreBg = ignoreBg; this.outside = outside; this.src = src; this.labels = labels; this.regions = regions; this.byId = new Map(regions.map(r => [r.id, r])); this.buildGrid(); this.selected = null; this.ready = true;
             this.rebuildOverlay(); this.updateUI();
             const kept = regions.filter(r => !(r.border && ignoreBg)); const thin = kept.filter(r => r.dmax < 5.2).length; // 5,2 u ≈ rayon de la bille (6 mm)
             this.setStatus(!regions.length ? 'Aucune zone fermée trouvée : ajustez le seuil ou « Fermer les petits trous ».' : 'Zones détectées. Cliquez une zone pour changer son style, Maj+clic pour l\'ignorer.',
@@ -104,9 +104,30 @@
             return o;
         },
 
+        // Silhouette = tout ce qui n'est pas l'extérieur (blanc relié au bord) : traits noirs et zones intérieures compris.
+        silhouette(labels, outside, w, h, src, minArea) {
+            const fm = new Uint8Array(w * h); for (let i = 0; i < fm.length; i++) { const l = labels[i]; fm[i] = (l > 0 && outside[l]) ? 0 : 1; }
+            const lab = new Int32Array(w * h), out = [], st = [];
+            for (let i = 0; i < fm.length; i++) {
+                if (!fm[i] || lab[i]) continue; const pix = []; lab[i] = 1; st.push(i);
+                while (st.length) { const q = st.pop(); pix.push(q); const x = q % w, y = (q - x) / w;
+                    if (x > 0 && fm[q - 1] && !lab[q - 1]) { lab[q - 1] = 1; st.push(q - 1); } if (x < w - 1 && fm[q + 1] && !lab[q + 1]) { lab[q + 1] = 1; st.push(q + 1); }
+                    if (y > 0 && fm[q - w] && !lab[q - w]) { lab[q - w] = 1; st.push(q - w); } if (y < h - 1 && fm[q + w] && !lab[q + w]) { lab[q + w] = 1; st.push(q + w); } }
+                if (pix.length < Math.max(minArea, 400)) continue;
+                const cm = new Uint8Array(w * h); for (const q of pix) cm[q] = 1; this.fillHoles(cm, w, h);
+                let poly = this.trace(cm, w, h); poly = this.simplify(poly, 1.0); for (let k = 0; k < 2; k++) poly = this.chaikin(poly);
+                let cx = 0, cy = 0; for (const q of pix) { cx += q % w; cy += Math.floor(q / w); }
+                if (poly.length >= 3) out.push({ area: pix.length / (S * S), cx: cx / pix.length / S - src.W / 2, cy: cy / pix.length / S - src.H / 2, contour: poly.map(p => ({ x: p.x / S - src.W / 2, y: p.y / S - src.H / 2 })) });
+            }
+            return out;
+        },
+        baseOn() { const c = $('compo-base'); return !!(c && c.checked); },
+        onBase() { this.rebuildOverlay(); this.updateUI(); if (window.app) app.draw(); },
+
         // ---------- style proposé ----------
         suggest(r) {
             if (r.border && this.ignoreBg) return 'ignore';
+            if (this.baseOn() && this.silArea && r.area > 0.08 * this.silArea) return 'ignore'; // les grandes zones sont déjà couvertes par le fond
             if (r.dmax < 3.2) return 'outline'; // trop fin pour être rempli (la bille fait Ø12 mm) : un seul passage
             if (r.area < 2500 && r.circ > 0.55) return 'spiral';
             return 'lines';
@@ -153,7 +174,7 @@
         // Contours à remplir : la zone réduite d'une marge (la bille ne doit pas écraser les traits qui forment le dessin).
         // Une zone peut se scinder en plusieurs morceaux après réduction. Zone très fine : on garde son « cœur ».
         regionContours(r) {
-            const inset = parseFloat($('compo-inset').value) || 0;
+            let inset = parseFloat($('compo-inset').value) || 0; if (this.baseOn()) inset = Math.min(inset, 1.5); // sur un fond déjà aplani, plus de crêtes à préserver
             if (r.contours && r.cInset === inset) return r.contours;
             const { w } = this.src; const [x0, y0, x1, y1] = r.bbox; const pad = 2; const bw = x1 - x0 + 1 + 2 * pad, bh = y1 - y0 + 1 + 2 * pad;
             const rho = Math.min(inset * S, Math.max(0.55 * this.dmaxPx[r.id], 1.5));
@@ -218,16 +239,16 @@
         cellOf(p) { const g = this.grid; return Math.min(g.gh - 1, Math.max(0, Math.floor((p.y + this.src.H / 2) * S / g.CELL))) * g.gw + Math.min(g.gw - 1, Math.max(0, Math.floor((p.x + this.src.W / 2) * S / g.CELL))); },
         cellPt(i) { const g = this.grid; const gx = i % g.gw, gy = (i - gx) / g.gw; return { x: (gx * g.CELL + g.CELL / 2) / S - this.src.W / 2, y: (gy * g.CELL + g.CELL / 2) / S - this.src.H / 2 }; },
         // Dijkstra depuis une cellule : coût 1 sur le trait / zones pas encore remplies, 25 sur les zones déjà remplies (ou jamais remplies), interdit hors du dessin.
-        dijkstra(src, zoneCost) {
+        dijkstra(src, zoneCost, target, uniform) {
             const g = this.grid, n = g.gw * g.gh, dist = new Float64Array(n).fill(Infinity), prev = new Int32Array(n).fill(-1);
             const hk = [], hv = []; // tas binaire
             const push = (k, v) => { let i = hk.length; hk.push(k); hv.push(v); while (i > 0) { const pa = (i - 1) >> 1; if (hk[pa] <= hk[i]) break; [hk[pa], hk[i]] = [hk[i], hk[pa]]; [hv[pa], hv[i]] = [hv[i], hv[pa]]; i = pa; } };
             const pop = () => { const k = hk[0], v = hv[0]; const lk = hk.pop(), lv = hv.pop(); if (hk.length) { hk[0] = lk; hv[0] = lv; let i = 0; for (;;) { let l = 2 * i + 1, r = l + 1, m = i; if (l < hk.length && hk[l] < hk[m]) m = l; if (r < hk.length && hk[r] < hk[m]) m = r; if (m === i) break; [hk[m], hk[i]] = [hk[i], hk[m]]; [hv[m], hv[i]] = [hv[i], hv[m]]; i = m; } } return [k, v]; };
-            const cost = (c) => g.inside[c] ? (g.zone[c] > 0 ? zoneCost[g.zone[c]] : this.blackCost) : Infinity;
+            const cost = uniform ? (c) => g.inside[c] ? 1 : Infinity : (c) => g.inside[c] ? (g.zone[c] > 0 ? zoneCost[g.zone[c]] : this.blackCost) : Infinity;
             dist[src] = 0; push(0, src);
             const D = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414]];
             while (hk.length) {
-                const [d, u] = pop(); if (d > dist[u]) continue; const ux = u % g.gw, uy = (u - ux) / g.gw;
+                const [d, u] = pop(); if (d > dist[u]) continue; if (u === target) break; const ux = u % g.gw, uy = (u - ux) / g.gw;
                 for (const [dx, dy, st] of D) {
                     const vx = ux + dx, vy = uy + dy; if (vx < 0 || vy < 0 || vx >= g.gw || vy >= g.gh) continue; const v = vy * g.gw + vx;
                     if (dx && dy && (!g.inside[uy * g.gw + vx] || !g.inside[vy * g.gw + ux])) continue; // pas de coupe-coin hors du dessin
@@ -244,11 +265,38 @@
             rec(0, pts.length - 1); return pts.filter((_, i) => keep[i]);
         },
 
+        // Le simulateur (et la machine) interpolent en polaire entre deux points : un long segment devient un arc.
+        // Tout segment généré est donc découpé en pas de ~2 unités pour rester droit.
+        densify(pts, step) {
+            step = step || 2; const out = [pts[0]];
+            for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i], L = Math.hypot(b.x - a.x, b.y - a.y), n = Math.floor(L / step); for (let k = 1; k <= n; k++) out.push({ x: a.x + (b.x - a.x) * k / (n + 1), y: a.y + (b.y - a.y) * k / (n + 1) }); out.push(b); }
+            return out;
+        },
+        // Les remplissages (zone concave) relient parfois deux segments par une droite qui traverse le vide : on la remplace
+        // par un trajet qui reste dans le dessin.
+        fixJumps(pts) {
+            if (!pts || pts.length < 2) return pts; const g = this.grid; const out = [pts[0]]; let fixed = 0;
+            for (let i = 1; i < pts.length; i++) {
+                const a = pts[i - 1], b = pts[i], L = Math.hypot(b.x - a.x, b.y - a.y);
+                if (L > 8) {
+                    let leaves = false; const n = Math.ceil(L / 2);
+                    for (let k = 1; k < n && !leaves; k++) { if (!g.inside[this.cellOf({ x: a.x + (b.x - a.x) * k / n, y: a.y + (b.y - a.y) * k / n })]) leaves = true; }
+                    if (leaves && fixed < 60) {
+                        const ca = this.cellOf(a), cb = this.cellOf(b); const { dist, prev } = this.dijkstra(ca, null, cb, true);
+                        if (dist[cb] < Infinity) { const cells = []; let u = cb, guard = 0; while (u !== -1 && u !== ca && guard++ < 1e6) { cells.push(u); u = prev[u]; } cells.reverse();
+                            const route = this.simplifyOpen([a, ...cells.map(c => this.cellPt(c)), b], 1.0); for (let j = 1; j < route.length - 1; j++) out.push(route[j]); fixed++; }
+                    }
+                }
+                out.push(b);
+            }
+            return this.densify(out, 2);
+        },
+
         // ---------- génération des calques ----------
         buildLayer(boundary, over, name) {
             const b = boundary.map(p => ({ x: p.x, y: p.y })); b.push({ ...b[0] });
             const layer = Object.assign({ type: 'zigzag', name, visible: true, locked: false, color: app.ui.color, width: 1.3, boundary: b, zigzagType: 'angle', spiralDir: 'in', lineStyle: 'straight', waveAmp: app.ui.waveAmp, waveLen: app.ui.waveLen, angle: 0, spacing: app.ui.zigzagSpacing, tspPointCount: app.ui.tspPointCount, guideCurve: null, points: [] }, over);
-            layer.points = (layer.lineStyle === 'tsp') ? app.generateTSPZigzagFill(layer) : app.generateZigzag(layer);
+            layer.points = this.fixJumps((layer.lineStyle === 'tsp') ? app.generateTSPZigzagFill(layer) : app.generateZigzag(layer));
             return layer;
         },
         // Un « travail » = une zone à tracer ; chaque candidat = une façon de la parcourir (sens, point de départ) avec son départ et son arrivée.
@@ -286,11 +334,17 @@
             if (!this.ready) return;
             const t0 = performance.now(); const todo = this.regions.filter(r => this.styleOf(r) !== 'ignore');
             let tasks = []; const remaining = new Map(); todo.forEach((r, i) => { this.regionContours(r).forEach((c, j) => { const t = this.buildTask(r, (i + 1) + (j ? String.fromCharCode(96 + j) : ''), c); if (t) { tasks.push(t); remaining.set(r.id, (remaining.get(r.id) || 0) + 1); } }); });
-            if (!tasks.length) return;
+            let baseTasks = [];
+            if (this.baseOn()) {
+                const bst = $('compo-base-style').value, ba = parseInt($('compo-base-angle').value);
+                this.baseComps.forEach((bc, i) => { const t = this.buildTask({ id: 0, cx: bc.cx, cy: bc.cy, style: bst, angle: ba, ang: ba }, 'F' + (i + 1), bc.contour); if (t) { t.base = true; baseTasks.push(t); } });
+            }
+            if (!tasks.length && !baseTasks.length) return;
             // coût de traversée : 1 = zone encore à remplir (la liaison sera recouverte) ; 6 = zone déjà remplie (un trait court y passe presque inaperçu) ; 40 = trait noir du dessin ou zone jamais remplie (à ne pas abîmer) ; 8 = trait fin déjà creusé
             const maxId = Math.max(...this.regions.map(r => r.id), 0); const zc = new Float32Array(maxId + 2).fill(40);
             for (const t of tasks) zc[t.r.id] = (t.st === 'outline') ? 8 : 1; // 1 = encore à remplir (la liaison sera recouverte) ; 8 = trait fin qu'on peut croiser
-            const seq = []; let cur = null, links = 0, jumps = 0, linkLen = 0;
+            const seq = []; let cur = null, links = 0, jumps = 0, linkLen = 0; this.blackCost = 40;
+            const nBase = baseTasks.length; let basePending = nBase; const detail = tasks; tasks = nBase ? baseTasks : detail;
             while (tasks.length) {
                 let best = null, route = null;
                 if (!cur) { // départ : au plus près du centre de la table
@@ -307,16 +361,18 @@
                     }
                 }
                 if (route) {
-                    const pts = this.simplifyOpen(route, 1.2); let len = 0; for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+                    const pts = this.densify(this.simplifyOpen(route, 1.2), 2); let len = 0; for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
                     if (len > 2.5 && pts.length >= 2) { links++; linkLen += len; seq.push({ type: 'pen', name: `↪ Liaison ${links}`, visible: true, locked: false, color: app.ui.color, width: app.ui.penWidth, points: pts }); }
                 }
-                seq.push(...best.c.make()); cur = best.c.e; const left = remaining.get(best.t.r.id) - 1; remaining.set(best.t.r.id, left); if (left <= 0) zc[best.t.r.id] = (best.t.st === 'outline') ? 8 : 6; tasks = tasks.filter(t => t !== best.t);
+                seq.push(...best.c.make()); cur = best.c.e; const left = (remaining.get(best.t.r.id) || 1) - 1; remaining.set(best.t.r.id, left); if (left <= 0) zc[best.t.r.id] = (best.t.st === 'outline') ? 8 : 6; tasks = tasks.filter(t => t !== best.t);
+                if (best.t.base) { basePending--; if (!basePending) { // fond terminé : tout est aplani, les détails se dessinent par-dessus
+                    this.blackCost = 6; zc.fill(6); for (const t of detail) zc[t.r.id] = (t.st === 'outline') ? 8 : 1; tasks = detail; } }
             }
             app.saveState();
             const folder = { id: app.genId(), type: 'folder', name: '🎨 Composition ' + (app.compoCount = (app.compoCount || 0) + 1), visible: true, locked: false, isOpen: false, layers: [] };
             folder.layers = seq.map(l => Object.assign({ id: app.genId() }, l)).reverse(); // le tracé part du bas de la liste
             app.layers.unshift(folder); app.selectedIds = [folder.id];
-            app.invalidateSim(); app.refreshLayerList(); app.autoSave(); app.draw();
+            this.blackCost = 40; app.invalidateSim(); app.refreshLayerList(); app.autoSave(); app.draw();
             this.lastReport = { zones: seq.filter(l => l.type !== 'pen' || !/Liaison/.test(l.name)).length, links, linkLen: Math.round(linkLen), jumps, ms: Math.round(performance.now() - t0) };
             this.setStatus('Calques générés dans le dossier « Composition » : ', links + ' ' + this.t('liaisons tracées à l\'intérieur du dessin') + '.');
         },
@@ -333,6 +389,7 @@
         drawOverlay(ctx, zoom) {
             if (!this.src) return; const { W, H } = this.src;
             if (this.overlay) ctx.drawImage(this.overlay, -W / 2, -H / 2, W, H);
+            if (this.baseOn() && this.baseComps) for (const bc of this.baseComps) { const c = bc.contour; ctx.beginPath(); ctx.moveTo(c[0].x, c[0].y); for (let i = 1; i < c.length; i++) ctx.lineTo(c[i].x, c[i].y); ctx.closePath(); ctx.strokeStyle = '#7b1fa2'; ctx.lineWidth = 2 / zoom; ctx.setLineDash([6 / zoom, 4 / zoom]); ctx.stroke(); ctx.setLineDash([]); }
             if (this.selected) {
                 for (const c of this.regionContours(this.selected)) if (c.length > 2) {
                     ctx.beginPath(); ctx.moveTo(c[0].x, c[0].y); for (let i = 1; i < c.length; i++) ctx.lineTo(c[i].x, c[i].y); ctx.closePath();

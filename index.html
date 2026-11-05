@@ -204,6 +204,13 @@
                         <button class="btn btn-primary" style="width:100%;" onclick="THRCompo.analyze()">🔍 Analyser l'image</button>
                         <div id="compo-after" style="display:none; margin-top:10px;">
                             <div id="compo-count" style="font-size:12px; font-weight:bold; margin-bottom:6px;"></div>
+                            <div style="background:#f3e5f5; border:1px solid #e1bee7; border-radius:6px; padding:8px; margin-bottom:8px;">
+                                <label style="font-size:12px; font-weight:bold;"><input type="checkbox" id="compo-base" checked onchange="THRCompo.onBase()"> 🧱 Fond : remplir d'abord toute la silhouette</label>
+                                <div style="font-size:11px; color:#555; margin:4px 0;">Comme le corps sans les zébrures : les détails (zones ci-dessous) sont ensuite dessinés par-dessus.</div>
+                                <div class="row"><label>🎨 Style du fond :</label> <select id="compo-base-style"><option value="lines">〰️ Lignes parallèles</option><option value="wave">🌊 Vagues</option><option value="spiral">🌀 Spirale / concentrique</option><option value="hatch">✳️ Hachures croisées</option><option value="tsp">🎯 Points TSP</option></select></div>
+                                <div class="row"><label>📐 Angle du fond :</label> <span class="val-badge" id="val-compo-base-angle">0°</span></div>
+                                <div class="row-slider" style="margin-bottom:0;"><input type="range" id="compo-base-angle" min="-90" max="90" value="0" oninput="document.getElementById('val-compo-base-angle').innerText=this.value+'°'"></div>
+                            </div>
                             <div id="compo-sel" style="display:none; background:#fff; border:1px solid #c8e6c9; border-radius:6px; padding:8px; margin-bottom:8px;">
                                 <div id="compo-sel-info" style="font-size:11px; color:#555; margin-bottom:6px;"></div>
                                 <div class="row"><label>🎨 Style :</label>
@@ -361,7 +368,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.11 (Composer — marges & liaisons)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.12 (Composer — fond + détails)</span>
     </div>
 
 <script>

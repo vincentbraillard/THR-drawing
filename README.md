@@ -1,5 +1,21 @@
 # Éditeur de Tracés Sunae — Journal des modifications
 
+## v6.12 — Composer : travail par superposition (fond + détails) et segments droits
+
+Méthode de travail de l'utilisateur : **d'abord le corps entier comme s'il n'y avait pas de zébrures, puis les détails par-dessus.**
+
+- **🧱 Fond** (case cochée par défaut) : la **silhouette entière** (tout ce qui n'est pas l'extérieur du dessin, traits noirs
+  compris) est remplie en premier, avec le style et l'angle choisis (lignes, vagues, spirale, hachures, TSP).
+  Les grandes zones (> 8 % de la silhouette) sont alors absorbées par le fond (proposées « ignorer »).
+- **Détails par-dessus** : les autres zones (rayures, yeux, museau…) sont tracées ensuite, chacune avec son style.
+  Comme le fond a tout aplani, il n'y a plus de crêtes à préserver : les liaisons entre détails coûtent peu
+  (zone détail encore à faire 1, reste du dessin 6) et la marge le long des traits est limitée à 1,5.
+- **Correctif important — segments droits** : le simulateur (et la machine) interpolent **en polaire** entre deux points ;
+  un long segment droit devenait donc un grand **arc** hors du dessin (anneaux parasites visibles dans le sable).
+  Toutes les liaisons et tous les raccords générés sont désormais découpés en pas de ~2 unités.
+- **Raccords internes des remplissages** : quand la forme est concave, le générateur reliait deux segments par une droite
+  traversant le vide ; ce raccord est maintenant remplacé par un trajet qui reste dans le dessin.
+
 ## v6.11 — Composer : rendu sable lisible (marges le long des traits, liaisons qui épargnent le dessin)
 
 Constat sur le zèbre : dans le simulateur de sable la bille fait **Ø12 mm** (≈ 10 u de scène, 1 u ≈ 1,15 mm). Les remplissages
