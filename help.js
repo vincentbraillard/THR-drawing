@@ -212,6 +212,7 @@
     // sibling = placer le « i » juste après le libellé (au lieu de dedans).
     const PARAMS = [
         // Crayon
+        { host: '#pen-mode-row', fr: "Mode de tracé. Libre : à main levée. Points : cliquez des points reliés par des lignes droites (double-clic ou Entrée pour terminer, clic sur le 1er point pour fermer).", en: "Drawing mode. Freehand: draw by hand. Points: click points joined by straight lines (double-click or Enter to finish, click the 1st point to close)." },
         { id: 'slider-width', fr: "Épaisseur d'affichage du trait à l'écran. N'influence pas le tracé envoyé à la machine.", en: "Display thickness of the line on screen. It does not affect the path sent to the machine." },
         { id: 'slider-tremor', fr: "Atténue les tremblements de la main : plus la valeur est haute, plus le trait suit le curseur avec douceur (et un peu de retard).", en: "Smooths out hand tremor: the higher the value, the more gently (and slightly later) the line follows the cursor." },
         { id: 'slider-rope', fr: "Longueur de la « corde » : le trait est tiré derrière le curseur comme au bout d'une corde, ce qui arrondit les angles. 0 = le trait suit exactement le curseur.", en: "Length of the “rope”: the line is dragged behind the cursor as if on a rope, which rounds the corners. 0 = the line follows the cursor exactly." },
@@ -261,6 +262,14 @@
         { id: 'slider-sim', fr: "Fait avancer la bille le long du tracé complet pour prévisualiser son parcours.", en: "Moves the ball along the whole path to preview its route." }
     ];
 
+    // Aides avec média (GIF) : « i » à côté de l'export THR
+    const MEDIA = [{
+        host: '#export-i-host', gif: 'media/export_thr.gif',
+        title: { fr: '📲 Importer le .thr dans l\'app Sunae', en: '📲 Import the .thr in the Sunae app' },
+        fr: "Après l'export : dans l'app Sunae, Dessins → « + » → Centre de téléchargement → icône dossier → choisissez le fichier .thr dans Téléchargements. Le dessin s'importe puis apparaît dans Dessins.",
+        en: "After exporting: in the Sunae app, Drawings → “+” → Download center → folder icon → pick the .thr file in Downloads. The drawing imports and then appears in Drawings."
+    }];
+
     // ========================================================================= Placement des « i »
     function makeIcon(kind, key) {
         const s = document.createElement('span');
@@ -290,6 +299,10 @@
         document.querySelectorAll('input[name="tool"]').forEach(radio => {
             const label = radio.closest('label'); const key = radio.value;
             if (label && TOOLS[key] && !label.querySelector('.info-i')) label.appendChild(makeIcon('tool', key));
+        });
+        MEDIA.forEach((m, i) => {
+            const host = document.querySelector(m.host); if (!host || host.querySelector('.info-i')) return;
+            host.appendChild(makeIcon('media', String(i)));
         });
         // Paramètres
         PARAMS.forEach((p, i) => {
@@ -327,6 +340,11 @@
             const d = TOOLS[key];
             pop.classList.remove('hp-text-only');
             pop.innerHTML = `<div class="hp-title">${d.title[L]}</div><div class="hp-demo">${svg(DEMOS[key]())}</div><div>${d[L]}</div>`;
+        } else if (kind === 'media') {
+            const m = MEDIA[+key];
+            pop.classList.remove('hp-text-only');
+            pop.innerHTML = `<div class="hp-title">${m.title[L]}</div><div class="hp-demo" style="text-align:center"><img src="${m.gif}" alt="" style="display:block;margin:0 auto;max-width:100%;max-height:55vh;width:auto;height:auto;border-radius:8px;border:1px solid #e0d8c3"></div><div>${m[L]}</div>`;
+            const im = pop.querySelector('img'); if (im) im.addEventListener('load', () => position(icon));
         } else {
             const p = PARAMS[+key];
             pop.classList.add('hp-text-only');

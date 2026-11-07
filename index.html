@@ -138,7 +138,7 @@
                     </div>
                     <div id="sand-status" style="font-size:11px; color:#666; text-align:center; margin-top:6px; min-height:14px;">Mode Traits : affichage normal de l'éditeur.</div>
                 </fieldset>
-                <button class="btn-export" onclick="app.handleSave('.thr', false)">📤 Exporter vers Machine (.thr)</button>
+                <div style="display:flex; align-items:center; gap:4px;"><div style="flex:1; display:contents;"><button class="btn-export" onclick="app.handleSave('.thr', false)">📤 Exporter vers Machine (.thr)</button></div><span id="export-i-host" style="display:inline-flex;"></span></div>
             </div>
 
             <!-- OUTILS -->
@@ -160,6 +160,17 @@
 
                 <fieldset id="opts-pen" style="display:none;">
                     <legend>🖌️ Paramètres Crayon</legend>
+                    <div class="row" id="pen-mode-row" style="gap:5px; margin-bottom:10px;">
+                        <button id="btn-pen-free" class="btn btn-primary" style="flex:1;" title="Dessin à main levée" onclick="app.setPenInputMode('free')">✏️ Libre</button>
+                        <button id="btn-pen-points" class="btn" style="flex:1;" title="Tracé par points reliés par des lignes droites" onclick="app.setPenInputMode('points')">📍 Points</button>
+                    </div>
+                    <div id="pen-points-actions" style="display:none; gap:5px; margin-bottom:10px; flex-wrap:wrap;">
+                        <button class="btn btn-primary" style="flex:1; min-width:45%;" onclick="app.finishPenPoints(false)">✅ Terminer</button>
+                        <button class="btn" style="flex:1; min-width:45%;" onclick="app.finishPenPoints(true)">⭕ Fermer le tracé</button>
+                        <button class="btn" style="flex:1; min-width:45%;" onclick="app.undoPolygonPoint()">↩️ Dernier point</button>
+                        <button class="btn" style="flex:1; min-width:45%;" onclick="app.cancelPolygonShape()">✖️ Annuler</button>
+                    </div>
+                    <div id="pen-help-text" style="font-size:11px; margin-bottom:10px; color:#555;">Dessinez à main levée, ou passez en mode Points.</div>
                     <div class="row"><label>📏 Épaisseur du trait :</label> <span class="val-badge" id="val-width">1.5</span></div>
                     <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('slider-width', -1)">➖</button><input type="range" id="slider-width" min="5" max="100" value="15" oninput="app.updateSliders()"><button class="btn btn-icon" onclick="app.stepSlider('slider-width', 1)">➕</button></div>
                     <div class="row"><label>🫨 Lissage Anti-tremblement :</label> <span class="val-badge" id="val-tremor">0</span></div>
@@ -363,7 +374,7 @@ const app = {
     
     ui: {
         tool: 'select', penWidth: 1.5, ropeLength: 5.0, tremor: 0.0, color: '#000000', zoom: 1.0, panX: 0, panY: 0, simPercent: 0, isDrawing: false, isPanning: false, isLiquifying: false,
-        zigzagLineStyle: 'straight', waveAmp: 2.0, waveLen: 15.0, zigzagAngle: 0, zigzagSpacing: 2.0, zigzagDrawMode: 'contour', zigzagInputMode: 'pen', liquifyRadius: 30, liquifyStrength: 50, wandTolerance: 30, pointerHover: null, tspPointCount: 900, tspPickMode: null, tspPickLayerId: null, zigzagGuideTargetId: null,
+        zigzagLineStyle: 'straight', waveAmp: 2.0, waveLen: 15.0, zigzagAngle: 0, zigzagSpacing: 2.0, zigzagDrawMode: 'contour', zigzagInputMode: 'pen', penInputMode: 'free', liquifyRadius: 30, liquifyStrength: 50, wandTolerance: 30, pointerHover: null, tspPointCount: 900, tspPickMode: null, tspPickLayerId: null, zigzagGuideTargetId: null,
         interpSteps: 6, interpState: 0, interpRoundTrip: true, activeTransform: null, lockAspect: false
     },
     
@@ -737,6 +748,40 @@ const app = {
             : "Dessinez une forme fermée à main levée, ou choisissez Points / Détection auto.";
         let wrapper = document.getElementById('canvas-wrapper');
         if (wrapper && this.ui.tool === 'zigzag') wrapper.style.cursor = (m === 'wand') ? 'none' : 'crosshair';
+    },
+
+    // --- Crayon : mode "Points" (tracé en lignes droites entre points cliqués) ---
+    isPenPointsMode() { return this.ui.tool === 'pen' && this.ui.penInputMode === 'points'; },
+    setPenInputMode(mode) {
+        this.ui.penInputMode = mode; this.pos.polyPoints = [];
+        this.updatePenModeUI(); this.draw();
+    },
+    updatePenModeUI() {
+        let m = this.ui.penInputMode;
+        let set = (id, on) => { let el = document.getElementById(id); if (el) el.classList.toggle('btn-primary', on); };
+        set('btn-pen-free', m === 'free'); set('btn-pen-points', m === 'points');
+        let pa = document.getElementById('pen-points-actions'); if (pa) pa.style.display = (m === 'points') ? 'flex' : 'none';
+        let help = document.getElementById('pen-help-text');
+        if (help) help.innerText = (m === 'points') ? "Cliquez pour placer des points reliés par des lignes droites. Terminez avec double-clic / Entrée ; recliquez sur le 1er point pour fermer le tracé."
+            : "Dessinez à main levée, ou passez en mode Points.";
+        let wrapper = document.getElementById('canvas-wrapper'); if (wrapper && this.ui.tool === 'pen') wrapper.style.cursor = 'crosshair';
+    },
+    addPenPoint(pt) {
+        let pts = this.pos.polyPoints; let tol = 12 / this.ui.zoom;
+        if (pts.length >= 3 && Math.hypot(pt.x - pts[0].x, pt.y - pts[0].y) < tol) { this.finishPenPoints(true); return; }
+        if (pts.length > 0 && Math.hypot(pt.x - pts[pts.length - 1].x, pt.y - pts[pts.length - 1].y) < 3 / this.ui.zoom) return; // évite les doublons (double-clic)
+        if (!this.isPointInBounds(pt)) return;
+        pts.push({ x: pt.x, y: pt.y }); this.draw();
+    },
+    // Crée le calque Crayon. Les côtés sont découpés en pas de 1 u : un long segment serait interpolé en arc (polaire) par la machine.
+    finishPenPoints(close) {
+        let pts = this.pos.polyPoints;
+        if (pts.length < 2) { if (pts.length > 0) alert("Placez au moins 2 points."); return; }
+        let path = []; let n = pts.length; let last = close ? n : n - 1;
+        for (let i = 0; i < last; i++) { let seg = this.discretizeLine(pts[i], pts[(i + 1) % n], 1); if (i < last - 1) seg.pop(); path.push(...seg); }
+        this.pos.polyPoints = [];
+        this.addLayer({ type: 'pen', color: this.ui.color, width: this.ui.penWidth, points: path });
+        this.invalidateSim(); this.draw(); this.autoSave();
     },
 
     // --- Remplissage : mode "Points" (forme polygonale par clics successifs) ---
@@ -1237,6 +1282,7 @@ const app = {
                 } else if (this.ui.tool === 'pen' || this.ui.tool === 'wall' || this.ui.tool === 'zigzag' || this.ui.tool === 'interp') {
                     if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand') {}
                     else if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'points') { this.addPolygonPoint(ptScene); }
+                    else if (this.isPenPointsMode()) { this.addPenPoint(ptScene); }
                     else if (this.isPointInBounds(ptScene)) { this.ui.isDrawing = true; this.pos.anchor = {x: ptScene.x, y: ptScene.y}; this.pos.lastSmoothed = {x: ptScene.x, y: ptScene.y}; this.pos.currentPath = [{...this.pos.anchor}]; this.draw(); }
                 }
             }
@@ -1364,7 +1410,7 @@ const app = {
                     if (!this.isPointInWall(testPos)) { this.pos.anchor = testPos; this.pos.currentPath.push({...this.pos.anchor}); }
                 }
                 this.draw();
-            } else if (this.ui.tool === 'liquify' || (this.ui.tool === 'zigzag' && (this.ui.zigzagDrawMode === 'wand' || (this.ui.zigzagDrawMode === 'points' && this.pos.polyPoints.length > 0)))) this.draw();
+            } else if (this.ui.tool === 'liquify' || (this.ui.tool === 'zigzag' && (this.ui.zigzagDrawMode === 'wand' || (this.ui.zigzagDrawMode === 'points' && this.pos.polyPoints.length > 0))) || (this.isPenPointsMode() && this.pos.polyPoints.length > 0)) this.draw();
         });
 
         const endAction = (e) => {
@@ -1430,11 +1476,12 @@ const app = {
         wrapper.addEventListener('wheel', (e) => { e.preventDefault(); this.stepSlider('zoom-workspace', e.deltaY > 0 ? -10 : 10); });
         wrapper.addEventListener('contextmenu', e => e.preventDefault());
         // Mode Points : double-clic = fermer la forme ; Entrée = fermer ; Échap = annuler ; Retour arrière = retirer le dernier point.
-        wrapper.addEventListener('dblclick', () => { if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'points') this.closePolygonShape(); });
+        wrapper.addEventListener('dblclick', () => { if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'points') this.closePolygonShape(); else if (this.isPenPointsMode()) this.finishPenPoints(false); });
         document.addEventListener('keydown', (e) => {
-            if (this.ui.tool !== 'zigzag' || this.ui.zigzagDrawMode !== 'points') return;
+            let penPts = this.isPenPointsMode();
+            if (!penPts && (this.ui.tool !== 'zigzag' || this.ui.zigzagDrawMode !== 'points')) return;
             let tag = (e.target && e.target.tagName) || ''; if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-            if (e.key === 'Enter') { this.closePolygonShape(); e.preventDefault(); }
+            if (e.key === 'Enter') { if (penPts) this.finishPenPoints(false); else this.closePolygonShape(); e.preventDefault(); }
             else if (e.key === 'Escape') { this.cancelPolygonShape(); }
             else if (e.key === 'Backspace') { this.undoPolygonPoint(); e.preventDefault(); }
         });
@@ -2105,7 +2152,7 @@ const app = {
         }
 
         // Aperçu du mode Points : segments déjà posés, ligne élastique vers le curseur, points et anneau de fermeture
-        if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'points' && this.pos.polyPoints.length > 0) {
+        if (((this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'points') || this.isPenPointsMode()) && this.pos.polyPoints.length > 0) {
             let pp = this.pos.polyPoints; let z = this.ui.zoom;
             this.ctx.beginPath(); this.ctx.moveTo(pp[0].x, pp[0].y);
             for (let j = 1; j < pp.length; j++) this.ctx.lineTo(pp[j].x, pp[j].y);
@@ -2286,7 +2333,7 @@ const app = {
     changeTool() {
         let newTool = document.querySelector('input[name="tool"]:checked').value;
         if (this.ui.tool === 'zigzag' && this.ui.zigzagDrawMode === 'wand' && newTool !== 'zigzag') this.toggleWandMode();
-        if (newTool !== 'zigzag') this.pos.polyPoints = []; // forme par points inachevée abandonnée
+        if (newTool !== this.ui.tool) this.pos.polyPoints = []; // forme / tracé par points inachevé abandonné
         // Note : on NE désarme PLUS la visée du point de départ/arrivée TSP en changeant d'outil —
         // elle reste active (le calque ciblé est mémorisé) et se termine dès qu'on revient sur l'outil
         // "Remplissage" et qu'on clique sur la table, même après être passé par un autre outil entre-temps.
@@ -2300,6 +2347,7 @@ const app = {
         document.getElementById('canvas-wrapper').style.cursor = cursor;
         
         let elPen = document.getElementById('opts-pen'); if (elPen) elPen.style.display = (this.ui.tool === 'pen') ? 'block' : 'none';
+        if (this.ui.tool === 'pen') this.updatePenModeUI();
         let elText = document.getElementById('opts-text'); if (elText) elText.style.display = (this.ui.tool === 'text') ? 'block' : 'none';
         let elZig = document.getElementById('opts-zigzag'); if (elZig) elZig.style.display = (this.ui.tool === 'zigzag') ? 'block' : 'none';
         let elLiq = document.getElementById('opts-liquify'); if (elLiq) elLiq.style.display = (this.ui.tool === 'liquify') ? 'block' : 'none';
