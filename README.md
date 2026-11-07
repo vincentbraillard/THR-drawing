@@ -39,6 +39,7 @@ Règles du tracé :
   points reliés par des lignes droites. **Double-clic / Entrée** termine, **clic sur le 1er point** (ou
   « Fermer le tracé ») ferme la forme, **Retour arrière** supprime le dernier point, **Échap** annule.
 - Les segments sont découpés en pas de 1 unité (pas d'arcs dans le sable).
+- **Murs** : un trait qui rencontre un mur s'arrête à sa frontière (le point cliqué derrière est ramené sur le bord du mur) ; il n'y entre jamais. Idem pour le segment de fermeture.
 
 ### 3. Outil Texte : saisie de plusieurs lettres
 

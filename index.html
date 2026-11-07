@@ -797,13 +797,31 @@ const app = {
         if (pts.length >= 3 && Math.hypot(pt.x - pts[0].x, pt.y - pts[0].y) < tol) { this.finishPenPoints(true); return; }
         if (pts.length > 0 && Math.hypot(pt.x - pts[pts.length - 1].x, pt.y - pts[pts.length - 1].y) < 3 / this.ui.zoom) return; // évite les doublons (double-clic)
         if (!this.isPointInBounds(pt)) return;
+        if (this.isPointInWall(pt) && pts.length === 0) return; // le 1er point ne peut pas être dans un mur
+        if (pts.length > 0) { // le trait s'arrête à la frontière d'un mur au lieu d'y entrer
+            let e = this.clipToWalls(pts[pts.length - 1], pt);
+            if (!e || Math.hypot(e.x - pts[pts.length - 1].x, e.y - pts[pts.length - 1].y) < 0.5) return;
+            pt = e;
+        }
         pts.push({ x: pt.x, y: pt.y }); this.draw();
+    },
+    // Dernier point libre sur le segment a→b avant d'entrer dans un mur (b si aucun mur). a doit être hors mur.
+    clipToWalls(a, b) {
+        if (this.isPointInWall(a)) return null;
+        let d = Math.hypot(b.x - a.x, b.y - a.y); let n = Math.max(1, Math.ceil(d / 0.5)); let lastFree = 0, hit = -1;
+        for (let i = 1; i <= n; i++) { if (this.isPointInWall({ x: a.x + (b.x - a.x) * i / n, y: a.y + (b.y - a.y) * i / n })) { hit = i; break; } lastFree = i; }
+        if (hit < 0) return { x: b.x, y: b.y };
+        let t = lastFree / n; return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
     },
     // Crée le calque Crayon. Les côtés sont découpés en pas de 1 u : un long segment serait interpolé en arc (polaire) par la machine.
     finishPenPoints(close) {
         let pts = this.pos.polyPoints;
         if (pts.length < 2) { if (pts.length > 0) alert("Placez au moins 2 points."); return; }
-        let path = []; let n = pts.length; let last = close ? n : n - 1;
+        let path = []; let n = pts.length; let last = close ? n : n - 1; pts = pts.map(q => ({ x: q.x, y: q.y }));
+        if (close) { // segment de fermeture : s'arrête au mur s'il en rencontre un
+            let e = this.clipToWalls(pts[n - 1], pts[0]);
+            if (e && (e.x !== pts[0].x || e.y !== pts[0].y)) { pts.push(e); n++; last = n - 1; }
+        }
         for (let i = 0; i < last; i++) { let seg = this.discretizeLine(pts[i], pts[(i + 1) % n], 1); if (i < last - 1) seg.pop(); path.push(...seg); }
         this.pos.polyPoints = [];
         this.addLayer({ type: 'pen', color: this.ui.color, width: this.ui.penWidth, points: path });
