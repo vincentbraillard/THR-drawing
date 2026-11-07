@@ -40,7 +40,13 @@ Règles du tracé :
   « Fermer le tracé ») ferme la forme, **Retour arrière** supprime le dernier point, **Échap** annule.
 - Les segments sont découpés en pas de 1 unité (pas d'arcs dans le sable).
 
-### 3. Aide : « i » à côté de l'export THR
+### 3. Outil Texte : saisie de plusieurs lettres
+
+- Cliquez la case de la première lettre puis tapez plusieurs lettres d'un coup : elles remplissent les
+  cases suivantes (au maximum autant que de cases restantes ; l'excédent est ignoré, un espace laisse
+  la case vide).
+
+### 4. Aide : « i » à côté de l'export THR
 
 - Un ⓘ à droite du bouton « Exporter vers Machine (.thr) » ouvre un petit **GIF léger** (≈ 450 Ko) :
   dans l'app Sunae → Dessins → « + » → Centre de téléchargement → icône dossier → choisir le .thr.

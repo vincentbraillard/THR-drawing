@@ -1206,9 +1206,13 @@ const app = {
 
             if (clickedSlot !== null) {
                 this.selectedIds = [clickedLayer.id]; let currentLetter = clickedLayer.chars[clickedSlot] || "";
-                let newLetter = prompt("Entrez une lettre (Laissez vide pour effacer) :", currentLetter);
+                let dir = clickedLayer.flipH ? -1 : 1; let avail = clickedLayer.flipH ? clickedSlot + 1 : clickedLayer.charCount - clickedSlot;
+                let newLetter = prompt("Tapez une ou plusieurs lettres (au maximum autant que de cases à partir de celle-ci, dans le sens de lecture). Laissez vide pour effacer la case :", currentLetter);
                 if (newLetter !== null) {
-                    this.saveState(); clickedLayer.chars[clickedSlot] = newLetter.trim().toUpperCase().charAt(0); clickedLayer.points = this.generateTextPoints(clickedLayer);
+                    this.saveState(); let str = newLetter.toUpperCase().replace(/[\r\n\t]/g, '').slice(0, avail);
+                    if (str.length === 0) clickedLayer.chars[clickedSlot] = "";
+                    else for (let k = 0; k < str.length; k++) clickedLayer.chars[clickedSlot + k * dir] = str.charAt(k) === ' ' ? "" : str.charAt(k);
+                    clickedLayer.points = this.generateTextPoints(clickedLayer);
                     this.invalidateSim(); this.draw(); this.autoSave();
                 }
                 this.refreshLayerList(); this.ui.isDrawing = false; this.ui.isPanning = false; return;

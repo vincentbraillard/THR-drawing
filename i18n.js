@@ -91,6 +91,7 @@
         'Aucun contour trouvé : ajustez le seuil / la sensibilité.': 'No contour found: adjust the threshold / sensitivity.',
         'Rien à tracer.': 'Nothing to draw.', 'Tracé créé : ': 'Path created: ', 'repassages': 'retraced', 'liaison(s)': 'link(s)',
         'une liaison passe hors silhouette (formes séparées)': 'a link goes outside the silhouette (separate shapes)',
+        "Tapez une ou plusieurs lettres (au maximum autant que de cases à partir de celle-ci, dans le sens de lecture). Laissez vide pour effacer la case :": "Type one or more letters (at most as many as there are boxes from this one, in reading direction). Leave empty to clear the box:",
         '✏️ Libre': '✏️ Freehand', '📍 Points': '📍 Points', '✅ Terminer': '✅ Finish', '⭕ Fermer le tracé': '⭕ Close path',
         'Tracé par points reliés par des lignes droites': 'Path made of points joined by straight lines',
         'Dessinez à main levée, ou passez en mode Points.': 'Draw freehand, or switch to Points mode.',
