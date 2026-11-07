@@ -212,6 +212,15 @@
     // sibling = placer le « i » juste après le libellé (au lieu de dedans).
     const PARAMS = [
         // Crayon
+        // Import
+        { id: 'ct-mode', fr: "Dessin au trait : on suit les lignes noires (centre du trait). Formes / photo : on détecte les bords des formes. Auto choisit selon l'épaisseur des traits.", en: "Line drawing: follows the black lines (centre of the stroke). Shapes / photo: detects the edges of shapes. Auto picks based on stroke thickness." },
+        { id: 'ct-thr', fr: "Mode trait : tout ce qui est plus sombre que ce seuil devient du trait. Montez-le pour capter des traits plus clairs.", en: "Line mode: anything darker than this threshold becomes stroke. Raise it to catch lighter lines." },
+        { id: 'ct-sens', fr: "Mode formes / photo : plus c'est haut, plus de bords (et de détails) sont détectés.", en: "Shapes / photo mode: the higher, the more edges (and details) are detected." },
+        { id: 'ct-close', fr: "Épaissit les traits pour refermer les petits trous et relier les traits presque jointifs.", en: "Thickens strokes to close small gaps and join almost-touching lines." },
+        { id: 'ct-spur', fr: "Supprime les petites branches qui dépassent d'un trait (poils, barbules). 0 = tout garder.", en: "Removes short branches sticking out of a line (hairs, burrs). 0 = keep everything." },
+        { id: 'ct-min', fr: "Les éléments dont la longueur de trait est inférieure sont ignorés (poussières, bruit).", en: "Elements with a shorter stroke length are ignored (dust, noise)." },
+        { id: 'ct-main', fr: "Garde l'objet le plus grand et ce qui l'entoure de près ; retire le reste (fond, éléments éloignés).", en: "Keeps the biggest object and what is close to it; removes the rest (background, distant elements)." },
+        { id: 'ct-pick', fr: "Cliquez sur un élément de l'aperçu pour le retirer (il devient gris) ; recliquez pour le remettre.", en: "Click an element in the preview to remove it (it turns grey); click again to restore it." },
         { host: '#pen-mode-row', fr: "Mode de tracé. Libre : à main levée. Points : cliquez des points reliés par des lignes droites (double-clic ou Entrée pour terminer, clic sur le 1er point pour fermer).", en: "Drawing mode. Freehand: draw by hand. Points: click points joined by straight lines (double-click or Enter to finish, click the 1st point to close)." },
         { id: 'slider-width', fr: "Épaisseur d'affichage du trait à l'écran. N'influence pas le tracé envoyé à la machine.", en: "Display thickness of the line on screen. It does not affect the path sent to the machine." },
         { id: 'slider-tremor', fr: "Atténue les tremblements de la main : plus la valeur est haute, plus le trait suit le curseur avec douceur (et un peu de retard).", en: "Smooths out hand tremor: the higher the value, the more gently (and slightly later) the line follows the cursor." },

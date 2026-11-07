@@ -1,5 +1,51 @@
 # Éditeur de Tracés Sunae — Journal des modifications
 
+## v6.13 — Onglet « Import » : image → contours → tracé unique ; Crayon « Points » ; aide vidéo de l'export
+
+### 0. Retour en arrière
+
+- Les modes **Segmenter / Composer** de l'outil Remplissage (v6.8 → v6.12) sont retirés : l'outil
+  Remplissage revient à la version v6.7 (Crayon / Points / Détection auto).
+
+### 1. Onglet « Import » (ex-« Transf. ») : image → contours → un seul tracé
+
+Deux étapes, comme demandé :
+
+1. **Réglages en direct.** Importez une image (« + Image »), positionnez-la, puis réglez : type d'image
+   (Auto / dessin au trait / formes-photo), seuil noir/blanc, sensibilité des bords, fermeture des petits
+   trous, ébarbage, taille mini, « isoler l'objet principal » (retire le fond) et « clic = retirer /
+   remettre un élément ». Le squelette des contours s'affiche en rose sur la table et se met à jour
+   pendant que vous bougez les curseurs.
+2. **« ✏️ Dessiner ».** Calcule le tracé unique et crée un calque Crayon « ✏️ Contour n ».
+
+Règles du tracé :
+
+- Image à **une seule ligne** : on suit simplement la ligne (0 % de repassage).
+- Image coloriée / noir et blanc : amincissement (Zhang-Suen) → graphe du squelette → ébarbage → parcours
+  eulérien ouvert de longueur minimale (postier chinois : appariement glouton + 2-opt) ; le tracé
+  **repasse sur les contours** quand il doit revenir en arrière.
+- **Jamais de raccourci à travers une forme** : les éléments isolés (œil, tache…) sont rejoints par le
+  chemin le plus court qui préfère longer les traits existants (coût 0,2), puis traverse le moins
+  possible l'intérieur (3) et presque jamais l'extérieur (40) ; on ressort par le même trait.
+  Si les formes sont réellement séparées (silhouettes distinctes), une liaison hors silhouette est
+  inévitable : un avertissement ⚠️ l'indique.
+- Tout est re-découpé en pas ≤ 2 unités (le simulateur et la machine interpolent en polaire).
+- Tests : beagle (3 éléments, 0 px hors silhouette), zèbre (7 éléments, 6 liaisons, 0 px hors silhouette),
+  hippocampe (12 éléments), spirale à une ligne (0 % de repassage), photo de corgi (mode formes).
+
+### 2. Crayon : mode « Points »
+
+- Deux boutons dans les paramètres du Crayon : **✏️ Libre** (comme avant) et **📍 Points** : cliquez des
+  points reliés par des lignes droites. **Double-clic / Entrée** termine, **clic sur le 1er point** (ou
+  « Fermer le tracé ») ferme la forme, **Retour arrière** supprime le dernier point, **Échap** annule.
+- Les segments sont découpés en pas de 1 unité (pas d'arcs dans le sable).
+
+### 3. Aide : « i » à côté de l'export THR
+
+- Un ⓘ à droite du bouton « Exporter vers Machine (.thr) » ouvre un petit **GIF léger** (≈ 450 Ko) :
+  dans l'app Sunae → Dessins → « + » → Centre de téléchargement → icône dossier → choisir le .thr.
+  Textes FR / EN. Le sélecteur de fichiers de la vidéo d'origine est flouté.
+
 ## v6.7 — Interface bilingue FR / EN + infobulles « i » (outils animés, paramètres expliqués)
 
 ### 1. Bouton de langue (drapeaux 🇫🇷 / 🇬🇧)

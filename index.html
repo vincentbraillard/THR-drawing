@@ -10,6 +10,7 @@
     <script src="alphabet.js"></script>
     <script src="tsp_core.js"></script>
     <script src="autotrace.js"></script>
+    <script src="contour.js"></script>
 
     <style>
         :root { --primary: #0078D7; --bg: #f3f3f3; --panel: #ffffff; --border: #ddd; }
@@ -80,7 +81,7 @@
             <div class="tabs">
                 <button class="tab-btn active" onclick="app.openTab(event, 'tab-file')">📁 Fichier</button>
                 <button class="tab-btn" onclick="app.openTab(event, 'tab-tools')">🖌️ Outils</button>
-                <button class="tab-btn" onclick="app.openTab(event, 'tab-transform')">📐 Transf.</button>
+                <button class="tab-btn" onclick="app.openTab(event, 'tab-transform')">📥 Import</button>
                 <button class="tab-btn" onclick="app.openTab(event, 'tab-layers')">📑 Calques</button>
             </div>
 
@@ -273,6 +274,31 @@
                     <button class="btn" style="flex:1; font-weight:bold; background: #e3f2fd;" onclick="document.getElementById('file-image').click()">📂 + Image</button>
                     <button class="btn" style="flex:1; font-weight:bold; background: #f3e5f5;" onclick="document.getElementById('file-thr').click()">📂 + Tracé (.thr)</button>
                 </div>
+                <fieldset id="fs-contour" style="background:#fce4ec;">
+                    <legend>✂️ Image → Contours (tracé unique)</legend>
+                    <div style="font-size:11px; margin-bottom:10px; color:#555;">1. Réglez l'image jusqu'à obtenir les bons contours (en rose sur la table). 2. Cliquez sur « Dessiner » : un seul tracé continu est calculé. Le tracé ne sort jamais de la silhouette et ne coupe jamais une forme : il repasse sur les contours.</div>
+                    <div class="row"><label>🎛️ Type d'image :</label>
+                        <select id="ct-mode" onchange="Contour.onParam(true)"><option value="auto">Auto</option><option value="traits">Dessin au trait (lignes noires)</option><option value="contours">Formes / photo (bords)</option></select></div>
+                    <div class="row"><label>⚫ Seuil noir/blanc :</label> <span class="val-badge" id="val-ct-thr">140</span></div>
+                    <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('ct-thr', -5); Contour.onParam()">➖</button><input type="range" id="ct-thr" min="20" max="240" step="5" value="140" oninput="Contour.onParam()"><button class="btn btn-icon" onclick="app.stepSlider('ct-thr', 5); Contour.onParam()">➕</button></div>
+                    <div class="row"><label>🔍 Sensibilité des bords :</label> <span class="val-badge" id="val-ct-sens">50</span></div>
+                    <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('ct-sens', -5); Contour.onParam()">➖</button><input type="range" id="ct-sens" min="1" max="100" step="5" value="50" oninput="Contour.onParam()"><button class="btn btn-icon" onclick="app.stepSlider('ct-sens', 5); Contour.onParam()">➕</button></div>
+                    <div class="row"><label>🩹 Fermer les petits trous :</label> <span class="val-badge" id="val-ct-close">1</span></div>
+                    <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('ct-close', -1); Contour.onParam()">➖</button><input type="range" id="ct-close" min="0" max="4" step="1" value="1" oninput="Contour.onParam()"><button class="btn btn-icon" onclick="app.stepSlider('ct-close', 1); Contour.onParam()">➕</button></div>
+                    <div class="row"><label>✂️ Ébarbage (petites branches) :</label> <span class="val-badge" id="val-ct-spur">10</span></div>
+                    <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('ct-spur', -2); Contour.onParam()">➖</button><input type="range" id="ct-spur" min="0" max="40" step="2" value="10" oninput="Contour.onParam()"><button class="btn btn-icon" onclick="app.stepSlider('ct-spur', 2); Contour.onParam()">➕</button></div>
+                    <div class="row"><label>🧹 Taille mini des éléments :</label> <span class="val-badge" id="val-ct-min">40</span></div>
+                    <div class="row-slider"><button class="btn btn-icon" onclick="app.stepSlider('ct-min', -5); Contour.onParam()">➖</button><input type="range" id="ct-min" min="5" max="400" step="5" value="40" oninput="Contour.onParam()"><button class="btn btn-icon" onclick="app.stepSlider('ct-min', 5); Contour.onParam()">➕</button></div>
+                    <label style="display:block; font-size:12px; margin:6px 0;"><input type="checkbox" id="ct-main" onchange="Contour.onParam(true)"> 🎯 Isoler l'objet principal (retire le fond)</label>
+                    <label style="display:block; font-size:12px; margin:6px 0;"><input type="checkbox" id="ct-pick" onchange="Contour.onParam(true)"> 👆 Clic sur la table = retirer / remettre un élément</label>
+                    <label style="display:block; font-size:12px; margin:6px 0;"><input type="checkbox" id="ct-fade" checked onchange="app.draw()"> 🌫️ Estomper l'image sous l'aperçu</label>
+                    <label style="display:block; font-size:12px; margin:6px 0;"><input type="checkbox" id="ct-hide" checked> 🙈 Masquer l'image après le tracé</label>
+                    <div id="ct-status" style="font-size:11px; border-radius:6px; padding:6px 8px; margin:8px 0; background:#eef4fc; color:#0b3d6e;">Importez une image (bouton « + Image ») pour commencer.</div>
+                    <div style="display:flex; gap:5px;">
+                        <button class="btn" style="flex:1;" onclick="Contour.resetPicks()">🔄 Analyser</button>
+                        <button id="ct-draw" class="btn btn-primary" style="flex:2; font-weight:bold;" disabled onclick="Contour.generate()">✏️ Dessiner</button>
+                    </div>
+                </fieldset>
                 <fieldset id="fs-tsp-convert" style="display:none; background:#fff3e0;">
                     <legend>🎯 Convertir l'image en tracé TSP</legend>
                     <div style="font-size:11px; margin-bottom:10px; color:#555;">Positionnez et redimensionnez d'abord l'image avec l'outil Sélection. Réglez les curseurs puis cliquez sur "Mettre à jour" pour voir le résultat sur le canevas (le panneau reste ouvert, ajustez autant de fois que besoin). Cliquez sur "Appliquer les changements" une fois satisfait.</div>
@@ -355,7 +381,7 @@
             <input type="range" id="slider-sim" min="0" max="1000" value="0" style="height:20px;" oninput="app.updateSim()">
             <button class="btn btn-icon" onclick="app.stepSlider('slider-sim', 10)">➕</button>
         </div>
-        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.7 (Langues FR/EN · Infobulles « i »)</span>
+        <span style="position: absolute; right: 15px; bottom: 8px; font-size: 12px; color: #999; font-weight: bold;">v6.13 (Import contours · Crayon points)</span>
     </div>
 
 <script>
@@ -1421,6 +1447,8 @@ const app = {
                 if (Math.hypot((this.ui.pointerHover || this.pos.lastClick).x - this.pos.lastClick.x, (this.ui.pointerHover || this.pos.lastClick).y - this.pos.lastClick.y) < 10) this.executeMagicWand(this.pos.lastClick);
             }
 
+            if (window.Contour && Contour.active && Contour.ready && e.type !== 'pointercancel' && Math.hypot((this.ui.pointerHover || this.pos.lastClick).x - this.pos.lastClick.x, (this.ui.pointerHover || this.pos.lastClick).y - this.pos.lastClick.y) < 10) Contour.onClick(this.pos.lastClick);
+
             if (this.ui.activeTransform) {
                 this.ui.activeTransform = null; this.invalidateSim(); this.draw(); this.autoSave(); this.refreshLayerList();
                 wrapper.style.cursor = 'crosshair'; if(this.ui.tool === 'select') wrapper.style.cursor = 'pointer';
@@ -2170,6 +2198,8 @@ const app = {
             }
         }
 
+        if (window.Contour && Contour.active && Contour.ready) Contour.drawOverlay(this.ctx, this.ui.zoom);
+
         if (this.ui.tool === 'liquify' && this.ui.pointerHover) {
             this.ctx.beginPath(); this.ctx.arc(this.ui.pointerHover.x, this.ui.pointerHover.y, this.ui.liquifyRadius / this.ui.zoom, 0, Math.PI*2);
             this.ctx.strokeStyle = "rgba(255, 0, 0, 0.5)"; this.ctx.fillStyle = "rgba(255, 0, 0, 0.1)"; this.ctx.lineWidth = 1 / this.ui.zoom; this.ctx.fill(); this.ctx.stroke();
@@ -2311,6 +2341,7 @@ const app = {
     openTab(evt, tabName) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active')); document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
         document.getElementById(tabName).classList.add('active'); evt.currentTarget.classList.add('active');
+        if (window.Contour) Contour.setActive(tabName === 'tab-transform');
     },
     
     toggleSidebar() {
